@@ -124,5 +124,23 @@ October 31, 2026.
 ## Repository layout
 
 - `CLAUDE.md` — this file: who the app is for and the rules above.
-- `docs/` — research results and decisions, written in plain English.
-- The Xcode project and Swift source live at the top level once step 1 begins.
+- `docs/` — research results, decisions and the plain-English guide for
+  running the app (`run-on-your-mac.md`). Read `docs/decisions.md` before
+  changing direction on anything listed there.
+- `Ace.xcodeproj` — the Xcode project. It uses Xcode 16+ "synchronized
+  folders": every file under `Ace/` is part of the app automatically, so new
+  Swift files need no project-file edits.
+- `Ace/` — the Swift source. `Speech/` is recording and transcription,
+  `Assistant/` is the Claude form-filling, `Support/` is Keychain and helpers.
+
+## Working rules for code
+
+- The cloud session cannot compile Swift. Keep to well-known APIs, re-read
+  every change for type errors, and say plainly that it is unbuilt.
+- Swift language mode 5 (not 6) to keep concurrency warnings from becoming
+  errors. Mark view-facing model classes `@MainActor @Observable`.
+- Claude requests use structured output (`output_config.format`) and never
+  send `temperature` or a forced `tool_choice`: the current models reject them.
+- WhisperKit is the `WhisperKit` product of the `argmax-oss-swift` package
+  (repository `argmaxinc/WhisperKit`, version 1.1.1 or newer; the 1.0 release
+  changed the API, so ignore tutorials written for 0.x).
