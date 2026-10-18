@@ -1,0 +1,23 @@
+# Xcode
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.xcscmblueprint
+*.xccheckout
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+.swiftpm/
+Packages/
+.build/
+
+# Secrets: API keys live in the device Keychain, never in this repository.
+*.secrets
+.env
+.env.*
+
+# macOS
+.DS_Store
