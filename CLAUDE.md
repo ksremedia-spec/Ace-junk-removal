@@ -142,5 +142,7 @@ October 31, 2026.
 - Claude requests use structured output (`output_config.format`) and never
   send `temperature` or a forced `tool_choice`: the current models reject them.
 - WhisperKit is the `WhisperKit` product of the `argmax-oss-swift` package
-  (repository `argmaxinc/WhisperKit`, version 1.1.1 or newer; the 1.0 release
-  changed the API, so ignore tutorials written for 0.x).
+  (repository `https://github.com/argmaxinc/argmax-oss-swift`, version 1.1.1
+  or newer; the old `argmaxinc/WhisperKit` URL redirects there). The 1.0
+  release changed the API, so ignore tutorials written for 0.x. A
+  source-verified API reference is in `docs/whisperkit-api.md`.

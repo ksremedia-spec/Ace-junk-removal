@@ -28,7 +28,9 @@ final class WhisperKitEngine {
         }
     }
 
-    /// Model names as they appear in the argmaxinc/whisperkit-coreml repo.
+    /// Model folder names in the argmaxinc/whisperkit-coreml repo. The size in
+    /// a name is its download size; the others are roughly 75 MB (tiny),
+    /// 150 MB (base) and 500 MB (small).
     static let modelChoices: [ModelChoice] = [
         ModelChoice(name: "openai_whisper-tiny.en", description: "Tiny. Fastest, least accurate. Good for checking the plumbing."),
         ModelChoice(name: "openai_whisper-base.en", description: "Base. Small download, quick, fair accuracy."),
@@ -47,27 +49,33 @@ final class WhisperKitEngine {
 
     struct Result {
         var text: String
+        /// Wall-clock seconds from handing over the file to getting the text back.
         var seconds: Double
+        /// Length of the audio, in seconds, as WhisperKit measured it.
+        var audioSeconds: Double
     }
 
-    /// Downloads (if needed) and loads the named model.
+    /// Downloads the named model (if needed) with progress, then loads it.
     func load(model: String) async {
         if loadedModel == model, whisperKit != nil { return }
         whisperKit = nil
         loadedModel = nil
         state = .downloading(0)
         do {
+            // Returns .../Documents/huggingface/models/argmaxinc/whisperkit-coreml/<model>.
+            // Skips files that are already there, so a second call is quick.
             let folder = try await WhisperKit.download(
                 variant: model,
-                progressCallback: { progress in
+                progressCallback: { [weak self] progress in
+                    let fraction = progress.fractionCompleted
                     Task { @MainActor in
-                        self.state = .downloading(progress.fractionCompleted)
+                        self?.state = .downloading(fraction)
                     }
                 }
             )
             state = .loading
             let config = WhisperKitConfig(
-                modelFolder: folder.path,
+                modelFolder: folder.path(percentEncoded: false),
                 verbose: false,
                 logLevel: .error,
                 prewarm: false,
@@ -83,20 +91,25 @@ final class WhisperKitEngine {
         }
     }
 
-    /// Transcribes one audio file and reports how long the whole thing took.
+    /// Transcribes one audio file. WhisperKit reads WAV, M4A and most other
+    /// formats and converts to 16 kHz mono itself.
     func transcribe(fileURL: URL) async throws -> Result {
         guard let kit = whisperKit else {
             throw EngineError.notLoaded
         }
         let started = Date()
         let options = DecodingOptions(language: "en")
-        let results = try await kit.transcribe(audioPath: fileURL.path, decodeOptions: options)
+        let results = try await kit.transcribe(
+            audioPath: fileURL.path(percentEncoded: false),
+            decodeOptions: options
+        )
         let seconds = Date().timeIntervalSince(started)
         let text = results
             .map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
             .joined(separator: " ")
-        return Result(text: text, seconds: seconds)
+        let audioSeconds = results.first?.timings.inputAudioSeconds ?? 0
+        return Result(text: text, seconds: seconds, audioSeconds: audioSeconds)
     }
 
     enum EngineError: LocalizedError {
