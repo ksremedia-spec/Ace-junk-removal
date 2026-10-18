@@ -74,9 +74,15 @@ public static func download(variant: String, downloadBase: URL? = nil,
                             progressCallback: ProgressCallback? = nil) async throws -> URL
 ```
 
-- `ProgressCallback = @Sendable (Progress) -> Void`, called on a background
-  thread; use `progress.fractionCompleted` (0…1). Hop to the main actor to
-  update UI.
+- `ProgressCallback = @Sendable (Progress) -> Void`; use
+  `progress.fractionCompleted` (0…1). It runs on whatever actor called
+  `download` (see "Threading" below), so hop to the main actor before
+  touching UI anyway.
+- **`download` always contacts Hugging Face**, even when every file is
+  already on disk (it lists the repo first, then skips files whose hash
+  matches). Offline, it fails with a network error. For offline use, check
+  for the three `.mlmodelc` folders locally and skip `download` (the app's
+  `WhisperKitEngine` does this).
 - Variant matching is a glob `*<variant>/*`, so `"base.en"` and
   `"openai_whisper-base.en"` both work; ambiguous or missing names throw
   `WhisperError.modelsUnavailable`.
@@ -163,6 +169,19 @@ re-transcribe the growing buffer every second (what the WhisperAX sample
 does). An open issue (#517, Aug 2026) reports memory growth when
 `AudioStreamTranscriber` is recreated repeatedly on iPadOS 26; keep one
 instance, or record-then-transcribe as this app does.
+
+## Threading (important)
+
+The package's Swift 6.2 manifest (`Package@swift-6.2.swift`, used by
+Xcode 26) enables `NonisolatedNonsendingByDefault` (SE-0461). Result:
+WhisperKit's `async` functions run **on the caller's actor**. Called from a
+`@MainActor` class they do their synchronous parts (WAV loading, tokenizer
+construction, per-token decoding glue, repo listing) on the main thread;
+only Core ML's own model loading and predictions go elsewhere. Call them
+from `nonisolated` functions (in this Swift 5-mode app those run on the
+background pool) so the work stays off the main thread. If the app ever
+turns on "Approachable Concurrency", those helpers must become
+`@concurrent` to keep the same effect.
 
 ## Simulator
 

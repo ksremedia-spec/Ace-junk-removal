@@ -3,6 +3,20 @@
 Short log of decisions and why, newest first. Written in plain English so it
 can be read later without the conversation.
 
+## 2026-10-18 · Speech models load from disk first, download only if missing
+
+A source-level review found that WhisperKit's download call always contacts
+Hugging Face, even when the model is already on the phone, so the app would
+have failed offline. The app now checks for the model files itself and only
+downloads when they are missing. The first load of a model still needs
+internet once (a small tokenizer file); after that it is fully offline.
+Same review: WhisperKit runs its work on whichever thread calls it, so the
+app calls it from background helpers to keep the screen responsive.
+
+Suggested, not done (Kyle to decide): the model files (up to 630 MB) sit in
+Documents, which iCloud/iTunes backup includes. They could be excluded from
+backup with one flag after download.
+
 ## 2026-10-18 · Step 1 uses WhisperKit only, for now
 
 Kyle wants something runnable by morning and cannot confirm Ashley's and

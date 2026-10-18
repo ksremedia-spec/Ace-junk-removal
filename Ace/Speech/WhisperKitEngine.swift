@@ -55,34 +55,38 @@ final class WhisperKitEngine {
         var audioSeconds: Double
     }
 
-    /// Downloads the named model (if needed) with progress, then loads it.
+    /// Loads the named model. If its files are already on the device it loads
+    /// them directly (no network); otherwise it downloads them with progress.
+    /// The very first load of a model also fetches a small tokenizer file, so
+    /// that one time needs internet.
     func load(model: String) async {
         if loadedModel == model, whisperKit != nil { return }
         whisperKit = nil
         loadedModel = nil
-        state = .downloading(0)
         do {
-            // Returns .../Documents/huggingface/models/argmaxinc/whisperkit-coreml/<model>.
-            // Skips files that are already there, so a second call is quick.
-            let folder = try await WhisperKit.download(
-                variant: model,
-                progressCallback: { [weak self] progress in
-                    let fraction = progress.fractionCompleted
+            var folder = Self.localFolder(for: model)
+            var kit: WhisperKit?
+
+            if Self.hasModelFiles(folder) {
+                state = .loading
+                kit = try? await Self.makeKit(folderPath: folder.path(percentEncoded: false))
+            }
+
+            if kit == nil {
+                // Not downloaded yet, or incomplete: WhisperKit downloads what
+                // is missing. This needs internet.
+                state = .downloading(0)
+                folder = try await Self.download(model: model) { [weak self] fraction in
                     Task { @MainActor in
-                        self?.state = .downloading(fraction)
+                        if case .downloading = self?.state {
+                            self?.state = .downloading(fraction)
+                        }
                     }
                 }
-            )
-            state = .loading
-            let config = WhisperKitConfig(
-                modelFolder: folder.path(percentEncoded: false),
-                verbose: false,
-                logLevel: .error,
-                prewarm: false,
-                load: true,
-                download: false
-            )
-            let kit = try await WhisperKit(config)
+                state = .loading
+                kit = try await Self.makeKit(folderPath: folder.path(percentEncoded: false))
+            }
+
             whisperKit = kit
             loadedModel = model
             state = .ready
@@ -98,11 +102,7 @@ final class WhisperKitEngine {
             throw EngineError.notLoaded
         }
         let started = Date()
-        let options = DecodingOptions(language: "en")
-        let results = try await kit.transcribe(
-            audioPath: fileURL.path(percentEncoded: false),
-            decodeOptions: options
-        )
+        let results = try await Self.run(kit, path: fileURL.path(percentEncoded: false))
         let seconds = Date().timeIntervalSince(started)
         let text = results
             .map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -110,6 +110,57 @@ final class WhisperKitEngine {
             .joined(separator: " ")
         let audioSeconds = results.first?.timings.inputAudioSeconds ?? 0
         return Result(text: text, seconds: seconds, audioSeconds: audioSeconds)
+    }
+
+    // MARK: - Where the files live
+
+    /// Where WhisperKit.download puts a model by default:
+    /// Documents/huggingface/models/argmaxinc/whisperkit-coreml/<model>.
+    private static func localFolder(for model: String) -> URL {
+        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        return documents
+            .appendingPathComponent("huggingface", isDirectory: true)
+            .appendingPathComponent("models", isDirectory: true)
+            .appendingPathComponent("argmaxinc", isDirectory: true)
+            .appendingPathComponent("whisperkit-coreml", isDirectory: true)
+            .appendingPathComponent(model, isDirectory: true)
+    }
+
+    /// The same three files WhisperKit itself requires before it will load.
+    private static func hasModelFiles(_ folder: URL) -> Bool {
+        ["MelSpectrogram", "AudioEncoder", "TextDecoder"].allSatisfy { name in
+            FileManager.default.fileExists(atPath: folder.appendingPathComponent("\(name).mlmodelc").path)
+        }
+    }
+
+    // MARK: - Off the main thread
+
+    // WhisperKit 1.1.1 is built so that its async functions run on whichever
+    // actor calls them. Called straight from this @MainActor class, its file
+    // reading, tokenizer setup and per-token work would run on the main
+    // thread. These nonisolated helpers run on a background thread instead,
+    // and WhisperKit follows them there.
+
+    nonisolated private static func download(
+        model: String,
+        progress: @escaping @Sendable (Double) -> Void
+    ) async throws -> URL {
+        try await WhisperKit.download(variant: model) { progress($0.fractionCompleted) }
+    }
+
+    nonisolated private static func makeKit(folderPath: String) async throws -> WhisperKit {
+        let config = WhisperKitConfig(
+            modelFolder: folderPath,
+            verbose: false,
+            prewarm: false,
+            load: true,
+            download: false
+        )
+        return try await WhisperKit(config)
+    }
+
+    nonisolated private static func run(_ kit: WhisperKit, path: String) async throws -> [TranscriptionResult] {
+        try await kit.transcribe(audioPath: path, decodeOptions: DecodingOptions(language: "en"))
     }
 
     enum EngineError: LocalizedError {
