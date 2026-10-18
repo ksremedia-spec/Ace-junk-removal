@@ -1,0 +1,69 @@
+# Compiles the app on a GitHub-hosted Mac so compile errors are caught before
+# Kyle opens the project. It does not sign, install or run anything.
+# Mac minutes count 10x against the free monthly allowance, so it only runs
+# when app code or the project file changes, or when started by hand.
+name: Build check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Ace/**"
+      - "Ace.xcodeproj/**"
+      - ".github/workflows/build.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Compile for iPhone and Mac
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pick the newest Xcode 26 on this Mac
+        run: |
+          ls -d /Applications/Xcode*.app
+          XCODE=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          if [ -n "$XCODE" ]; then sudo xcode-select -s "$XCODE"; fi
+          xcodebuild -version
+          xcodebuild -showsdks | grep -E "iOS|macOS" || true
+
+      - name: Download Swift packages (WhisperKit)
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project Ace.xcodeproj -scheme Ace -derivedDataPath DerivedData
+
+      - name: Build for iPhone
+        id: ios
+        run: |
+          status=0
+          xcodebuild build -project Ace.xcodeproj -scheme Ace -derivedDataPath DerivedData \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            > ios-build.log 2>&1 || status=$?
+          echo "---- errors and result (iPhone) ----"
+          grep -E "error:|BUILD (SUCCEEDED|FAILED)" ios-build.log || true
+          exit $status
+
+      - name: Build for Mac
+        if: always()
+        run: |
+          status=0
+          xcodebuild build -project Ace.xcodeproj -scheme Ace -derivedDataPath DerivedData \
+            -destination 'generic/platform=macOS' \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            > mac-build.log 2>&1 || status=$?
+          echo "---- errors and result (Mac) ----"
+          grep -E "error:|BUILD (SUCCEEDED|FAILED)" mac-build.log || true
+          exit $status
+
+      - name: Keep the full build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: |
+            ios-build.log
+            mac-build.log
+          if-no-files-found: ignore
