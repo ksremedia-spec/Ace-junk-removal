@@ -3,6 +3,15 @@
 Short log of decisions and why, newest first. Written in plain English so it
 can be read later without the conversation.
 
+## 2026-10-18 · Tooling and distribution confirmed by Kyle
+
+Kyle has a paid Apple Developer Program membership, an iPhone 16 Pro Max on
+iOS 27.1, and Xcode 27.1 on his Mac. So: builds use Xcode 27.x; the minimum
+stays iOS 26 / macOS 26; distribution to Ashley and Alex will be Ad Hoc
+(their devices registered on the developer account, one install per device
+per year, no App Store, no TestFlight). The Mac app can be notarized under
+the same membership.
+
 ## 2026-10-18 · Speech models load from disk first, download only if missing
 
 A source-level review found that WhisperKit's download call always contacts

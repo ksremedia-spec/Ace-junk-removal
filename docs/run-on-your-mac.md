@@ -7,18 +7,15 @@ step fails, copy the exact error text and send it to me.
 
 ## What you need
 
-- Your iPhone 16 Pro Max on **iOS 26 or newer** (Settings → General → About →
-  iOS Version), and a cable. Note which it is: 26.x or 27.x.
-- Your Mac with **Xcode** (Mac App Store, free, about 15 GB). Which version
-  depends on the phone (I verified these against Apple's Xcode support page;
-  see `platform-facts.md`):
-  - Phone on **iOS 27**: you very likely need **Xcode 27.1**, which runs only
-    on an Apple silicon Mac with **macOS 26.6 or newer**. (Likely, not
-    verified: Xcode 26 cannot install onto an iOS 27 phone.)
-  - Phone on **iOS 26**: **Xcode 26.x** is enough. Xcode 26.0–26.3 run on
-    macOS 15.6 or newer (Intel Macs included); 26.4–26.6 need macOS 26.2 or
-    newer. The build check used 26.6.
-  - To check: Xcode menu → About Xcode, and Apple menu → About This Mac.
+- Your iPhone 16 Pro Max (on iOS 27.1 as of 2026-10-18) and a cable.
+- Your Mac with Xcode 27.1 (what you have as of 2026-10-18). That is the
+  right pairing: Xcode 27 installs onto iOS 27 phones and still builds this
+  app with its iOS 26 minimum. (Background, verified against Apple's Xcode
+  support page: Xcode 27 needs an Apple silicon Mac on macOS 26.6+; Xcode
+  26.0–26.3 would run on macOS 15.6 but very likely cannot install onto an
+  iOS 27 phone.)
+- Your paid Apple Developer membership, signed in to Xcode (Xcode →
+  Settings → Accounts). With it, an install lasts a year instead of 7 days.
 - Internet, for the first build (Xcode downloads WhisperKit) and the first run
   (the app downloads a speech model).
 - An Anthropic API key, for the Claude test panel. The speech test works
@@ -84,9 +81,9 @@ step fails, copy the exact error text and send it to me.
   Packages → Resolve Package Versions, wait, then Run again.
 - **Signing errors**: redo step 4 and make sure a Team is selected.
 - **"Could not launch" or "Untrusted Developer"**: step 2 under Every time.
-- **The app installed but disappears after a week**: that is normal with a
-  free Apple account (apps from Xcode expire after 7 days). Press Run again.
-  A paid Apple Developer account removes this limit; see `platform-facts.md`.
+- **The app stops opening after a while**: with your paid membership an
+  install from Xcode lasts a year; if it stops sooner, check that the paid
+  team (not a "Personal Team") is selected under Signing & Capabilities.
 - Anything else: send me the full error text from Xcode's red marker or the
   Report navigator (⌘9).
 

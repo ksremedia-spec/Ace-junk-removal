@@ -32,11 +32,12 @@ session; then `CLAUDE.md` for the rules and `decisions.md` for the why.
   back to the assistant verbatim.
 - Apple's SpeechTranscriber is not in the Speech test yet (decision of
   2026-10-18: WhisperKit first). The row placeholder is there.
+- Kyle's setup (confirmed by Kyle, 2026-10-18): paid Apple Developer Program
+  member; iPhone 16 Pro Max on iOS 27.1; Xcode 27.1 on his Mac (so the Mac
+  is Apple silicon on macOS 26.6 or newer). Distribution will be Ad Hoc
+  (one install per device per year); see `platform-facts.md`.
 - Open questions only Kyle can answer: Ashley's and Alex's iPhone models,
-  Ashley's MacBook model and macOS version, Kyle's own Mac (Apple silicon or
-  Intel, macOS version) and his iPhone's iOS version (26 or 27, which decides
-  the Xcode version), and whether he has a paid Apple Developer membership
-  (free: 3 devices, app expires every 7 days; paid: one install a year).
+  and Ashley's MacBook model and macOS version.
 
 ## Decisions pending Kyle's word
 
