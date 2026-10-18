@@ -8,9 +8,9 @@ step fails, copy the exact error text and send it to me.
 ## What you need
 
 - Your Mac with **Xcode 26 or newer** (Mac App Store, free, about 15 GB).
-  Xcode 26 needs macOS 15.6 Sequoia or newer; Xcode 27 needs macOS 26 Tahoe.
-  To check: Xcode menu → About Xcode. (Label: I'm assuming these versions from
-  the research; see `platform-facts.md` once it is written.)
+  The build check used Xcode 26.6; any 26.x should do. Xcode 26 needs
+  macOS 15.6 Sequoia or newer (I'm assuming that from the research; see
+  `platform-facts.md` once it is written). To check: Xcode menu → About Xcode.
 - Your iPhone 16 Pro Max on **iOS 26 or newer** (Settings → General → About →
   iOS Version), and a cable.
 - Internet, for the first build (Xcode downloads WhisperKit) and the first run
@@ -86,10 +86,10 @@ step fails, copy the exact error text and send it to me.
 
 ## What I know and don't know about this build
 
-- I verified: the project file is well-formed (parsed by a project-file
-  checker) and every piece of code was reviewed against the current
-  WhisperKit and Anthropic documentation.
-- I don't know: whether it compiles first try. There is no Swift compiler
-  here. Expect the possibility of one or two small fixes after your first
-  build; send me the errors and I will fix them within the same session.
-- Nothing has run on a device yet.
+- I verified: the project compiles for iPhone and for Mac on GitHub's cloud
+  Mac with Xcode 26.6 (the "Build check" under the repository's Actions tab,
+  run #1, 2026-10-18). Every push that touches the app re-runs that check.
+- I verified: the code was reviewed against the WhisperKit 1.1.1 source and
+  the current Anthropic documentation.
+- I don't know: how it behaves on a real phone. Compiling is not running.
+  Nothing has run on a device yet; the first time is on your iPhone.

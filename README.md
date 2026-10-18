@@ -9,11 +9,11 @@ order things get built. Research and decisions are written up in `docs/`.
 
 ## Status
 
-Step 1 written, not yet built: a hidden Debug screen with a Speech test
+Step 1 written and compiling: a hidden Debug screen with a Speech test
 (record a clip, transcribe it with WhisperKit, see the time it took) and a
 Claude test (send the transcript to Haiku and Sonnet, see both filled-in job
-forms side by side). Nothing has been compiled or run on a device yet; the
-cloud computer that wrote it has no Xcode.
+forms side by side). It compiles for iPhone and Mac on GitHub's build check
+(Xcode 26.6). It has not yet run on a device.
 
 To run it, follow `docs/run-on-your-mac.md`. Decisions so far are in
 `docs/decisions.md`.
