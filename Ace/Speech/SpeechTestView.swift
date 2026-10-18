@@ -3,9 +3,11 @@ import SwiftUI
 /// Debug panel 1: record a short clip, save it with a label, and run it
 /// through the speech engine. Shows the transcript and how long it took.
 struct SpeechTestView: View {
+    /// Owned by RootView so the loaded model survives leaving this screen.
+    let engine: WhisperKitEngine
+
     @State private var store = RecordingStore()
     @State private var recorder = AudioRecorder()
-    @State private var engine = WhisperKitEngine()
 
     @AppStorage("debug.whisperModel") private var selectedModel = "openai_whisper-base.en"
     @AppStorage("debug.transcript") private var sharedTranscript = ""
@@ -208,6 +210,8 @@ struct SpeechTestView: View {
             }
             .font(.footnote)
         }
+        // Without this, tapping anywhere on the row would press every button in it.
+        .buttonStyle(.borderless)
         .padding(.vertical, 4)
     }
 

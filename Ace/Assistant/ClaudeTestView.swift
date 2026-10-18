@@ -90,7 +90,7 @@ struct ClaudeTestView: View {
                 }
                 LabeledContent(row.label) {
                     Text(row.value.isEmpty ? "—" : row.value)
-                        .foregroundStyle(row.value.isEmpty ? Color.secondary : Color.primary)
+                        .foregroundStyle(flagged ? Color.orange : (row.value.isEmpty ? Color.secondary : Color.primary))
                         .multilineTextAlignment(.trailing)
                 }
                 .foregroundStyle(flagged ? Color.orange : Color.primary)

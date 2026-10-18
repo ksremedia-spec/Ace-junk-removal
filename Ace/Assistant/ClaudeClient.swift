@@ -64,7 +64,8 @@ struct ClaudeClient {
 
         let body: [String: Any] = [
             "model": model.rawValue,
-            "max_tokens": 4096,
+            // Thinking tokens count toward this cap; leave plenty of room.
+            "max_tokens": 16000,
             "system": JobDraft.systemPrompt(),
             "output_config": [
                 "effort": effort.rawValue,
