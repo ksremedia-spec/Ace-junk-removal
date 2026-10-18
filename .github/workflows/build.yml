@@ -1,5 +1,6 @@
-# Compiles the app on a GitHub-hosted Mac so compile errors are caught before
+# Compiles the app on GitHub-hosted Macs so compile errors are caught before
 # Kyle opens the project. It does not sign, install or run anything.
+# Two Macs: one with Xcode 26.x and one with Xcode 27.1 (what Kyle uses).
 # Mac minutes count 10x against the free monthly allowance, so it only runs
 # when app code or the project file changes, or when started by hand.
 name: Build check
@@ -15,16 +16,26 @@ on:
 
 jobs:
   build:
-    name: Compile for iPhone and Mac
-    runs-on: macos-26
+    name: Compile with Xcode ${{ matrix.label }}
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-26
+            label: "26"
+            xcode_glob: "Xcode_26*.app"
+          - runner: xcode-27
+            label: "27.1"
+            xcode_glob: "Xcode_27.1.app"
     steps:
       - uses: actions/checkout@v4
 
-      - name: Pick the newest Xcode 26 on this Mac
+      - name: Pick Xcode
         run: |
           ls -d /Applications/Xcode*.app
-          XCODE=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          XCODE=$(ls -d /Applications/${{ matrix.xcode_glob }} 2>/dev/null | sort -V | tail -1)
           if [ -n "$XCODE" ]; then sudo xcode-select -s "$XCODE"; fi
           xcodebuild -version
           xcodebuild -showsdks | grep -E "iOS|macOS" || true
@@ -35,7 +46,6 @@ jobs:
             -project Ace.xcodeproj -scheme Ace -derivedDataPath DerivedData
 
       - name: Build for iPhone
-        id: ios
         run: |
           status=0
           xcodebuild build -project Ace.xcodeproj -scheme Ace -derivedDataPath DerivedData \
@@ -62,7 +72,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-logs
+          name: build-logs-xcode-${{ matrix.label }}
           path: |
             ios-build.log
             mac-build.log
