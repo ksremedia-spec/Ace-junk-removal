@@ -15,11 +15,14 @@ session; then `CLAUDE.md` for the rules and `decisions.md` for the why.
 - Reviewed: every file by independent reviewers (behavior bugs), and the
   WhisperKit wrapper against the library's source. All confirmed findings
   were fixed and are listed in the commit messages of 2026-10-18.
-- Research saved: `whisperkit-api.md` (source-verified). `platform-facts.md`
-  (iOS/macOS minimums, device support, free vs paid Apple account, controls
-  and Action button, Anthropic API, storage and sync) is being produced by
-  the research run; if the file is missing, that run did not finish and the
-  per-topic results are in the session's scratchpad only.
+- Research saved: `whisperkit-api.md` (source-verified) and
+  `platform-facts.md` (iOS/macOS minimums, device support, Xcode
+  requirements, free vs paid Apple account, controls and Action button,
+  Anthropic API, storage and sync; 7 topics, 11 claims fact-checked by three
+  independent checkers each). Read its "What this means for the plan"
+  section before step 2. Two things it changed: Apple's SpeechTranscriber is
+  not available on every iOS 26 phone (iPhone 11 and SE 2 fail), and the
+  current Xcode is 27.1, which needs an Apple silicon Mac on macOS 26.6+.
 
 ## Not done, and who is next
 
@@ -30,9 +33,10 @@ session; then `CLAUDE.md` for the rules and `decisions.md` for the why.
 - Apple's SpeechTranscriber is not in the Speech test yet (decision of
   2026-10-18: WhisperKit first). The row placeholder is there.
 - Open questions only Kyle can answer: Ashley's and Alex's iPhone models,
-  Ashley's MacBook model and macOS version, Kyle's own macOS version, and
-  whether he has a paid Apple Developer membership (needed for installs
-  that last longer than 7 days).
+  Ashley's MacBook model and macOS version, Kyle's own Mac (Apple silicon or
+  Intel, macOS version) and his iPhone's iOS version (26 or 27, which decides
+  the Xcode version), and whether he has a paid Apple Developer membership
+  (free: 3 devices, app expires every 7 days; paid: one install a year).
 
 ## Decisions pending Kyle's word
 

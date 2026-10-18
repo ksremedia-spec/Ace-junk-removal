@@ -7,12 +7,18 @@ step fails, copy the exact error text and send it to me.
 
 ## What you need
 
-- Your Mac with **Xcode 26 or newer** (Mac App Store, free, about 15 GB).
-  The build check used Xcode 26.6; any 26.x should do. Xcode 26 needs
-  macOS 15.6 Sequoia or newer (I'm assuming that from the research; see
-  `platform-facts.md` once it is written). To check: Xcode menu → About Xcode.
 - Your iPhone 16 Pro Max on **iOS 26 or newer** (Settings → General → About →
-  iOS Version), and a cable.
+  iOS Version), and a cable. Note which it is: 26.x or 27.x.
+- Your Mac with **Xcode** (Mac App Store, free, about 15 GB). Which version
+  depends on the phone (I verified these against Apple's Xcode support page;
+  see `platform-facts.md`):
+  - Phone on **iOS 27**: you very likely need **Xcode 27.1**, which runs only
+    on an Apple silicon Mac with **macOS 26.6 or newer**. (Likely, not
+    verified: Xcode 26 cannot install onto an iOS 27 phone.)
+  - Phone on **iOS 26**: **Xcode 26.x** is enough. Xcode 26.0–26.3 run on
+    macOS 15.6 or newer (Intel Macs included); 26.4–26.6 need macOS 26.2 or
+    newer. The build check used 26.6.
+  - To check: Xcode menu → About Xcode, and Apple menu → About This Mac.
 - Internet, for the first build (Xcode downloads WhisperKit) and the first run
   (the app downloads a speech model).
 - An Anthropic API key, for the Claude test panel. The speech test works
