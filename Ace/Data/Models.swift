@@ -85,6 +85,11 @@ final class Job {
     var createdAt: Date
     var updatedAt: Date
 
+    /// How long the job takes, in whole minutes. 0 means not set: the job
+    /// then takes its type's default length (see JobLength.swift). Matters
+    /// only when `hasTime` is on.
+    var durationMinutes: Int = 0
+
     /// The quote this job was booked from, if any. Declared here so that
     /// deleting the job clears the quote's link (the quote stays booked).
     @Relationship(deleteRule: .nullify, inverse: \Quote.job)
@@ -121,12 +126,10 @@ final class Job {
         set { paymentTypeRaw = newValue.rawValue }
     }
 
-    /// "Fri, Oct 24 at 9:00 AM" or "Fri, Oct 24".
+    /// "Fri, Oct 24, 9:00 to 11:00 AM" or "Fri, Oct 24".
     var whenText: String {
-        if hasTime {
-            return scheduledAt.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().hour().minute())
-        }
-        return scheduledAt.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
+        let day = scheduledAt.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
+        return hasTime ? day + ", " + timeRangeText : day
     }
 
     var priceText: String {

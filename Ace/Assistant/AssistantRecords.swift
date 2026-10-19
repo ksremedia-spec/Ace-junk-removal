@@ -189,11 +189,13 @@ enum AssistantRecords {
             return line
         }
 
-        /// "J1 Mon, Oct 19 9:00 AM · C1 Linda Johnson · Junk removal · $300 cash · not paid · not done · 42 Elm St, Taunton, MA"
-        /// Under a customer, the customer and address are left out.
+        /// "J1 Mon, Oct 19 9:00 to 11:00 AM · C1 Linda Johnson · Junk removal · $300 cash · not paid · not done · 42 Elm St, Taunton, MA"
+        /// Under a customer, the customer and address are left out. A job
+        /// with a time shows its start and end (its length, or its type's
+        /// default).
         func jobLine(_ job: Job, withCustomer: Bool) -> String {
             var when = Format.day(job.scheduledAt)
-            if job.hasTime { when += " " + Format.time(job.scheduledAt) }
+            if job.hasTime { when += " " + job.timeRangeText }
             var parts = [(jobRefs[ObjectIdentifier(job)] ?? "J?") + " " + when]
             if withCustomer {
                 parts.append(job.customer.map { named($0) } ?? "no customer")
@@ -389,18 +391,8 @@ enum AssistantRecords {
             return formatter
         }()
 
-        private static let timeFormatter: DateFormatter = {
-            let formatter = DateFormatter()
-            formatter.locale = Locale(identifier: "en_US")
-            formatter.dateFormat = "h:mm a"
-            return formatter
-        }()
-
         /// "Mon, Oct 19"
         static func day(_ date: Date) -> String { dayFormatter.string(from: date) }
-
-        /// "9:00 AM"
-        static func time(_ date: Date) -> String { timeFormatter.string(from: date) }
 
         /// Line breaks turned into "; " so one record stays on one line.
         static func oneLine(_ text: String) -> String {

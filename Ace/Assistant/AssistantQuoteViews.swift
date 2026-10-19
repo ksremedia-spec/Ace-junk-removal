@@ -205,7 +205,7 @@ struct UpdateQuoteView: View {
     let issues: [PlanIssue]
     /// The open quotes the note could mean (or the one its reference names).
     let candidates: [Quote]
-    /// Every job, to warn about a double booking on Book Job.
+    /// Every job, to warn about overlaps on Book Job.
     let jobs: [Job]
     let subject: String
     var onFinish: (String) -> Void
@@ -336,9 +336,10 @@ struct QuoteDetailsSection: View {
 
 // MARK: Approved: book the job
 
-/// The quote at the top and the job's date, time, price and payment below.
-/// Saving adds the job (the quote's customer and type, what was quoted as
-/// its notes) and marks the quote booked and linked to it.
+/// The quote at the top and the job's date, time, length, price and payment
+/// below. Saving adds the job (the quote's customer and type, what was
+/// quoted as its notes) and marks the quote booked and linked to it. An
+/// overlap with another timed job is shown and asked about first.
 private struct BookQuoteForm: View {
     @Environment(\.modelContext) private var context
 
@@ -350,12 +351,16 @@ private struct BookQuoteForm: View {
 
     @State private var date: Date
     @State private var hasTime: Bool
+    /// The length in minutes; 0 follows the quote's job type default.
+    @State private var minutes: Int
     @State private var priceText: String
     @State private var paymentType: PaymentType
     @State private var isPaid: Bool
     @State private var notes: String
     @State private var saved = false
     @State private var flagged = 0
+    @State private var askingOverlap = false
+    @State private var overlapQuestion = ""
 
     init(quote: Quote, action: AssistantAction, issues: [PlanIssue], jobs: [Job],
          onFinish: @escaping (String) -> Void, onStartOver: @escaping () -> Void) {
@@ -375,6 +380,7 @@ private struct BookQuoteForm: View {
         }
         _date = State(initialValue: when)
         _hasTime = State(initialValue: timeSaid)
+        _minutes = State(initialValue: JobLength.minutes(fromHours: action.hours) ?? 0)
         // The quote's price unless a new one was said.
         _priceText = State(initialValue: action.price.isEmpty ? Parse.moneyText(quote.price) : action.price)
         _paymentType = State(initialValue: JobDraft.paymentType(from: action.paymentType) ?? .unknown)
@@ -390,23 +396,14 @@ private struct BookQuoteForm: View {
         self.flags = flags
     }
 
-    /// Another job not yet done, booked for the same day and time.
-    private var clash: Job? {
-        guard hasTime else { return nil }
-        let calendar = Calendar.current
-        let wanted = calendar.dateComponents([.hour, .minute], from: date)
-        return jobs.first { job in
-            guard !job.isDone, job.hasTime, calendar.isDate(job.scheduledAt, inSameDayAs: date) else { return false }
-            let booked = calendar.dateComponents([.hour, .minute], from: job.scheduledAt)
-            return booked.hour == wanted.hour && booked.minute == wanted.minute
-        }
+    private var lengthMinutes: Int {
+        minutes > 0 ? minutes : quote.jobType.defaultMinutes
     }
 
-    private var timeNote: String? {
-        if let clash {
-            return "Another job is already booked then: \(clash.customer?.name ?? "no customer"), \(clash.jobType.rawValue)."
-        }
-        return flags["time"]
+    /// Unfinished timed jobs that day the new job would overlap.
+    private var overlapping: [Job] {
+        guard hasTime else { return [] }
+        return JobOverlap.find(start: date, minutes: lengthMinutes, excluding: nil, in: jobs)
     }
 
     var body: some View {
@@ -419,9 +416,13 @@ private struct BookQuoteForm: View {
                 }
                 Toggle("Set a time", isOn: $hasTime)
                 if hasTime {
-                    FlaggedRow(timeNote) {
+                    FlaggedRow(flags["time"]) {
                         DatePicker("Time", selection: $date, displayedComponents: .hourAndMinute)
                     }
+                    FlaggedRow(flags["hours"]) {
+                        JobLengthPicker(minutes: $minutes, jobType: quote.jobType)
+                    }
+                    OverlapNote(overlapping: overlapping)
                 }
             }
 
@@ -455,14 +456,29 @@ private struct BookQuoteForm: View {
         .formStyle(.grouped)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button("Book Job") { save() }
+                Button("Book Job") { trySave() }
             }
         }
+        .alert(overlapQuestion, isPresented: $askingOverlap) {
+            Button("Yes") { save() }
+            Button("No", role: .cancel) {}
+        }
         .onAppear {
-            if !flags.isEmpty || clash != nil { flagged += 1 }
+            if !flags.isEmpty || !overlapping.isEmpty { flagged += 1 }
         }
         .sensoryFeedback(.success, trigger: saved)
         .sensoryFeedback(.warning, trigger: flagged)
+    }
+
+    /// Asks "This overlaps … Save anyway?" first; No keeps the screen open.
+    private func trySave() {
+        if let question = JobOverlap.question(overlapping) {
+            overlapQuestion = question
+            flagged += 1
+            askingOverlap = true
+        } else {
+            save()
+        }
     }
 
     private func save() {
@@ -480,6 +496,7 @@ private struct BookQuoteForm: View {
         // stored record.
         context.insert(job)
         job.customer = quote.customer
+        job.durationMinutes = minutes
         quote.markBooked(with: job)
         try? context.save()
         saved.toggle()

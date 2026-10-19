@@ -18,7 +18,7 @@ struct JobRow: View {
                         .foregroundStyle(job.isPaid ? .secondary : .primary)
                 }
             }
-            Text(job.jobType.rawValue + (showDate ? " · " + job.whenText : (job.hasTime ? " · " + job.scheduledAt.formatted(date: .omitted, time: .shortened) : "")))
+            Text(whenLine)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             if let address = job.customer?.address, !address.isEmpty {
@@ -32,6 +32,14 @@ struct JobRow: View {
             }
         }
         .padding(.vertical, 2)
+    }
+
+    /// "Junk removal · Fri, Oct 24, 9:00 to 11:00 AM", or without the day
+    /// ("Junk removal · 9:00 to 11:00 AM") in a list already grouped by day.
+    private var whenLine: String {
+        if showDate { return job.jobType.rawValue + " · " + job.whenText }
+        guard job.hasTime else { return job.jobType.rawValue }
+        return job.jobType.rawValue + " · " + job.timeRangeText
     }
 
     /// "Done · Paid", "Done · Unpaid" (unpaid in the warning colour), or "Paid".

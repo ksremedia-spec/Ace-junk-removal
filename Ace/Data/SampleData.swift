@@ -34,7 +34,7 @@ enum SampleData {
         // relationships are only ever set on stored records.
         let jobSpecs: [(customer: Int, job: Job)] = [
             (0, Job(customer: nil, jobType: .junkRemoval, scheduledAt: day(0, hour: 9), hasTime: true, price: 300, paymentType: .cash, isPaid: false, notes: "Basement, old couch and boxes")),
-            (1, Job(customer: nil, jobType: .dumpsterDropOff, scheduledAt: day(0, hour: 13), hasTime: true, price: 450, paymentType: .card, isPaid: true)),
+            (1, Job(customer: nil, jobType: .dumpsterDropOff, scheduledAt: day(0, hour: 11), hasTime: true, price: 450, paymentType: .card, isPaid: true)),
             (2, Job(customer: nil, jobType: .junkRemoval, scheduledAt: day(1, hour: 8), hasTime: true, price: 525, paymentType: .check, isPaid: false)),
             (3, Job(customer: nil, jobType: .dumpsterPickup, scheduledAt: day(1), hasTime: false, price: nil, paymentType: .unknown, isPaid: false, notes: "Call office before pickup")),
             (4, Job(customer: nil, jobType: .junkRemoval, scheduledAt: day(2, hour: 10), hasTime: true, price: 200, paymentType: .cash, isPaid: false)),
@@ -46,6 +46,12 @@ enum SampleData {
             spec.job.customer = customers[spec.customer]
         }
         jobSpecs[6].job.isDone = true
+        // Lengths set by hand; the rest take their type's default. Linda
+        // Johnson's job (9:00 to 12:00) overlaps Mark Pereira's drop-off at
+        // 11:00, so the overlap warning shows on either one.
+        jobSpecs[0].job.durationMinutes = 180
+        jobSpecs[2].job.durationMinutes = 180
+        jobSpecs[4].job.durationMinutes = 90
 
         // Quotes for the same six customers: two to call back (one overdue,
         // one today), two waiting, one booked as the Keanes' job tomorrow,

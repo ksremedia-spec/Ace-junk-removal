@@ -5,6 +5,8 @@ import SwiftUI
 struct JobEditView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
+    /// Every job, to check for overlaps.
+    @Query(sort: \Job.scheduledAt) private var jobs: [Job]
 
     let job: Job?
     /// Called with the job after Save, before the form closes. Booking a
@@ -14,6 +16,9 @@ struct JobEditView: View {
     @State private var showingCustomerPicker = false
     @State private var confirmDelete = false
     @State private var saved = false
+    @State private var askingOverlap = false
+    @State private var overlapQuestion = ""
+    @State private var flagged = 0
 
     private var isNew: Bool { job == nil }
 
@@ -51,6 +56,8 @@ struct JobEditView: View {
                 Toggle("Set a time", isOn: $form.hasTime)
                 if form.hasTime {
                     DatePicker("Time", selection: $form.date, displayedComponents: .hourAndMinute)
+                    JobLengthPicker(minutes: $form.durationMinutes, jobType: form.jobType)
+                    OverlapNote(overlapping: overlapping)
                 }
             }
 
@@ -90,7 +97,7 @@ struct JobEditView: View {
                 }
             }
             ToolbarItem(placement: .confirmationAction) {
-                Button("Save") { save() }
+                Button("Save") { trySave() }
                     .disabled(form.customer == nil)
             }
         }
@@ -102,7 +109,12 @@ struct JobEditView: View {
         .confirmationDialog("Delete this job?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Delete", role: .destructive) { delete() }
         }
+        .alert(overlapQuestion, isPresented: $askingOverlap) {
+            Button("Yes") { save() }
+            Button("No", role: .cancel) {}
+        }
         .sensoryFeedback(.success, trigger: saved)
+        .sensoryFeedback(.warning, trigger: flagged)
         // On the Mac the list's right-click menu can change these while this
         // form is open; keep the form in step so Save does not undo them.
         .onChange(of: job?.isDone) { _, newValue in
@@ -114,6 +126,34 @@ struct JobEditView: View {
         #if os(macOS)
         .frame(minWidth: 480, minHeight: 560)
         #endif
+    }
+
+    /// Other unfinished timed jobs that day that this one would overlap.
+    /// None while "Set a time" is off or the job is marked done.
+    private var overlapping: [Job] {
+        guard form.hasTime, !form.isDone else { return [] }
+        return JobOverlap.find(start: form.date, minutes: form.lengthMinutes, excluding: job, in: jobs)
+    }
+
+    /// A new job, or one whose day, time or length was changed here. Saving
+    /// an unchanged job (marking it paid, say) does not ask again.
+    private var timingChanged: Bool {
+        guard let job else { return true }
+        return job.hasTime != form.hasTime
+            || job.scheduledAt != form.date
+            || job.lengthMinutes != form.lengthMinutes
+    }
+
+    /// Asks "This overlaps … Save anyway?" first when the job overlaps
+    /// another; No keeps the form open.
+    private func trySave() {
+        if timingChanged, let question = JobOverlap.question(overlapping) {
+            overlapQuestion = question
+            flagged += 1
+            askingOverlap = true
+        } else {
+            save()
+        }
     }
 
     private func save() {

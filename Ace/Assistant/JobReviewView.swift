@@ -23,6 +23,8 @@ struct JobReviewView: View {
     @State private var jobType: JobType
     @State private var date: Date
     @State private var hasTime: Bool
+    /// The length in minutes; 0 follows the job type's default.
+    @State private var minutes: Int
     @State private var priceText: String
     @State private var paymentType: PaymentType
     @State private var isPaid: Bool
@@ -35,6 +37,7 @@ struct JobReviewView: View {
         var jobType: JobType
         var date: Date
         var hasTime: Bool
+        var minutes: Int
         var price: Double?
         var paymentType: PaymentType
         var isPaid: Bool
@@ -62,10 +65,12 @@ struct JobReviewView: View {
         let parsedType = JobType.allCases.first { $0.rawValue.caseInsensitiveCompare(draft.jobType) == .orderedSame } ?? .junkRemoval
         let parsedPayment = Self.payment(from: draft.paymentType)
         let parsedPaid = draft.paid.lowercased() == "paid"
+        let parsedMinutes = JobLength.minutes(fromHours: draft.hours) ?? 0
         original = Original(
             jobType: parsedType,
             date: parsedDate.date,
             hasTime: parsedDate.hasTime,
+            minutes: parsedMinutes,
             price: Parse.money(draft.price),
             paymentType: parsedPayment,
             isPaid: parsedPaid
@@ -77,6 +82,7 @@ struct JobReviewView: View {
         _jobType = State(initialValue: parsedType)
         _date = State(initialValue: parsedDate.date)
         _hasTime = State(initialValue: parsedDate.hasTime)
+        _minutes = State(initialValue: parsedMinutes)
         _priceText = State(initialValue: draft.price)
         _paymentType = State(initialValue: parsedPayment)
         _isPaid = State(initialValue: parsedPaid)
@@ -121,6 +127,10 @@ struct JobReviewView: View {
                     field("time") {
                         DatePicker("Time", selection: $date, displayedComponents: .hourAndMinute)
                     }
+                    field("hours") {
+                        JobLengthPicker(minutes: $minutes, jobType: jobType)
+                    }
+                    OverlapNote(overlapping: overlapping)
                 } else if let question = questions[Self.key("time")] {
                     Text(question)
                         .font(.footnote)
@@ -208,6 +218,19 @@ struct JobReviewView: View {
         }
     }
 
+    // MARK: Overlaps
+
+    /// The length How long shows: the one picked or said, or the type's default.
+    private var lengthMinutes: Int {
+        minutes > 0 ? minutes : jobType.defaultMinutes
+    }
+
+    /// Unfinished timed jobs that day this one would overlap.
+    private var overlapping: [Job] {
+        guard hasTime else { return [] }
+        return JobOverlap.find(start: date, minutes: lengthMinutes, excluding: nil, in: jobs)
+    }
+
     // MARK: Matching
 
     private var phoneDigits: String { phone.filter(\.isNumber) }
@@ -254,8 +277,8 @@ struct JobReviewView: View {
         if draft.jobType.isEmpty && !resolved("jobType") {
             ask("jobType", "No job type was given. Save as \(jobType.rawValue)?")
         }
-        if let clash = doubleBooking(at: scheduled) {
-            ask("time", "Another job is already booked \(clash.whenText): \(clash.customer?.name ?? "no customer"), \(clash.jobType.rawValue). Book this one too?")
+        if let question = JobOverlap.question(overlapping) {
+            ask("time", question)
         }
         // Claude's own questions, except the ones the code just asked or that
         // Ashley has since changed.
@@ -284,6 +307,8 @@ struct JobReviewView: View {
             return !Calendar.current.isDate(date, inSameDayAs: original.date)
         case "time":
             return hasTime && (!original.hasTime || date != original.date)
+        case "hours":
+            return minutes != original.minutes
         case "price":
             return Parse.money(priceText) != original.price && Parse.money(priceText) != nil
         case "paymenttype":
@@ -294,16 +319,6 @@ struct JobReviewView: View {
             return notes != draft.notes
         default:
             return false
-        }
-    }
-
-    private func doubleBooking(at scheduled: Date) -> Job? {
-        let calendar = Calendar.current
-        return jobs.first { job in
-            guard !job.isDone, calendar.isDate(job.scheduledAt, inSameDayAs: scheduled) else { return false }
-            guard hasTime, job.hasTime else { return false }
-            return calendar.component(.hour, from: job.scheduledAt) == calendar.component(.hour, from: scheduled)
-                && calendar.component(.minute, from: job.scheduledAt) == calendar.component(.minute, from: scheduled)
         }
     }
 
@@ -362,6 +377,7 @@ struct JobReviewView: View {
         )
         context.insert(job)
         job.customer = customer
+        job.durationMinutes = minutes
         try? context.save()
         saved.toggle()
         onSaved()

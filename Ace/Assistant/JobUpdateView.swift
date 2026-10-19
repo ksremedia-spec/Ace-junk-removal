@@ -34,7 +34,7 @@ struct JobUpdateView: View {
 
     var body: some View {
         if let job {
-            JobUpdateForm(job: job, draft: draft, onSaved: onSaved, onStartOver: onStartOver)
+            JobUpdateForm(job: job, draft: draft, jobs: jobs, onSaved: onSaved, onStartOver: onStartOver)
         } else if candidates.isEmpty {
             notFound
         } else {
@@ -105,6 +105,8 @@ private struct JobUpdateForm: View {
 
     let job: Job
     let draft: JobDraft
+    /// Every job, to check for overlaps when the job moves or gets longer.
+    let jobs: [Job]
     var onSaved: () -> Void
     var onStartOver: () -> Void
 
@@ -115,17 +117,22 @@ private struct JobUpdateForm: View {
     @State private var priceText: String
     @State private var date: Date
     @State private var hasTime: Bool
+    /// The length in minutes; 0 follows the job type's default.
+    @State private var minutes: Int
     @State private var noteToAdd: String
     @State private var saved = false
     @State private var flagged = 0
+    @State private var askingOverlap = false
+    @State private var overlapQuestion = ""
 
     private let flags: AssistantFlags
     /// A new kind of work was said, so the type picker is shown.
     private let jobTypeSaid: Bool
 
-    init(job: Job, draft: JobDraft, onSaved: @escaping () -> Void, onStartOver: @escaping () -> Void) {
+    init(job: Job, draft: JobDraft, jobs: [Job], onSaved: @escaping () -> Void, onStartOver: @escaping () -> Void) {
         self.job = job
         self.draft = draft
+        self.jobs = jobs
         self.onSaved = onSaved
         self.onStartOver = onStartOver
 
@@ -154,12 +161,15 @@ private struct JobUpdateForm: View {
         }
         _date = State(initialValue: when)
         _hasTime = State(initialValue: hasTime)
+        let saidMinutes = JobLength.minutes(fromHours: draft.hours)
+        _minutes = State(initialValue: saidMinutes ?? job.durationMinutes)
         _noteToAdd = State(initialValue: draft.notes)
 
         var flags = AssistantFlags(draft: draft)
+        let lengthSaid: Bool = saidMinutes != nil
         let heardAChange = done == "yes" || done == "no" || paid == "paid" || paid == "unpaid" || paymentSaid != nil
             || !draft.price.isEmpty || !draft.newDate.isEmpty || !draft.newTime.isEmpty || !draft.notes.isEmpty
-            || typeSaid != nil
+            || typeSaid != nil || lengthSaid
         if !heardAChange {
             flags.add("done", "No change was heard. Mark the job done?")
         }
@@ -179,14 +189,45 @@ private struct JobUpdateForm: View {
         .formStyle(.grouped)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button("Save") { save() }
+                Button("Save") { trySave() }
             }
         }
+        .alert(overlapQuestion, isPresented: $askingOverlap) {
+            Button("Yes") { save() }
+            Button("No", role: .cancel) {}
+        }
         .onAppear {
-            if !flags.isEmpty { flagged += 1 }
+            if !flags.isEmpty || !overlapping.isEmpty { flagged += 1 }
         }
         .sensoryFeedback(.success, trigger: saved)
         .sensoryFeedback(.warning, trigger: flagged)
+    }
+
+    // MARK: Overlaps
+
+    private var lengthMinutes: Int {
+        minutes > 0 ? minutes : jobType.defaultMinutes
+    }
+
+    /// Only when the job is moved, given a time, made longer or shorter, or
+    /// changes type (and so its default length), and is not being marked
+    /// done: the other unfinished timed jobs that day it would overlap.
+    private var overlapping: [Job] {
+        guard hasTime, !isDone else { return [] }
+        let changed = !job.hasTime || date != job.scheduledAt || lengthMinutes != job.lengthMinutes
+        guard changed else { return [] }
+        return JobOverlap.find(start: date, minutes: lengthMinutes, excluding: job, in: jobs)
+    }
+
+    /// Asks "This overlaps … Save anyway?" first; No keeps the screen open.
+    private func trySave() {
+        if let question = JobOverlap.question(overlapping) {
+            overlapQuestion = question
+            flagged += 1
+            askingOverlap = true
+        } else {
+            save()
+        }
     }
 
     private var customerSection: some View {
@@ -253,6 +294,10 @@ private struct JobUpdateForm: View {
                 FlaggedRow(flags["newTime"]) {
                     DatePicker("Time", selection: $date, displayedComponents: .hourAndMinute)
                 }
+                FlaggedRow(flags["hours"]) {
+                    JobLengthPicker(minutes: $minutes, jobType: jobType)
+                }
+                OverlapNote(overlapping: overlapping)
             }
         }
     }
@@ -279,6 +324,7 @@ private struct JobUpdateForm: View {
         job.price = Parse.money(priceText)
         job.scheduledAt = hasTime ? date : Calendar.current.startOfDay(for: date)
         job.hasTime = hasTime
+        job.durationMinutes = minutes
         let note = noteToAdd.trimmingCharacters(in: .whitespacesAndNewlines)
         if !note.isEmpty {
             job.notes = job.notes.isEmpty ? note : job.notes + "\n" + note
