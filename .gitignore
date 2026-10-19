@@ -21,3 +21,7 @@ Packages/
 
 # macOS
 .DS_Store
+
+# Demo checks (demo/checks)
+node_modules/
+demo/checks/shots/

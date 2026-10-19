@@ -1,0 +1,489 @@
+<title>Ace App Slideshow</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,500;6..72,600&family=Public+Sans:wght@400;500;600&display=swap">
+<style>
+  /* Layout: one slide per screen, swiped sideways. On a phone held upright the screenshot fills the middle of the slide;
+     on a wide screen the words sit on the left and the picture on the right. Controls sit at the bottom, in thumb reach. */
+  :root {
+    --bg: #F5F6F8;
+    --fg: #16181D;
+    --muted: #5D6470;
+    --accent: #1F5FBF;
+    --line: #DFE3EA;
+    --card: #FFFFFF;
+    --stage: #16181D;
+    --stage-fg: #ECEEF2;
+    --stage-muted: #AEB4BF;
+    --stage-accent: #7FB0FF;
+    --shade: rgba(22, 24, 29, 0.14);
+    --zoom-bg: rgba(12, 13, 16, 0.94);
+    --display: 'Newsreader', Georgia, 'Times New Roman', serif;
+    --body: 'Public Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #111317; --fg: #ECEEF2; --muted: #A3A9B4; --accent: #8DB8FF; --line: #2B3038; --card: #1A1D22;
+      --stage: #0C1B33; --stage-fg: #ECEEF2; --stage-muted: #A9B6C8; --stage-accent: #9CC2FF;
+      --shade: rgba(0, 0, 0, 0.5); --zoom-bg: rgba(6, 7, 9, 0.96);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #111317; --fg: #ECEEF2; --muted: #A3A9B4; --accent: #8DB8FF; --line: #2B3038; --card: #1A1D22;
+    --stage: #0C1B33; --stage-fg: #ECEEF2; --stage-muted: #A9B6C8; --stage-accent: #9CC2FF;
+    --shade: rgba(0, 0, 0, 0.5); --zoom-bg: rgba(6, 7, 9, 0.96);
+    color-scheme: dark;
+  }
+
+  html, body { height: 100%; }
+  body { background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 16px; overflow: hidden; transition: background-color .25s ease; }
+  html.on-stage body { background: var(--stage); }
+  *, *::before, *::after { box-sizing: border-box; }
+  h1, h2, h3, p, ul { margin: 0; }
+
+  .app { height: 100%; display: flex; flex-direction: column; }
+
+  /* The slides: a sideways strip that snaps one slide at a time. */
+  .deck {
+    flex: 1; min-height: 0; display: flex; overflow-x: auto; overflow-y: hidden;
+    scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none; outline: none;
+  }
+  .deck::-webkit-scrollbar { display: none; }
+  .slide {
+    flex: 0 0 100%; width: 100%; min-width: 0; height: 100%; overflow-y: auto; overflow-x: hidden;
+    scroll-snap-align: start; scroll-snap-stop: always;
+    display: flex; flex-direction: column; gap: 14px;
+    padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px));
+    padding-block: 20px 12px;
+    background: var(--bg);
+  }
+  .slide.stage { background: var(--stage); color: var(--stage-fg); justify-content: center; }
+
+  .text { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .eyebrow { font-size: 12px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); }
+  .stage .eyebrow { color: var(--stage-accent); }
+  h1 { font-family: var(--display); font-weight: 600; font-size: clamp(36px, 10vw, 72px); line-height: 1.04; text-wrap: balance; }
+  h2 { font-family: var(--display); font-weight: 500; font-size: clamp(30px, 8.4vw, 56px); line-height: 1.08; text-wrap: balance; }
+  .stage h2 { font-size: clamp(38px, 11vw, 84px); }
+  .lead { font-size: 17px; line-height: 1.4; }
+  .cover .lead { color: var(--muted); }
+  .stage .lead { color: var(--stage-muted); font-size: 19px; max-width: 34ch; }
+  .hint { font-size: 14px; color: var(--muted); }
+
+  .points { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 15px; line-height: 1.42; color: var(--muted); }
+  .points li { position: relative; padding-left: 16px; }
+  .points li::before { content: ""; position: absolute; left: 2px; top: .62em; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+
+  /* The screenshot takes whatever height the words leave. */
+  .pic { flex: 1 1 0; min-height: 190px; display: flex; align-items: center; justify-content: center; }
+  .pic img {
+    display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; cursor: zoom-in;
+    border: 1px solid var(--line); box-shadow: 0 10px 28px var(--shade); background: var(--card);
+  }
+  .phone .pic img { border-radius: 22px; }
+  .mac .pic { flex: 0 1 auto; min-height: 0; }
+  .mac .pic img { border-radius: 10px; }
+  .pic img:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+  .tap { font-size: 13px; color: var(--muted); text-align: center; }
+  .closeup { flex: 1 1 0; min-height: 150px; display: flex; flex-direction: column; gap: 6px; }
+  .closeup .label { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .closeup .frame { flex: 1; min-height: 0; position: relative; overflow: hidden; border-radius: 10px; border: 1px solid var(--line); background: var(--card); }
+  .closeup img { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; object-fit: cover; object-position: top center; cursor: zoom-in; }
+  .closeup img:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
+  .when-keys { display: none; }
+  @media (hover: hover) and (pointer: fine) {
+    .tap, .when-touch { display: none; }
+    .when-keys { display: inline; }
+  }
+
+  /* Lists of parts and of things to say. */
+  .rows { display: flex; flex-direction: column; }
+  .rows > div { padding-block: 12px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .rows > div:last-child { border-bottom: 1px solid var(--line); }
+  .rows h3 { font-size: 17px; font-weight: 600; line-height: 1.3; }
+  .rows p { font-size: 15px; line-height: 1.4; color: var(--muted); }
+  .rows .said { font-family: var(--display); font-style: italic; font-size: 19px; line-height: 1.3; color: var(--fg); }
+  .footnote { font-size: 14px; line-height: 1.4; color: var(--muted); }
+  .stage .footnote { color: var(--stage-muted); }
+
+  .end-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+  .button {
+    font: 600 15px var(--body); min-height: 44px; padding: 0 18px; border-radius: 22px; cursor: pointer;
+    border: 1px solid var(--stage-muted); background: transparent; color: var(--stage-fg);
+  }
+  .button:focus-visible { outline: 3px solid var(--stage-accent); outline-offset: 2px; }
+
+  /* Controls. */
+  .bar {
+    flex: none; display: flex; align-items: center; gap: 14px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 10px 12px; background: var(--bg); border-top: 1px solid var(--line);
+    transition: background-color .25s ease, border-color .25s ease;
+  }
+  html.on-stage .bar { background: var(--stage); border-top-color: transparent; }
+  .nav {
+    flex: none; width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; cursor: pointer;
+    border: 1px solid var(--line); background: var(--card); color: var(--fg);
+  }
+  html.on-stage .nav { background: transparent; border-color: var(--stage-muted); color: var(--stage-fg); }
+  .nav:disabled { opacity: .3; cursor: default; }
+  .nav:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .nav svg { width: 20px; height: 20px; }
+  .where { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 7px; }
+  .track { width: 100%; max-width: 360px; height: 3px; border-radius: 2px; background: var(--line); overflow: hidden; }
+  html.on-stage .track { background: rgba(255, 255, 255, .18); }
+  .fill { height: 100%; width: 0; background: var(--accent); border-radius: 2px; transition: width .25s ease; }
+  html.on-stage .fill { background: var(--stage-accent); }
+  .count { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  html.on-stage .count { color: var(--stage-muted); }
+
+  /* Enlarged picture. A wide Mac picture on a narrow phone is shown at a readable width and can be dragged sideways. */
+  dialog.zoom { width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; background: var(--zoom-bg); color: #ECEEF2; }
+  dialog.zoom::backdrop { background: transparent; }
+  .zoom-scroll { position: absolute; inset: 0; overflow: auto; display: flex; padding: calc(64px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) calc(24px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+  .zoom-scroll img { margin: auto; flex: none; display: block; height: auto; max-width: none; border-radius: 12px; width: min(92vw, 520px); }
+  .zoom.wide .zoom-scroll img { width: min(1024px, 96vw); }
+  @media (max-width: 700px) and (orientation: portrait) { .zoom.wide .zoom-scroll img { width: 980px; } }
+  .zoom-close {
+    position: absolute; top: calc(12px + env(safe-area-inset-top, 0px)); right: calc(12px + env(safe-area-inset-right, 0px));
+    font: 600 15px var(--body); min-height: 40px; padding: 0 16px; border-radius: 20px; cursor: pointer;
+    background: rgba(255, 255, 255, .14); color: #ECEEF2; border: 1px solid rgba(255, 255, 255, .28);
+  }
+  .zoom-close:focus-visible { outline: 3px solid #9CC2FF; outline-offset: 2px; }
+  .zoom-hint { position: absolute; left: 0; right: 0; top: calc(22px + env(safe-area-inset-top, 0px)); text-align: center; font-size: 13px; color: #A9B0BB; pointer-events: none; }
+
+  /* Wide screens and phones turned sideways: words left, picture right. */
+  @media (min-width: 600px) and (orientation: landscape) {
+    .slide { padding-left: max(48px, env(safe-area-inset-left, 0px)); padding-right: max(48px, env(safe-area-inset-right, 0px)); padding-block: 32px 20px; }
+    .slide.shot { display: grid; grid-template-columns: minmax(240px, 420px) minmax(0, 1fr); grid-template-rows: auto auto 1fr; column-gap: clamp(28px, 5vw, 72px); row-gap: 16px; align-content: start; }
+    .slide.shot .text { grid-column: 1; grid-row: 1; }
+    .slide.shot .points, .slide.shot .tap { grid-column: 1; grid-row: 2; align-self: start; }
+    .slide.shot .pic { grid-column: 2; grid-row: 1 / span 3; min-height: 0; height: 100%; align-items: center; }
+    .slide.mac.shot { grid-template-columns: minmax(220px, 320px) minmax(0, 1fr); }
+    .slide.mac .pic img { max-height: 100%; }
+    .lead { font-size: 19px; }
+    .points { font-size: 16px; }
+    .tap { text-align: left; }
+    .slide.list { justify-content: flex-start; max-width: 980px; margin-inline: auto; }
+    .closeup { display: none; }
+  }
+  @media (orientation: landscape) and (max-height: 520px) {
+    .slide { padding-block: 14px 8px; gap: 10px; }
+    .slide.shot { row-gap: 10px; }
+    .text { gap: 4px; }
+    h1 { font-size: 34px; }
+    h2, .stage h2 { font-size: 30px; }
+    .lead, .stage .lead { font-size: 16px; }
+    .points { font-size: 14px; gap: 4px; }
+    .rows > div { padding-block: 7px; }
+    .rows h3 { font-size: 15px; }
+    .rows p { font-size: 14px; }
+    .rows .said { font-size: 16px; }
+    .cover .hint { display: none; }
+    .bar { padding-block: 6px 8px; }
+    .nav { width: 40px; height: 40px; }
+  }
+  @media (min-width: 1000px) and (min-height: 640px) and (orientation: landscape) {
+    .slide { padding-block: 56px 28px; }
+    .lead { font-size: 22px; }
+    .points { font-size: 18px; gap: 10px; }
+    .rows h3 { font-size: 20px; }
+    .rows p { font-size: 17px; }
+    .rows .said { font-size: 22px; }
+    .eyebrow { font-size: 13px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    body, .bar, .fill { transition: none; }
+  }
+</style>
+
+<div class="app">
+  <main class="deck" id="deck" tabindex="-1" aria-roledescription="slideshow" aria-label="Ace Junk Removal App">
+
+    <section class="slide shot phone cover" id="cover" aria-roledescription="slide">
+      <div class="text">
+        <p class="eyebrow">Preview · October 2026</p>
+        <h1>Ace Junk Removal App</h1>
+        <p class="lead">One app for the phones and the office: customers, jobs, the six dumpsters, and a voice assistant.</p>
+      </div>
+      <div class="pic"><img src="img/1-today.webp" width="900" height="1955" decoding="async" alt="The Today screen on an iPhone" data-zoom tabindex="0" role="button"></div>
+      <p class="hint"><span class="when-touch">Swipe to go through it, or use the arrows below.</span><span class="when-keys">Use the arrows below or the arrow keys on the keyboard.</span></p>
+    </section>
+
+    <section class="slide list" id="overview" aria-roledescription="slide">
+      <div class="text">
+        <p class="eyebrow">What it covers</p>
+        <h2>One app for the office and the field</h2>
+      </div>
+      <div class="rows">
+        <div><h3>Customers and jobs</h3><p>Every customer and job in one place, with search, what is owed, and each customer’s history.</p></div>
+        <div><h3>The six dumpsters</h3><p>Where each one is, when it is due back, and the overweight charge worked out at pickup.</p></div>
+        <div><h3>A voice assistant</h3><p>Say what happened or what is needed. It makes the change and shows it first.</p></div>
+        <div><h3>iPhone and Mac</h3><p>The crew’s phones and the office Mac work from the same records.</p></div>
+      </div>
+    </section>
+
+    <section class="slide shot phone" id="iphone-today" aria-roledescription="slide">
+      <div class="text">
+        <p class="eyebrow">On the iPhone</p>
+        <h2>Today</h2>
+        <p class="lead">The day at a glance.</p>
+      </div>
+      <div class="pic"><img src="img/1-today.webp" width="900" height="1955" decoding="async" alt="The Today screen: jobs today, dumpsters due back, what is owed" data-zoom tabindex="0" role="button"></div>
+      <ul class="points">
+        <li>How many jobs today, and for how much</li>
+        <li>Dumpsters due back or overdue</li>
+        <li>What is owed, then today’s and tomorrow’s jobs</li>
+      </ul>
+    </section>
+
+    <section class="slide shot phone" id="iphone-jobs" aria-roledescription="slide">
+      <div class="text">
+        <p class="eyebrow">On the iPhone</p>
+        <h2>Jobs</h2>
+        <p class="lead">Upcoming, Unpaid and Done.</p>
+      </div>
+      <div class="pic"><img src="img/2-jobs.webp" width="900" height="1955" decoding="async" alt="The Jobs screen: upcoming jobs grouped by day with totals" data-zoom tabindex="0" role="button"></div>
+      <ul class="points">
+        <li>Upcoming jobs grouped by day, with a count and a total for each day</li>
+        <li>Unpaid lists every finished job not paid yet</li>
+        <li>Swipe a job to mark it done</li>
+      </ul>
+    </section>
+
+    <section class="slide shot phone" id="iphone-customers" aria-roledescription="slide">
+      <div class="text">
+        <p class="eyebrow">On the iPhone</p>
+        <h2>Customers</h2>
+        <p class="lead">The whole customer list, in your pocket.</p>
+      </div>
+      <div class="pic"><img src="img/3-customers.webp" width="900" height="1955" decoding="async" alt="The Customers screen: names, phone numbers and addresses" data-zoom tabindex="0" role="button"></div>
+      <ul class="points">
+        <li>Search by name, phone number or address</li>
+        <li>Each customer’s jobs, totals and what they owe</li>
+        <li>Call or get directions in one tap</li>
+      </ul>
+    </section>
+
+    <section class="slide shot phone" id="iphone-dumpsters" aria-roledescription="slide">
+      <div class="text">
+        <p class="eyebrow">On the iPhone</p>
+        <h2>Dumpsters</h2>
+        <p class="lead">All six at a glance.</p>
+      </div>
+      <div class="pic"><img src="img/4-dumpsters.webp" width="900" height="1955" decoding="async" alt="The Dumpsters screen: six dumpsters with status, location and due-back date" data-zoom tabindex="0" role="button"></div>
+      <ul class="points">
+        <li>In the yard, out, due today or overdue</li>
+        <li>Where each one is and when it is due back</li>
+        <li>Enter the weight at pickup and the overweight charge is worked out</li>
+      </ul>
+    </section>
+
+    <section class="slide shot phone" id="iphone-assistant" aria-roledescription="slide">
+      <div class="text">
+        <p class="eyebrow">The Assistant</p>
+        <h2>Say it the way you’d say it on the phone</h2>
+      </div>
+      <div class="pic"><img src="img/5-assistant.webp" width="900" height="1955" decoding="async" alt="The Assistant screen with a Record button" data-zoom tabindex="0" role="button"></div>
+      <ul class="points">
+        <li>In the office: book jobs, update customers, ask about the records</li>
+        <li>In the field: mark jobs done and paid, log dumpster drop-offs, pickups and swaps with the weight</li>
+        <li>Several things in one breath are fine</li>
+      </ul>
+    </section>
+
+    <section class="slide list" id="say" aria-roledescription="slide">
+      <div class="text">
+        <p class="eyebrow">The Assistant</p>
+        <h2>What you can say</h2>
+      </div>
+      <div class="rows">
+        <div><p class="said">“Mrs. Johnson, 42 Elm, garage cleanout Friday morning, 300 cash”</p><p>Books the job and asks about anything missing</p></div>
+        <div><p class="said">“Johnson’s done, paid cash”</p><p>Marks her job done and paid</p></div>
+        <div><p class="said">“Picked up dumpster 1, 2.8 tons”</p><p>Logs the pickup and works out the overweight charge</p></div>
+        <div><p class="said">“Swapped 2 at Keane’s, 3.1 tons, left 5”</p><p>Takes one away, leaves the other</p></div>
+        <div><p class="said">“Linda Johnson’s new number is 508 555 0199”</p><p>Updates the customer</p></div>
+        <div><p class="said">“Which dumpsters are due back Friday?”</p><p>Answers from the records</p></div>
+      </div>
+      <p class="footnote">These are examples. It also handles cancellations, moved jobs, price changes, call-backs and notes about a dumpster.</p>
+    </section>
+
+    <section class="slide stage" id="confirm" aria-roledescription="slide">
+      <div class="text">
+        <p class="eyebrow">The Assistant</p>
+        <h2>Nothing is saved until you tap.</h2>
+        <p class="lead">When a name or an address isn’t clear, it asks one short question at a time.</p>
+      </div>
+    </section>
+
+    <section class="slide shot mac" id="mac-today" aria-roledescription="slide">
+      <div class="text">
+        <p class="eyebrow">On the Mac</p>
+        <h2>Today</h2>
+        <p class="lead">The same day at a glance, with the details alongside.</p>
+      </div>
+      <div class="pic"><img src="img/mac-1-today.webp" width="1024" height="674" decoding="async" alt="The Mac app's Today view: sidebar, today's jobs and the selected job's details" data-zoom tabindex="0" role="button"></div>
+      <p class="tap">Tap the picture to see it larger.</p>
+      <div class="closeup"><p class="label">Closer look: Today's list</p><div class="frame"><img src="img/mac-1-today-list.webp" decoding="async" alt="Today's list, closer" data-zoom data-full="img/mac-1-today.webp" data-wide="1" tabindex="0" role="button"></div></div>
+    </section>
+
+    <section class="slide shot mac" id="mac-jobs" aria-roledescription="slide">
+      <div class="text">
+        <p class="eyebrow">On the Mac</p>
+        <h2>Jobs</h2>
+        <p class="lead">Grouped by day with totals. Unpaid and Done sit in the sidebar, like mailboxes in Mail.</p>
+      </div>
+      <div class="pic"><img src="img/mac-2-jobs.webp" width="1024" height="674" decoding="async" alt="The Mac app's Jobs view: jobs grouped by day with totals" data-zoom tabindex="0" role="button"></div>
+      <p class="tap">Tap the picture to see it larger.</p>
+      <div class="closeup"><p class="label">Closer look: the jobs list</p><div class="frame"><img src="img/mac-2-jobs-list.webp" decoding="async" alt="The jobs list, closer" data-zoom data-full="img/mac-2-jobs.webp" data-wide="1" tabindex="0" role="button"></div></div>
+    </section>
+
+    <section class="slide shot mac" id="mac-customers" aria-roledescription="slide">
+      <div class="text">
+        <p class="eyebrow">On the Mac</p>
+        <h2>Customers</h2>
+        <p class="lead">Hundreds of customers, sorted by name, last job or total spent. Search by name, phone or address. Right-click for quick actions.</p>
+      </div>
+      <div class="pic"><img src="img/mac-3-customers.webp" width="1024" height="674" decoding="async" alt="The Mac app's Customers view: a long customer list with search" data-zoom tabindex="0" role="button"></div>
+      <p class="tap">Tap the picture to see it larger.</p>
+      <div class="closeup"><p class="label">Closer look: the customer list</p><div class="frame"><img src="img/mac-3-customers-list.webp" decoding="async" alt="The customer list, closer" data-zoom data-full="img/mac-3-customers.webp" data-wide="1" tabindex="0" role="button"></div></div>
+    </section>
+
+    <section class="slide shot mac" id="mac-dumpsters" aria-roledescription="slide">
+      <div class="text">
+        <p class="eyebrow">On the Mac</p>
+        <h2>Dumpsters</h2>
+        <p class="lead">Drop-off, due-back and pickup with the weigh-in, from the desk. Keyboard shortcuts for a new job and for search.</p>
+      </div>
+      <div class="pic"><img src="img/mac-4-dumpsters.webp" width="1024" height="674" decoding="async" alt="The Mac app's Dumpsters view: six dumpsters with status and details" data-zoom tabindex="0" role="button"></div>
+      <p class="tap">Tap the picture to see it larger.</p>
+      <div class="closeup"><p class="label">Closer look: the dumpster list</p><div class="frame"><img src="img/mac-4-dumpsters-list.webp" decoding="async" alt="The dumpster list, closer" data-zoom data-full="img/mac-4-dumpsters.webp" data-wide="1" tabindex="0" role="button"></div></div>
+    </section>
+
+    <section class="slide stage" id="end" aria-roledescription="slide">
+      <div class="text">
+        <h2>Ace Junk Removal App</h2>
+        <p class="lead">iPhone and Mac</p>
+      </div>
+      <div class="end-actions"><button class="button" type="button" id="again">Back to the start</button></div>
+      <p class="footnote">Customer names and jobs shown are examples.</p>
+    </section>
+
+  </main>
+
+  <nav class="bar" aria-label="Slides">
+    <button class="nav" type="button" id="prev" aria-label="Previous slide">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.5 4.5 7 10l5.5 5.5"/></svg>
+    </button>
+    <div class="where">
+      <div class="track" aria-hidden="true"><div class="fill" id="fill"></div></div>
+      <span class="count" id="count" aria-live="polite">1 of 14</span>
+    </div>
+    <button class="nav" type="button" id="next" aria-label="Next slide">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.5 4.5 13 10l-5.5 5.5"/></svg>
+    </button>
+  </nav>
+</div>
+
+<dialog class="zoom" id="zoom" aria-label="Enlarged picture">
+  <div class="zoom-scroll" id="zoom-scroll"><img id="zoom-img" alt=""></div>
+  <p class="zoom-hint" id="zoom-hint" hidden>Drag to see the rest</p>
+  <button class="zoom-close" type="button" id="zoom-close">Close</button>
+</dialog>
+
+<script>
+(() => {
+  const deck = document.getElementById('deck');
+  const slides = Array.from(deck.querySelectorAll('.slide'));
+  const prev = document.getElementById('prev');
+  const next = document.getElementById('next');
+  const fill = document.getElementById('fill');
+  const count = document.getElementById('count');
+  const root = document.documentElement;
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+  let index = 0;
+
+  slides.forEach((s, i) => s.setAttribute('aria-label', `${i + 1} of ${slides.length}`));
+
+  function show(i) {
+    index = Math.max(0, Math.min(slides.length - 1, i));
+    count.textContent = `${index + 1} of ${slides.length}`;
+    fill.style.width = `${((index + 1) / slides.length) * 100}%`;
+    prev.disabled = index === 0;
+    next.disabled = index === slides.length - 1;
+    root.classList.toggle('on-stage', slides[index].classList.contains('stage'));
+  }
+
+  function go(i, instant) {
+    const target = Math.max(0, Math.min(slides.length - 1, i));
+    deck.scrollTo({ left: target * deck.clientWidth, behavior: instant || reduce.matches ? 'auto' : 'smooth' });
+    show(target);
+  }
+
+  let ticking = false;
+  deck.addEventListener('scroll', () => {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(() => {
+      ticking = false;
+      const w = deck.clientWidth || 1;
+      const i = Math.round(deck.scrollLeft / w);
+      if (i !== index) show(i);
+    });
+  }, { passive: true });
+
+  // Keep the same slide in view when the phone turns or the window changes size.
+  if ('ResizeObserver' in window) {
+    new ResizeObserver(() => { deck.scrollLeft = index * deck.clientWidth; }).observe(deck);
+  }
+
+  prev.addEventListener('click', () => go(index - 1));
+  next.addEventListener('click', () => go(index + 1));
+  document.getElementById('again').addEventListener('click', () => go(0));
+
+  const zoom = document.getElementById('zoom');
+  const zoomImg = document.getElementById('zoom-img');
+  const zoomScroll = document.getElementById('zoom-scroll');
+  const zoomHint = document.getElementById('zoom-hint');
+
+  document.addEventListener('keydown', ev => {
+    if (zoom.open || ev.altKey || ev.ctrlKey || ev.metaKey) return;
+    if (ev.key === 'ArrowRight' || ev.key === 'PageDown') { ev.preventDefault(); go(index + 1); }
+    else if (ev.key === 'ArrowLeft' || ev.key === 'PageUp') { ev.preventDefault(); go(index - 1); }
+    else if (ev.key === 'Home') { ev.preventDefault(); go(0); }
+    else if (ev.key === 'End') { ev.preventDefault(); go(slides.length - 1); }
+  });
+
+  function openZoom(img) {
+    zoomImg.src = img.dataset.full || img.currentSrc || img.src;
+    zoomImg.alt = img.alt;
+    const wide = img.dataset.wide === '1' || img.naturalWidth > img.naturalHeight || Number(img.getAttribute('width')) > Number(img.getAttribute('height'));
+    zoom.classList.toggle('wide', wide);
+    try { zoom.showModal(); } catch (e) { zoom.setAttribute('open', ''); }
+    requestAnimationFrame(() => {
+      const overflow = zoomScroll.scrollWidth > zoomScroll.clientWidth + 4;
+      zoomHint.hidden = !overflow;
+      if (overflow) zoomScroll.scrollLeft = 0;
+    });
+  }
+  function closeZoom() { if (zoom.open) { try { zoom.close(); } catch (e) { zoom.removeAttribute('open'); } } }
+
+  deck.addEventListener('click', ev => {
+    const img = ev.target.closest('img[data-zoom]');
+    if (img) openZoom(img);
+  });
+  deck.addEventListener('keydown', ev => {
+    const img = ev.target.closest && ev.target.closest('img[data-zoom]');
+    if (img && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); openZoom(img); }
+  });
+  zoom.addEventListener('click', closeZoom);
+  document.getElementById('zoom-close').addEventListener('click', ev => { ev.stopPropagation(); closeZoom(); });
+
+  // A link to one slide, such as ...#iphone-jobs, opens on that slide.
+  const start = slides.findIndex(s => s.id && '#' + s.id === location.hash);
+  show(0);
+  if (start > 0) requestAnimationFrame(() => go(start, true));
+})();
+</script>

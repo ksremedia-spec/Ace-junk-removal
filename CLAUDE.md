@@ -130,6 +130,9 @@ October 31, 2026.
 - `Ace.xcodeproj` — the Xcode project. It uses Xcode 16+ "synchronized
   folders": every file under `Ace/` is part of the app automatically, so new
   Swift files need no project-file edits.
+- `demo/` — the clickable demo, the client Preview page, slideshow and deck
+  (published on claude.ai), with their automatic browser checks. See
+  `demo/README.md`.
 - `Ace/` — the Swift source. `Speech/` is recording and transcription,
   `Assistant/` is the Claude form-filling, `Support/` is Keychain and helpers.
 

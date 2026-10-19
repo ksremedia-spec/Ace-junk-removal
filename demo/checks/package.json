@@ -1,0 +1,12 @@
+{
+  "name": "ace-demo-checks",
+  "private": true,
+  "description": "Automatic browser checks for the clickable demo (demo/app-demo).",
+  "scripts": {
+    "build": "sh build-standalone.sh",
+    "test": "sh build-standalone.sh && node all-screens.js && node quotes.js && node assistant-quotes.js && node end-times.js && node move-keeps-length.js && node calendar.js"
+  },
+  "devDependencies": {
+    "playwright": "1.56.1"
+  }
+}
