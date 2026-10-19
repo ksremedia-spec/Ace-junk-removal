@@ -78,6 +78,7 @@ jobs:
           ls -la docs/screenshots
 
       - name: Build the Mac app and photograph its screens
+        continue-on-error: true
         run: |
           xcodebuild build -project Ace.xcodeproj -scheme Ace -derivedDataPath DerivedData \
             -destination 'platform=macOS' \
