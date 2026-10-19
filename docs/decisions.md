@@ -119,3 +119,24 @@ own repository with its own rules file (`CLAUDE.md`).
 - Fallbacks if claude.ai blocks the connection: the viewer signs in to
   claude.ai (Claude through their own account, no key), or the demo is hosted
   as a plain web page outside claude.ai.
+
+## The Assistant understands five kinds of note (2026-10-19)
+
+- Kyle, after trying it: "I just tried to speak to it to say a job was done
+  and paid cash on site and it got lost and asked me for all the info as if
+  I was making a job." The Assistant must serve Alex in the field as well as
+  Ashley in the office.
+- Kinds: `job` (new work), `question`, `update` (an existing job is done,
+  paid and how, moved, price changed, note added), `pickup` (a dumpster was
+  picked up or weighed), `dropoff` (a dumpster was dropped off). Claude only
+  classifies and extracts; the app finds the record itself: customer by
+  phone, then name (whole name, or the last word so "Johnson" finds Linda
+  Johnson), then address; the job by the spoken date, else today's open job,
+  else the nearest open job, else the latest done one; the dumpster by number,
+  else by the customer or location it is out at.
+- Exactly one match shows a one-tap confirmation (Update Job, Dumpster
+  Pickup, Dumpster Drop-off). Several matches ask "Which job?" or "Which
+  dumpster?". A spoken name that matches nobody never silently lands on
+  someone else's job: it asks, or offers "Start a new job instead".
+- "Paid on site" means the job is done. The same wording is in the demo's
+  and the app's instructions to Claude so both behave alike.
