@@ -51,14 +51,21 @@ step fails, copy the exact error text and send it to me.
 2. The first time, the phone shows "Untrusted Developer". On the phone go to
    Settings → General → VPN & Device Management → your Apple ID → Trust.
    Then press Run again.
-3. The app opens on the **Today** tab. To fill it with example records for a
+3. The app opens on the **Calendar** tab. To fill it with example records for a
    demo: gear (top left) → Settings → Debug → **Load sample data**.
 
 ## Using the app
 
-- **Today:** dumpsters due back or overdue, today's and tomorrow's jobs.
+- **Calendar:** a month on top (a dot marks days with jobs). Today shows
+  the day's figures, dumpsters due back or overdue, today's and tomorrow's
+  jobs, quotes to call back and other calendars' events. Tap another day to
+  see that day. To put jobs into Google Calendar: gear → Settings → Calendar
+  → Allow Calendar Access, then choose "Ace Jobs" (see `calendar.md` for the
+  one-time Google setup).
 - **Jobs:** every job, soonest first. Plus button for a new job; swipe
   right to mark done, swipe left to delete.
+- **Quotes:** prices given that are waiting on a yes. Follow up, book or
+  mark lost.
 - **Customers:** search by name, phone or address. Tap for details and
   their jobs.
 - **Dumpsters:** the six dumpsters. In the yard: fill the drop-off form.
