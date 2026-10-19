@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Stores the Anthropic API key in the device Keychain. The key never leaves
 /// the device except in requests to api.anthropic.com.
-struct SettingsView: View {
+struct APIKeyView: View {
     @State private var keyField = ""
     @State private var hasStoredKey = Keychain.read(Keychain.anthropicAPIKey) != nil
     @State private var saved = false

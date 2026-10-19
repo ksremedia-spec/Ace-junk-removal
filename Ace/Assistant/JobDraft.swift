@@ -1,8 +1,8 @@
 import Foundation
 
-/// The fixed list of job fields Claude fills in from a transcript.
-/// Empty strings mean "the note did not say". Nothing here is saved yet;
-/// in step 1 it is only displayed on the Debug screen.
+/// What Claude returns for one spoken note: either a job form filled in
+/// (`kind` = "job") or an answer to a question about the records
+/// (`kind` = "question"). Empty strings mean "the note did not say".
 struct JobDraft: Codable, Equatable {
     struct Issue: Codable, Equatable, Identifiable {
         var field: String
@@ -11,6 +11,8 @@ struct JobDraft: Codable, Equatable {
         var id: String { field + question }
     }
 
+    var kind: String         // job or question
+    var answer: String       // only for questions, else ""
     var customerName: String
     var phone: String
     var address: String
@@ -22,6 +24,8 @@ struct JobDraft: Codable, Equatable {
     var paid: String        // paid, unpaid, unknown
     var notes: String
     var issues: [Issue]
+
+    var isQuestion: Bool { kind == "question" }
 
     struct Row: Identifiable {
         var field: String   // schema field name, e.g. customerName
@@ -52,10 +56,12 @@ struct JobDraft: Codable, Equatable {
     static let jsonSchema: [String: Any] = [
         "type": "object",
         "properties": [
+            "kind": ["type": "string", "enum": ["job", "question"], "description": "job when the note describes work to schedule; question when it asks about existing records."],
+            "answer": ["type": "string", "description": "For a question: the answer in one or two plain sentences, from the records provided. Otherwise empty."],
             "customerName": ["type": "string", "description": "Customer's full name as spoken, or empty."],
             "phone": ["type": "string", "description": "Phone number as digits with dashes, like 508-555-0123, or empty."],
             "address": ["type": "string", "description": "Street address including house number, town and state, or empty."],
-            "jobType": ["type": "string", "description": "Short job type, e.g. junk removal, dumpster drop-off, dumpster pickup, or empty."],
+            "jobType": ["type": "string", "enum": ["Junk removal", "Dumpster drop-off", "Dumpster pickup", "Other", ""], "description": "Empty if the note does not say."],
             "date": ["type": "string", "description": "Job date as YYYY-MM-DD, or empty."],
             "time": ["type": "string", "description": "Job time as HH:MM in 24-hour time, or empty."],
             "price": ["type": "string", "description": "Agreed price in dollars as digits only, like 300, or empty."],
@@ -64,7 +70,7 @@ struct JobDraft: Codable, Equatable {
             "notes": ["type": "string", "description": "Anything else useful from the note, in one or two short sentences, or empty."],
             "issues": [
                 "type": "array",
-                "description": "Problems Ashley should confirm before saving.",
+                "description": "Problems Ashley should confirm before saving. Empty for questions.",
                 "items": [
                     "type": "object",
                     "properties": [
@@ -76,7 +82,7 @@ struct JobDraft: Codable, Equatable {
                 ],
             ],
         ],
-        "required": ["customerName", "phone", "address", "jobType", "date", "time", "price", "paymentType", "paid", "notes", "issues"],
+        "required": ["kind", "answer", "customerName", "phone", "address", "jobType", "date", "time", "price", "paymentType", "paid", "notes", "issues"],
         "additionalProperties": false,
     ]
 
@@ -90,13 +96,19 @@ struct JobDraft: Codable, Equatable {
         let zone = TimeZone.current.identifier
 
         return """
-        You fill in a job form for Ace Junk Removal, a junk removal and dumpster rental company in Massachusetts. \
-        The input is a spoken note from the office, transcribed by speech recognition, so names, street names and numbers may be misheard. \
+        You help the office of Ace Junk Removal, a junk removal and dumpster rental company in Massachusetts. \
+        The input is a spoken note, transcribed by speech recognition, so names, street names and numbers may be misheard. \
         Fix a misheard word only when the correction is certain; otherwise keep what was said and raise an issue.
 
         Today is \(today) (time zone \(zone)).
 
-        Rules:
+        Decide the kind of note:
+        - "job": the note describes work to schedule (a customer, an address, a date, a price). Fill the job fields.
+        - "question": the note asks about existing records, e.g. "which dumpsters are due back Friday" or "what do we have on Tuesday". \
+        Answer from the records provided with the note, in one or two plain sentences, and leave the job fields empty. \
+        If the records do not contain the answer, say so.
+
+        Rules for jobs:
         - Fill only what the note says. Use an empty string for anything not mentioned. Never invent a name, number, price or address.
         - Resolve relative dates against today: "tomorrow", "Friday" (the next Friday, or today if today is Friday), "next week". Output YYYY-MM-DD.
         - Times in 24-hour HH:MM. "Morning" with no time stays empty and gets an issue.

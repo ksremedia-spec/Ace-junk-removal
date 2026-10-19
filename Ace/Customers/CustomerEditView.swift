@@ -1,0 +1,82 @@
+import SwiftData
+import SwiftUI
+
+/// Add or edit a customer. Presented as a sheet.
+struct CustomerEditView: View {
+    @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
+
+    let customer: Customer?
+    /// Called with the saved customer, so a picker can select it.
+    var onSave: ((Customer) -> Void)? = nil
+
+    @State private var form: CustomerFormData
+    @State private var confirmDelete = false
+    @State private var saved = false
+
+    init(customer: Customer?, onSave: ((Customer) -> Void)? = nil) {
+        self.customer = customer
+        self.onSave = onSave
+        _form = State(initialValue: CustomerFormData(customer: customer))
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                TextField("Name", text: $form.name)
+                TextField("Phone", text: $form.phone)
+                    .phoneKeyboard()
+                TextField("Address", text: $form.address, axis: .vertical)
+            }
+            Section("Notes") {
+                TextEditor(text: $form.notes)
+                    .frame(minHeight: 80)
+            }
+            if customer != nil {
+                Section {
+                    Button("Delete customer", role: .destructive) {
+                        confirmDelete = true
+                    }
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .navigationTitle(customer == nil ? "New customer" : "Edit customer")
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") { dismiss() }
+            }
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Save") { save() }
+                    .disabled(!form.isValid)
+            }
+        }
+        .confirmationDialog("Delete this customer? Their jobs are kept without a customer.", isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) { delete() }
+        }
+        .sensoryFeedback(.success, trigger: saved)
+    }
+
+    private func save() {
+        let target: Customer
+        if let customer {
+            target = customer
+        } else {
+            target = Customer(name: form.name)
+            context.insert(target)
+        }
+        form.apply(to: target)
+        try? context.save()
+        saved.toggle()
+        onSave?(target)
+        dismiss()
+    }
+
+    private func delete() {
+        if let customer {
+            context.delete(customer)
+            try? context.save()
+        }
+        dismiss()
+    }
+}

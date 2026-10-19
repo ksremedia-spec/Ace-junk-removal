@@ -1,10 +1,12 @@
+import SwiftData
 import SwiftUI
 
 @main
 struct AceApp: App {
     var body: some Scene {
         WindowGroup {
-            RootView()
+            MainView()
         }
+        .modelContainer(for: [Customer.self, Job.self, Dumpster.self, RentalRecord.self])
     }
 }
