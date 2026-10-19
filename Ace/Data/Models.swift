@@ -257,3 +257,114 @@ enum Money {
         amount.formatted(.currency(code: "USD").precision(.fractionLength(amount.rounded() == amount ? 0 : 2)))
     }
 }
+
+// MARK: - Figures for the screens
+
+extension Customer {
+    /// The earliest job on file, or nil for a customer with no jobs yet.
+    var firstJobDate: Date? {
+        jobs.map(\.scheduledAt).min()
+    }
+
+    /// The latest job on file, upcoming ones included.
+    var lastJobDate: Date? {
+        jobs.map(\.scheduledAt).max()
+    }
+
+    /// Every job's price added up, paid or not.
+    var totalBilled: Double {
+        jobs.reduce(0) { $0 + ($1.price ?? 0) }
+    }
+
+    /// Prices of done jobs that have not been paid.
+    var amountOwed: Double {
+        jobs.reduce(0) { $0 + $1.owedAmount }
+    }
+
+    /// Dumpsters out with this customer right now, lowest number first.
+    var dumpstersOut: [Dumpster] {
+        dumpsters.filter(\.isOut).sorted { $0.number < $1.number }
+    }
+
+    /// Past rentals, newest first.
+    var rentalsNewestFirst: [RentalRecord] {
+        rentals.sorted { $0.pickedUpAt > $1.pickedUpAt }
+    }
+
+    /// "tel:5085550147", for a Call link. Nil without a phone number.
+    var phoneURL: URL? {
+        let digits = phoneDigits
+        guard !digits.isEmpty else { return nil }
+        return URL(string: "tel:\(digits)")
+    }
+
+    /// An Apple Maps search for the address. Nil without an address.
+    var directionsURL: URL? {
+        guard !address.isEmpty else { return nil }
+        var components = URLComponents(string: "https://maps.apple.com/")
+        components?.queryItems = [URLQueryItem(name: "q", value: address)]
+        return components?.url
+    }
+
+    /// Deletes the customer and saves. Their jobs, dumpsters and rental
+    /// records stay and lose the customer (the `.nullify` rules above).
+    /// Every delete path calls this so they all behave the same.
+    func remove(from context: ModelContext) {
+        context.delete(self)
+        try? context.save()
+    }
+}
+
+extension Job {
+    /// The price, when the work is done and not paid. Zero otherwise.
+    var owedAmount: Double {
+        isDone && !isPaid ? (price ?? 0) : 0
+    }
+
+    /// Done and not paid, or past its day with a price and not paid.
+    func isUnpaid(asOf today: Date = Dates.startOfToday()) -> Bool {
+        guard !isPaid else { return false }
+        if isDone { return true }
+        return price != nil && scheduledAt < today
+    }
+}
+
+extension Array where Element == Job {
+    /// Prices added up; jobs without a price count as zero.
+    var priceTotal: Double {
+        reduce(0) { $0 + ($1.price ?? 0) }
+    }
+}
+
+extension Dumpster {
+    /// "Out since Mon, Oct 12 · due back Sun, Oct 19 · $450", for the customer screen.
+    var currentRentalLine: String {
+        var parts: [String] = []
+        if let droppedOffAt { parts.append("Out since " + Dates.shortDay(droppedOffAt)) }
+        if let dueBackAt { parts.append("due back " + Dates.shortDay(dueBackAt)) }
+        if let price { parts.append(Money.text(price)) }
+        return parts.isEmpty ? "Out" : parts.joined(separator: " · ")
+    }
+}
+
+extension RentalRecord {
+    /// The rental price plus the overweight charge.
+    var total: Double {
+        (price ?? 0) + overweightCharge
+    }
+
+    /// "Dumpster 3 · Mon, Sep 8 to Fri, Sep 12 · 2.4 of 2 tons · overweight $50",
+    /// for the customer screen.
+    var customerLine: String {
+        var parts: [String] = []
+        if let dumpster { parts.append("Dumpster \(dumpster.number)") }
+        parts.append(Dates.shortDay(droppedOffAt) + " to " + Dates.shortDay(pickedUpAt))
+        if let agreed = agreedWeightTons, let actual = actualWeightTons {
+            parts.append(Tons.number(actual) + " of " + Tons.text(agreed))
+        }
+        if overweightCharge > 0 {
+            parts.append("overweight " + Money.text(overweightCharge))
+        }
+        return parts.joined(separator: " · ")
+    }
+}

@@ -36,6 +36,15 @@ struct DumpsterDetailView: View {
         dumpster.history.sorted { $0.pickedUpAt > $1.pickedUpAt }
     }
 
+    /// Rentals picked up this calendar month.
+    private var thisMonth: [RentalRecord] {
+        dumpster.history.filter { Dates.isInCurrentMonth($0.pickedUpAt) }
+    }
+
+    private var thisMonthTotal: Double {
+        thisMonth.reduce(0) { $0 + $1.total }
+    }
+
     var body: some View {
         Form {
             Section {
@@ -50,6 +59,12 @@ struct DumpsterDetailView: View {
                 pickupSection
             } else {
                 dropOffSection
+            }
+
+            if !thisMonth.isEmpty {
+                Section {
+                    LabeledContent("This month", value: Plural.text(thisMonth.count, "rental") + " · " + Money.text(thisMonthTotal))
+                }
             }
 
             if !historyNewestFirst.isEmpty {
@@ -105,7 +120,7 @@ struct DumpsterDetailView: View {
                 set: { dumpster.dueBackAt = $0; dumpster.updatedAt = Date() }
             ), displayedComponents: .date)
             LabeledContent("Price", value: dumpster.price.map(Money.text) ?? "—")
-            LabeledContent("Agreed weight", value: dumpster.agreedWeightTons.map { tonsText($0) } ?? "—")
+            LabeledContent("Agreed weight", value: dumpster.agreedWeightTons.map { Tons.text($0) } ?? "—")
             if !dumpster.notes.isEmpty {
                 Text(dumpster.notes)
             }
@@ -118,7 +133,7 @@ struct DumpsterDetailView: View {
                 .decimalKeyboard()
             if let actualTons, let agreed = dumpster.agreedWeightTons {
                 if actualTons > agreed {
-                    LabeledContent("Over by", value: tonsText(actualTons - agreed))
+                    LabeledContent("Over by", value: Tons.text(actualTons - agreed))
                     LabeledContent("Overweight charge") {
                         Text(Money.text(pickupCharge))
                             .foregroundStyle(.orange)
@@ -208,15 +223,11 @@ struct DumpsterDetailView: View {
 
     // MARK: Text
 
-    private func tonsText(_ tons: Double) -> String {
-        tons.formatted(.number.precision(.fractionLength(0...2))) + (tons == 1 ? " ton" : " tons")
-    }
-
     private func historyLine(_ record: RentalRecord) -> String {
         var parts: [String] = []
         if let price = record.price { parts.append(Money.text(price)) }
         if let agreed = record.agreedWeightTons, let actual = record.actualWeightTons {
-            parts.append("\(tonsText(actual)) of \(tonsText(agreed))")
+            parts.append("\(Tons.text(actual)) of \(Tons.text(agreed))")
         }
         if record.overweightCharge > 0 {
             parts.append("overweight " + Money.text(record.overweightCharge))

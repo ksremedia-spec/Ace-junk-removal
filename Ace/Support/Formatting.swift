@@ -69,4 +69,37 @@ enum Dates {
     static func shortDay(_ date: Date) -> String {
         date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
     }
+
+    /// "Friday, October 24"
+    static func longDay(_ date: Date) -> String {
+        date.formatted(.dateTime.weekday(.wide).month(.wide).day())
+    }
+
+    /// "October 2026"
+    static func monthYear(_ date: Date) -> String {
+        date.formatted(.dateTime.month(.wide).year())
+    }
+
+    static func isInCurrentMonth(_ date: Date, _ calendar: Calendar = .current) -> Bool {
+        calendar.isDate(date, equalTo: Date(), toGranularity: .month)
+    }
+}
+
+enum Tons {
+    /// "2.4"
+    static func number(_ tons: Double) -> String {
+        tons.formatted(.number.precision(.fractionLength(0...2)))
+    }
+
+    /// "2.4 tons", "1 ton"
+    static func text(_ tons: Double) -> String {
+        number(tons) + (tons == 1 ? " ton" : " tons")
+    }
+}
+
+enum Plural {
+    /// "1 job", "3 jobs". For words whose plural just adds an s.
+    static func text(_ count: Int, _ noun: String) -> String {
+        count == 1 ? "1 \(noun)" : "\(count) \(noun)s"
+    }
 }

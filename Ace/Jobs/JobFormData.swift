@@ -15,6 +15,11 @@ struct JobFormData {
 
     init() {}
 
+    /// A blank form for a new job with the customer already chosen.
+    init(customer: Customer) {
+        self.customer = customer
+    }
+
     init(job: Job?) {
         guard let job else { return }
         customer = job.customer

@@ -28,11 +28,26 @@ struct JobRow: View {
                     .lineLimit(1)
             }
             if job.isDone || job.isPaid {
-                Text([job.isDone ? "Done" : nil, job.isPaid ? "Paid" : nil].compactMap { $0 }.joined(separator: " · "))
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                statusLine
             }
         }
         .padding(.vertical, 2)
+    }
+
+    /// "Done · Paid", "Done · Unpaid" (unpaid in the warning colour), or "Paid".
+    private var statusLine: some View {
+        HStack(spacing: 0) {
+            if job.isDone {
+                Text("Done · ")
+            }
+            if job.isPaid {
+                Text("Paid")
+            } else {
+                Text("Unpaid")
+                    .foregroundStyle(.orange)
+            }
+        }
+        .font(.footnote)
+        .foregroundStyle(.secondary)
     }
 }

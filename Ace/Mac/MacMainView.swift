@@ -1,4 +1,5 @@
 #if os(macOS)
+import AppKit
 import Combine
 import SwiftData
 import SwiftUI
@@ -6,7 +7,7 @@ import SwiftUI
 /// The Mac layout: sidebar, list, detail, like Mail and Notes.
 struct MacMainView: View {
     enum SidebarItem: String, CaseIterable, Identifiable {
-        case today, jobs, customers, dumpsters
+        case today, jobs, unpaid, done, customers, dumpsters
 
         var id: String { rawValue }
 
@@ -14,6 +15,8 @@ struct MacMainView: View {
             switch self {
             case .today: return "Today"
             case .jobs: return "Jobs"
+            case .unpaid: return "Unpaid"
+            case .done: return "Done"
             case .customers: return "Customers"
             case .dumpsters: return "Dumpsters"
             }
@@ -23,8 +26,28 @@ struct MacMainView: View {
             switch self {
             case .today: return "sun.max"
             case .jobs: return "calendar"
+            case .unpaid: return "dollarsign.circle"
+            case .done: return "checkmark.circle"
             case .customers: return "person.2"
             case .dumpsters: return "shippingbox"
+            }
+        }
+
+        /// Which jobs list this item shows; nil for the other screens.
+        var jobsFilter: JobsFilter? {
+            switch self {
+            case .jobs: return .upcoming
+            case .unpaid: return .unpaid
+            case .done: return .done
+            default: return nil
+            }
+        }
+
+        static func item(for filter: JobsFilter) -> SidebarItem {
+            switch filter {
+            case .upcoming: return .jobs
+            case .unpaid: return .unpaid
+            case .done: return .done
             }
         }
     }
@@ -58,13 +81,24 @@ struct MacMainView: View {
 
     private var section: SidebarItem { SidebarItem(rawValue: sidebarRaw) ?? .today }
 
+    /// The jobs list's filter, kept in step with the sidebar: picking
+    /// "Unpaid" in the list highlights Unpaid in the sidebar and back.
+    private var jobsFilter: Binding<JobsFilter> {
+        Binding(
+            get: { section.jobsFilter ?? .upcoming },
+            set: { sidebarRaw = SidebarItem.item(for: $0).rawValue }
+        )
+    }
+
     var body: some View {
         NavigationSplitView {
             List(selection: sidebarSelection) {
-                ForEach(SidebarItem.allCases) { item in
-                    Label(item.title, systemImage: item.symbol)
-                        .tag(item)
-                }
+                sidebarRow(.today)
+                sidebarRow(.jobs)
+                sidebarRow(.unpaid, indented: true)
+                sidebarRow(.done, indented: true)
+                sidebarRow(.customers)
+                sidebarRow(.dumpsters)
             }
             .navigationSplitViewColumnWidth(min: 160, ideal: 190, max: 260)
         } content: {
@@ -118,15 +152,21 @@ struct MacMainView: View {
         }
     }
 
+    private func sidebarRow(_ item: SidebarItem, indented: Bool = false) -> some View {
+        Label(item.title, systemImage: item.symbol)
+            .padding(.leading, indented ? 20 : 0)
+            .tag(item)
+    }
+
     @ViewBuilder
     private var contentColumn: some View {
         switch section {
         case .today:
             MacTodayList(selection: $selectedTodayItem)
                 .navigationTitle("Today")
-        case .jobs:
-            MacJobsList(selection: $selectedJob, searchText: searchText)
-                .navigationTitle("Jobs")
+        case .jobs, .unpaid, .done:
+            MacJobsList(selection: $selectedJob, filter: jobsFilter, searchText: searchText)
+                .navigationTitle(section.title)
         case .customers:
             MacCustomersList(selection: $selectedCustomer, searchText: searchText)
                 .navigationTitle("Customers")
@@ -150,7 +190,7 @@ struct MacMainView: View {
             case .none:
                 placeholder("Select a job or a dumpster.")
             }
-        case .jobs:
+        case .jobs, .unpaid, .done:
             if let job = selectedJob {
                 JobEditView(job: job)
                     .id(job.persistentModelID)
@@ -268,110 +308,208 @@ struct MacTodayList: View {
     }
 }
 
+/// Jobs: upcoming by day, unpaid, or done. The filter is shared with the
+/// sidebar, so either one changes the other.
 struct MacJobsList: View {
     @Query(sort: \Job.scheduledAt) private var jobs: [Job]
     @Binding var selection: Job?
+    @Binding var filter: JobsFilter
     var searchText: String
 
-    @State private var showDone = false
-
-    private var filtered: [Job] {
-        let query = searchText.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !query.isEmpty else { return jobs }
-        let digits = query.filter(\.isNumber)
-        return jobs.filter { job in
-            let name = job.customer?.name.lowercased() ?? ""
-            let address = job.customer?.address.lowercased() ?? ""
-            let phone = job.customer?.phoneDigits ?? ""
-            return name.contains(query)
-                || address.contains(query)
-                || (!digits.isEmpty && phone.contains(digits))
-                || job.notes.lowercased().contains(query)
-                || job.jobType.rawValue.lowercased().contains(query)
-        }
-    }
-
-    private var overdue: [Job] { filtered.filter { !$0.isDone && $0.scheduledAt < Dates.startOfToday() } }
-    private var upcoming: [Job] { filtered.filter { !$0.isDone && $0.scheduledAt >= Dates.startOfToday() } }
-    private var done: [Job] { filtered.filter(\.isDone).reversed() }
+    private var filtered: [Job] { JobSearch.filter(jobs, searchText) }
+    private var shown: [Job] { filter.apply(to: filtered) }
+    private var days: [JobDay] { JobDay.group(shown) }
+    private var slipped: [Job] { filtered.filter { !$0.isDone && $0.scheduledAt < Dates.startOfToday() } }
 
     var body: some View {
         List(selection: $selection) {
-            if !overdue.isEmpty {
-                Section("Not marked done") {
-                    ForEach(overdue) { job in
-                        JobRow(job: job).tag(job).contextMenu { JobContextMenu(job: job) }
+            Section {
+                Picker("Show", selection: $filter) {
+                    ForEach(JobsFilter.allCases) { choice in
+                        Text(choice.rawValue).tag(choice)
                     }
                 }
+                .pickerStyle(.segmented)
+                .labelsHidden()
             }
+            switch filter {
+            case .upcoming:
+                upcomingSections
+            case .unpaid:
+                flatSection(header: unpaidHeader, empty: searchText.isEmpty ? "Nothing owed." : "No matching jobs.")
+            case .done:
+                flatSection(header: doneHeader, empty: searchText.isEmpty ? "No done jobs yet." : "No matching jobs.")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var upcomingSections: some View {
+        if !slipped.isEmpty {
+            Section("Not marked done") {
+                ForEach(slipped) { job in
+                    row(job)
+                }
+            }
+        }
+        if days.isEmpty {
             Section("Upcoming") {
-                if upcoming.isEmpty {
-                    Text(searchText.isEmpty ? "No jobs scheduled." : "No matching jobs.")
-                        .foregroundStyle(.secondary)
-                }
-                ForEach(upcoming) { job in
-                    JobRow(job: job).tag(job).contextMenu { JobContextMenu(job: job) }
+                Text(searchText.isEmpty ? "No jobs scheduled." : "No matching jobs.")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        ForEach(days) { day in
+            Section(day.title) {
+                ForEach(day.jobs) { job in
+                    row(job)
                 }
             }
-            if !done.isEmpty {
-                Section {
-                    Button(showDone ? "Hide done jobs" : "Show \(done.count) done jobs") {
-                        showDone.toggle()
-                    }
-                    if showDone {
-                        ForEach(done) { job in
-                            JobRow(job: job).tag(job).contextMenu { JobContextMenu(job: job) }
-                        }
-                    }
-                }
+        }
+    }
+
+    private func flatSection(header: String, empty: String) -> some View {
+        Section(header) {
+            if shown.isEmpty {
+                Text(empty)
+                    .foregroundStyle(.secondary)
             }
+            ForEach(shown) { job in
+                row(job)
+            }
+        }
+    }
+
+    private var unpaidHeader: String {
+        shown.isEmpty ? "Unpaid" : "Unpaid · " + Plural.text(shown.count, "job") + " · " + Money.text(shown.priceTotal)
+    }
+
+    private var doneHeader: String {
+        shown.isEmpty ? "Done" : "Done · \(shown.count)"
+    }
+
+    private func row(_ job: Job) -> some View {
+        JobRow(job: job)
+            .tag(job)
+            .contextMenu { JobContextMenu(job: job) }
+    }
+}
+
+/// How the Mac customers list is ordered.
+enum CustomerSort: String, CaseIterable, Identifiable {
+    case name = "Name"
+    case lastJob = "Last job"
+    case totalSpent = "Total spent"
+
+    var id: String { rawValue }
+
+    /// `customers` arrive sorted by name from the query.
+    func sorted(_ customers: [Customer]) -> [Customer] {
+        switch self {
+        case .name:
+            return customers
+        case .lastJob:
+            return customers.sorted { ($0.lastJobDate ?? .distantPast) > ($1.lastJobDate ?? .distantPast) }
+        case .totalSpent:
+            return customers.sorted { $0.totalBilled > $1.totalBilled }
         }
     }
 }
 
 struct MacCustomersList: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.openURL) private var openURL
     @Query(sort: \Customer.name) private var customers: [Customer]
     @Binding var selection: Customer?
     var searchText: String
 
+    @State private var sort: CustomerSort = .name
+    @State private var newJobCustomer: Customer?
+    @State private var customerToDelete: Customer?
+    @State private var confirmDelete = false
+
     private var filtered: [Customer] {
         let query = searchText.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !query.isEmpty else { return customers }
+        guard !query.isEmpty else { return sort.sorted(customers) }
         let digits = query.filter(\.isNumber)
-        return customers.filter {
+        return sort.sorted(customers.filter {
             $0.name.lowercased().contains(query)
                 || $0.address.lowercased().contains(query)
                 || (!digits.isEmpty && $0.phoneDigits.contains(digits))
-        }
+        })
     }
 
     var body: some View {
         List(selection: $selection) {
-            if filtered.isEmpty {
-                Text(customers.isEmpty ? "No customers yet." : "No matches.")
-                    .foregroundStyle(.secondary)
-            }
-            ForEach(filtered) { customer in
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(customer.name)
-                    if !customer.phone.isEmpty || !customer.address.isEmpty {
-                        Text([customer.phone, customer.address].filter { !$0.isEmpty }.joined(separator: " · "))
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+            Section {
+                Picker("Sort by", selection: $sort) {
+                    ForEach(CustomerSort.allCases) { choice in
+                        Text(choice.rawValue).tag(choice)
                     }
                 }
-                .tag(customer)
-                .contextMenu {
-                    Button("Delete Customer", role: .destructive) {
-                        if selection == customer { selection = nil }
-                        context.delete(customer)
-                        try? context.save()
+            }
+            Section {
+                if filtered.isEmpty {
+                    Text(customers.isEmpty ? "No customers yet." : "No matches.")
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(filtered) { customer in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(customer.name)
+                        if !customer.phone.isEmpty || !customer.address.isEmpty {
+                            Text([customer.phone, customer.address].filter { !$0.isEmpty }.joined(separator: " · "))
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
                     }
+                    .tag(customer)
+                    .contextMenu { contextMenu(for: customer) }
                 }
             }
         }
+        .sheet(item: $newJobCustomer) { customer in
+            NavigationStack {
+                JobEditView(job: nil, prefill: JobFormData(customer: customer))
+            }
+            .frame(minWidth: 480, minHeight: 560)
+        }
+        .confirmationDialog(deleteQuestion, isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) { deletePendingCustomer() }
+        }
+    }
+
+    @ViewBuilder
+    private func contextMenu(for customer: Customer) -> some View {
+        Button("New Job for \(customer.name)") {
+            newJobCustomer = customer
+        }
+        if let url = customer.phoneURL {
+            Button("Call") {
+                openURL(url)
+            }
+        }
+        if !customer.address.isEmpty {
+            Button("Copy Address") {
+                NSPasteboard.general.clearContents()
+                _ = NSPasteboard.general.setString(customer.address, forType: .string)
+            }
+        }
+        Divider()
+        Button("Delete…", role: .destructive) {
+            customerToDelete = customer
+            confirmDelete = true
+        }
+    }
+
+    private var deleteQuestion: String {
+        "Delete \(customerToDelete?.name ?? "this customer")? Their jobs are kept without a customer."
+    }
+
+    private func deletePendingCustomer() {
+        guard let customer = customerToDelete else { return }
+        if selection == customer { selection = nil }
+        customer.remove(from: context)
+        customerToDelete = nil
     }
 }
 

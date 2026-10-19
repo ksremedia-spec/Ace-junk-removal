@@ -80,8 +80,7 @@ struct CustomerEditView: View {
 
     private func delete() {
         if let customer {
-            context.delete(customer)
-            try? context.save()
+            customer.remove(from: context)
             onDelete?()
         }
         dismiss()

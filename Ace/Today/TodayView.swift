@@ -1,7 +1,8 @@
 import SwiftData
 import SwiftUI
 
-/// The day at a glance: dumpsters that need attention, today's jobs, tomorrow's.
+/// The day at a glance: the numbers, what is owed, dumpsters that need
+/// attention, today's jobs, tomorrow's.
 struct TodayView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Job.scheduledAt) private var jobs: [Job]
@@ -28,8 +29,25 @@ struct TodayView: View {
         return jobs.filter { !$0.isDone && $0.scheduledAt < today }
     }
 
+    /// Done jobs that have not been paid.
+    private var owedJobs: [Job] {
+        jobs.filter { $0.owedAmount > 0 }
+    }
+
+    private var owedTotal: Double {
+        owedJobs.reduce(0) { $0 + $1.owedAmount }
+    }
+
     var body: some View {
         List {
+            numbersSection
+
+            if owedTotal > 0 {
+                Section("Owed") {
+                    Text(Money.text(owedTotal) + " from " + Plural.text(owedJobs.count, "job"))
+                }
+            }
+
             Section("Dumpsters") {
                 if attentionDumpsters.isEmpty {
                     Text(dumpsters.isEmpty ? "No dumpsters set up yet." : "Nothing due back today.")
@@ -96,5 +114,22 @@ struct TodayView: View {
                 JobEditView(job: nil)
             }
         }
+    }
+
+    /// "2 jobs today · $750" and, when any, "1 dumpster due back or overdue".
+    private var numbersSection: some View {
+        Section {
+            Text(todayLine)
+            if !attentionDumpsters.isEmpty {
+                Text(Plural.text(attentionDumpsters.count, "dumpster") + " due back or overdue")
+            }
+        }
+    }
+
+    private var todayLine: String {
+        var text = Plural.text(todaysJobs.count, "job") + " today"
+        let total = todaysJobs.priceTotal
+        if total > 0 { text += " · " + Money.text(total) }
+        return text
     }
 }
