@@ -7,6 +7,9 @@ struct JobEditView: View {
     @Environment(\.dismiss) private var dismiss
 
     let job: Job?
+    /// Called with the job after Save, before the form closes. Booking a
+    /// quote uses it to mark the quote booked; Cancel never calls it.
+    private let onSaved: ((Job) -> Void)?
     @State private var form: JobFormData
     @State private var showingCustomerPicker = false
     @State private var confirmDelete = false
@@ -14,8 +17,9 @@ struct JobEditView: View {
 
     private var isNew: Bool { job == nil }
 
-    init(job: Job?, prefill: JobFormData? = nil) {
+    init(job: Job?, prefill: JobFormData? = nil, onSaved: ((Job) -> Void)? = nil) {
         self.job = job
+        self.onSaved = onSaved
         _form = State(initialValue: prefill ?? JobFormData(job: job))
     }
 
@@ -123,6 +127,7 @@ struct JobEditView: View {
         form.apply(to: target)
         try? context.save()
         saved.toggle()
+        onSaved?(target)
         dismiss()
     }
 

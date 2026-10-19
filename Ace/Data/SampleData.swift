@@ -1,14 +1,15 @@
 import Foundation
 import SwiftData
 
-/// Example customers, jobs and dumpster rentals for showing the app before
-/// real data exists. Loaded and removed from Settings › Debug.
+/// Example customers, jobs, quotes and dumpster rentals for showing the app
+/// before real data exists. Loaded and removed from Settings › Debug.
 ///
-/// Six customers, a week of jobs and three current rentals are written by
-/// hand, so the Today screen always shows the same thing. About 600 more
-/// customers, two years of past jobs and the dumpsters' past rentals are
-/// generated from fixed name and street lists with a seeded random number
-/// generator, so they come out the same every time too.
+/// Six customers, a week of jobs, six quotes and three current rentals are
+/// written by hand, so the Today and Quotes screens always show the same
+/// thing. About 600 more customers, two years of past jobs and the
+/// dumpsters' past rentals are generated from fixed name and street lists
+/// with a seeded random number generator, so they come out the same every
+/// time too.
 enum SampleData {
     static func load(into context: ModelContext) {
         let calendar = Calendar.current
@@ -45,6 +46,23 @@ enum SampleData {
             spec.job.customer = customers[spec.customer]
         }
         jobSpecs[6].job.isDone = true
+
+        // Quotes for the same six customers: two to call back (one overdue,
+        // one today), two waiting, one booked as the Keanes' job tomorrow,
+        // and one lost. Inserted first and connected after, like the jobs.
+        let quoteSpecs: [(customer: Int, quote: Quote)] = [
+            (1, Quote(jobType: .demolition, details: "Take down the old shed and haul it away", price: 1200, quotedOn: day(-6), followUpOn: day(-2))),
+            (4, Quote(jobType: .junkRemoval, details: "Garage cleanout, about two loads", price: 650, quotedOn: day(-3), followUpOn: day(0))),
+            (5, Quote(jobType: .junkRemoval, details: "Basement furniture and an old piano", price: 850, quotedOn: day(-2), followUpOn: day(4))),
+            (3, Quote(jobType: .junkRemoval, details: "Three apartments to clear when the tenants move out", quotedOn: day(-1), notes: "Price after Alex walks through")),
+            (2, Quote(jobType: .junkRemoval, details: "Garage cleanout, lots of paint cans", price: 525, quotedOn: day(-8), status: .booked)),
+            (0, Quote(jobType: .junkRemoval, details: "Hot tub removal", price: 400, quotedOn: day(-20), status: .lost, notes: "Went with someone cheaper")),
+        ]
+        for spec in quoteSpecs {
+            context.insert(spec.quote)
+            spec.quote.customer = customers[spec.customer]
+        }
+        quoteSpecs[4].quote.job = jobSpecs[2].job
 
         var dumpsters: [Dumpster] = []
         for number in 1...6 {
@@ -90,6 +108,7 @@ enum SampleData {
     /// Deletes record by record (not as a batch), so relationships are
     /// cleaned up and nothing is left behind without its customer.
     static func clear(context: ModelContext) {
+        deleteAll(Quote.self, in: context)
         deleteAll(RentalRecord.self, in: context)
         deleteAll(Job.self, in: context)
         deleteAll(Dumpster.self, in: context)

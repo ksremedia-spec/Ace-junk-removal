@@ -78,6 +78,7 @@ jobs:
           shot "7-speech-test" -open speech
           shot "8-claude-test" -open claude -debug.transcript "$TRANSCRIPT"
           shot "9-new-job" -open newjob
+          shot "10-quotes" -open quotes
           ls -la docs/screenshots
 
       - name: Build the Mac app and photograph its screens
@@ -121,6 +122,7 @@ jobs:
           macshot "mac-4-dumpsters" -open dumpsters
           macshot "mac-5-assistant" -open assistant
           macshot "mac-6-new-job" -open newjob
+          macshot "mac-7-quotes" -open quotes
           ls -la docs/screenshots
 
       - name: Save the screenshots into the repository

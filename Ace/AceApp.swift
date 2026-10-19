@@ -8,7 +8,7 @@ struct AceApp: App {
 
     init() {
         do {
-            container = try ModelContainer(for: Customer.self, Job.self, Dumpster.self, RentalRecord.self)
+            container = try ModelContainer(for: Customer.self, Job.self, Dumpster.self, RentalRecord.self, Quote.self)
         } catch {
             fatalError("The app's database could not be opened: \(error.localizedDescription)")
         }

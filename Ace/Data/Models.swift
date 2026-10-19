@@ -1,10 +1,10 @@
 import Foundation
 import SwiftData
 
-// The three things the business keeps track of. Stored on the device with
-// SwiftData (Apple's on-device database), so the app works offline. Every
-// record carries `updatedAt` so a later sync to the Cloudflare backend can
-// tell what changed.
+// The things the business keeps track of (quotes are in Quote.swift).
+// Stored on the device with SwiftData (Apple's on-device database), so the
+// app works offline. Every record carries `updatedAt` so a later sync to the
+// Cloudflare backend can tell what changed.
 
 // MARK: - Customer
 
@@ -27,6 +27,10 @@ final class Customer {
 
     @Relationship(deleteRule: .nullify, inverse: \RentalRecord.customer)
     var rentals: [RentalRecord] = []
+
+    /// Deleting a customer leaves their quotes without a customer, as with jobs.
+    @Relationship(deleteRule: .nullify, inverse: \Quote.customer)
+    var quotes: [Quote] = []
 
     init(name: String, phone: String = "", address: String = "", notes: String = "") {
         self.name = name
@@ -80,6 +84,11 @@ final class Job {
     var notes: String
     var createdAt: Date
     var updatedAt: Date
+
+    /// The quote this job was booked from, if any. Declared here so that
+    /// deleting the job clears the quote's link (the quote stays booked).
+    @Relationship(deleteRule: .nullify, inverse: \Quote.job)
+    var quote: Quote? = nil
 
     init(customer: Customer?,
          jobType: JobType,
@@ -331,8 +340,8 @@ extension Customer {
         return components?.url
     }
 
-    /// Deletes the customer and saves. Their jobs, dumpsters and rental
-    /// records stay and lose the customer (the `.nullify` rules above).
+    /// Deletes the customer and saves. Their jobs, quotes, dumpsters and
+    /// rental records stay and lose the customer (the `.nullify` rules above).
     /// Every delete path calls this so they all behave the same.
     func remove(from context: ModelContext) {
         context.delete(self)

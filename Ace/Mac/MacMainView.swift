@@ -7,7 +7,7 @@ import SwiftUI
 /// The Mac layout: sidebar, list, detail, like Mail and Notes.
 struct MacMainView: View {
     enum SidebarItem: String, CaseIterable, Identifiable {
-        case today, jobs, unpaid, done, customers, dumpsters
+        case today, jobs, unpaid, done, quotes, customers, dumpsters
 
         var id: String { rawValue }
 
@@ -17,6 +17,7 @@ struct MacMainView: View {
             case .jobs: return "Jobs"
             case .unpaid: return "Unpaid"
             case .done: return "Done"
+            case .quotes: return "Quotes"
             case .customers: return "Customers"
             case .dumpsters: return "Dumpsters"
             }
@@ -28,6 +29,7 @@ struct MacMainView: View {
             case .jobs: return "calendar"
             case .unpaid: return "dollarsign.circle"
             case .done: return "checkmark.circle"
+            case .quotes: return "doc.text"
             case .customers: return "person.2"
             case .dumpsters: return "shippingbox"
             }
@@ -64,10 +66,12 @@ struct MacMainView: View {
     @State private var selectedJob: Job?
     @State private var selectedCustomer: Customer?
     @State private var selectedDumpster: Dumpster?
+    @State private var selectedQuote: Quote?
     @State private var selectedTodayItem: TodayItem?
     @State private var showingAssistant = false
     @State private var showingNewJob = false
     @State private var showingNewCustomer = false
+    @State private var showingNewQuote = false
     @State private var searchText = ""
     @FocusState private var searchFocused: Bool
     @State private var handledLaunchArguments = false
@@ -135,8 +139,15 @@ struct MacMainView: View {
             }
             .frame(minWidth: 480, minHeight: 420)
         }
+        .sheet(isPresented: $showingNewQuote) {
+            NavigationStack {
+                QuoteEditView(quote: nil)
+            }
+            .frame(minWidth: 480, minHeight: 560)
+        }
         .onReceive(NotificationCenter.default.publisher(for: .aceNewJob)) { _ in showingNewJob = true }
         .onReceive(NotificationCenter.default.publisher(for: .aceNewCustomer)) { _ in showingNewCustomer = true }
+        .onReceive(NotificationCenter.default.publisher(for: .aceNewQuote)) { _ in showingNewQuote = true }
         .onReceive(NotificationCenter.default.publisher(for: .aceAssistant)) { _ in showingAssistant = true }
         .onReceive(NotificationCenter.default.publisher(for: .aceFind)) { _ in searchFocused = true }
         .onAppear {
@@ -156,6 +167,7 @@ struct MacMainView: View {
             sidebarRow(.jobs)
             sidebarRow(.unpaid, indented: true)
             sidebarRow(.done, indented: true)
+            sidebarRow(.quotes)
             sidebarRow(.customers)
             sidebarRow(.dumpsters)
         }
@@ -187,6 +199,9 @@ struct MacMainView: View {
         case .jobs, .unpaid, .done:
             MacJobsList(selection: $selectedJob, filter: jobsFilter, searchText: searchText)
                 .navigationTitle(section.title)
+        case .quotes:
+            MacQuotesList(selection: $selectedQuote, searchText: searchText)
+                .navigationTitle("Quotes")
         case .customers:
             MacCustomersList(selection: $selectedCustomer, searchText: searchText)
                 .navigationTitle("Customers")
@@ -216,6 +231,13 @@ struct MacMainView: View {
                     .id(job.persistentModelID)
             } else {
                 placeholder("Select a job, or press ⌘N for a new one.")
+            }
+        case .quotes:
+            if let quote = selectedQuote {
+                QuoteEditView(quote: quote, onDeleted: { selectedQuote = nil })
+                    .id(quote.persistentModelID)
+            } else {
+                placeholder("Select a quote.")
             }
         case .customers:
             if let customer = selectedCustomer {
@@ -415,6 +437,158 @@ struct MacJobsList: View {
         JobRow(job: job)
             .tag(job)
             .contextMenu { JobContextMenu(job: job) }
+    }
+}
+
+/// Quotes: open (follow up first, then waiting), booked or lost. Same
+/// sections and order as the iPhone list; right-click for Book Job, Mark
+/// Lost or Reopen, and Delete.
+struct MacQuotesList: View {
+    @Environment(\.modelContext) private var context
+    @Query(sort: \Quote.quotedOn) private var quotes: [Quote]
+    @Binding var selection: Quote?
+    var searchText: String
+
+    @State private var filter: QuoteStatus = .open
+    @State private var quoteToBook: Quote?
+    /// "Quote marked lost." and the like, shown under the switch for a moment.
+    @State private var notice: String?
+    @State private var changed = 0
+
+    private var filtered: [Quote] { QuoteSearch.filter(quotes, searchText) }
+    private var shown: [Quote] { QuoteList.shown(filtered, status: filter) }
+    private var followUp: [Quote] { QuoteList.followUp(shown) }
+    private var waiting: [Quote] { QuoteList.waiting(shown) }
+
+    var body: some View {
+        List(selection: $selection) {
+            Section {
+                Picker("Show", selection: $filter) {
+                    ForEach(QuoteStatus.allCases) { status in
+                        Text(status.rawValue).tag(status)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+            } header: {
+                if let header = QuoteList.header(shown, status: filter) {
+                    Text(header)
+                }
+            } footer: {
+                if let notice {
+                    Text(notice)
+                }
+            }
+
+            switch filter {
+            case .open:
+                if !followUp.isEmpty {
+                    Section("Follow up") {
+                        ForEach(followUp) { quote in
+                            row(quote)
+                        }
+                    }
+                }
+                if !waiting.isEmpty {
+                    Section("Waiting") {
+                        ForEach(waiting) { quote in
+                            row(quote)
+                        }
+                    }
+                }
+            case .booked, .lost:
+                if !shown.isEmpty {
+                    Section {
+                        ForEach(shown) { quote in
+                            row(quote)
+                        }
+                    }
+                }
+            }
+
+            if shown.isEmpty {
+                Section {
+                    Text(emptyText)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .sheet(item: $quoteToBook) { quote in
+            NavigationStack {
+                JobEditView(job: nil, prefill: QuoteFormData(quote: quote).newJobForm, onSaved: { job in
+                    book(quote, with: job)
+                })
+            }
+            .frame(minWidth: 480, minHeight: 560)
+        }
+        .sensoryFeedback(.success, trigger: changed)
+    }
+
+    private var emptyText: String {
+        searchText.isEmpty ? "No \(filter.rawValue.lowercased()) quotes." : "No matching quotes."
+    }
+
+    private func row(_ quote: Quote) -> some View {
+        QuoteRow(quote: quote)
+            .tag(quote)
+            .contextMenu { contextMenu(for: quote) }
+    }
+
+    @ViewBuilder
+    private func contextMenu(for quote: Quote) -> some View {
+        if quote.status == .open {
+            Button("Book Job") {
+                quoteToBook = quote
+            }
+            Button("Mark Lost") {
+                markLost(quote)
+            }
+        } else {
+            Button("Reopen") {
+                reopen(quote)
+            }
+        }
+        Divider()
+        Button("Delete Quote", role: .destructive) {
+            delete(quote)
+        }
+    }
+
+    private func markLost(_ quote: Quote) {
+        quote.markLost()
+        try? context.save()
+        changed += 1
+        showNotice("Quote marked lost.")
+    }
+
+    private func reopen(_ quote: Quote) {
+        quote.reopen()
+        try? context.save()
+        changed += 1
+        showNotice("Quote reopened.")
+    }
+
+    /// The New Job form opened by Book Job was saved. It gives its own haptic.
+    private func book(_ quote: Quote, with job: Job) {
+        quote.markBooked(with: job)
+        try? context.save()
+        showNotice("Job saved.")
+    }
+
+    /// Clears the selection first, so the detail column never shows a
+    /// deleted quote.
+    private func delete(_ quote: Quote) {
+        if selection == quote { selection = nil }
+        context.delete(quote)
+        try? context.save()
+    }
+
+    private func showNotice(_ text: String) {
+        notice = text
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3))
+            if notice == text { notice = nil }
+        }
     }
 }
 

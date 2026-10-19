@@ -1,11 +1,11 @@
 import SwiftData
 import SwiftUI
 
-/// The iPhone layout: four tabs, with the Assistant and Settings reachable
+/// The iPhone layout: five tabs, with the Assistant and Settings reachable
 /// from every tab's toolbar. The app reopens on the tab it was left on.
 struct MainView: View {
     enum AppTab: String {
-        case today, jobs, customers, dumpsters
+        case today, jobs, quotes, customers, dumpsters
     }
 
     /// Screens that can be pushed from a launch argument (testing aid) or
@@ -41,6 +41,12 @@ struct MainView: View {
             Tab("Jobs", systemImage: "calendar", value: AppTab.jobs) {
                 NavigationStack {
                     JobsView()
+                        .toolbar { toolbarItems(showSettings: false) }
+                }
+            }
+            Tab("Quotes", systemImage: "doc.text", value: AppTab.quotes) {
+                NavigationStack {
+                    QuotesView()
                         .toolbar { toolbarItems(showSettings: false) }
                 }
             }

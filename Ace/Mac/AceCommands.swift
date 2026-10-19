@@ -6,6 +6,7 @@ import SwiftUI
 extension Notification.Name {
     static let aceNewJob = Notification.Name("aceNewJob")
     static let aceNewCustomer = Notification.Name("aceNewCustomer")
+    static let aceNewQuote = Notification.Name("aceNewQuote")
     static let aceAssistant = Notification.Name("aceAssistant")
     static let aceFind = Notification.Name("aceFind")
 }
@@ -24,6 +25,11 @@ struct AceCommands: Commands {
                 NotificationCenter.default.post(name: .aceNewCustomer, object: nil)
             }
             .keyboardShortcut("n", modifiers: [.command, .shift])
+
+            // No shortcut: ⇧⌘Q and ⌥⌘Q belong to the system.
+            Button("New Quote") {
+                NotificationCenter.default.post(name: .aceNewQuote, object: nil)
+            }
 
             Button("New Window") {
                 openWindow(id: "main")
