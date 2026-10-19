@@ -9,11 +9,12 @@ order things get built. Research and decisions are written up in `docs/`.
 
 ## Status
 
-Step 1 written and compiling: a hidden Debug screen with a Speech test
-(record a clip, transcribe it with WhisperKit, see the time it took) and a
-Claude test (send the transcript to Haiku and Sonnet, see both filled-in job
-forms side by side). It compiles for iPhone and Mac on GitHub's build check
-(Xcode 26.6). It has not yet run on a device.
+Version 1 is written and compiling for iPhone and Mac: customers, jobs, the
+dumpster tracker with overweight charges, the Assistant (record a note, it
+is written down on the phone, Claude fills in the job form, you check and
+save), the Mac sidebar layout with keyboard shortcuts and menus, Settings,
+and sample data for demos. Not yet: cloud sync, Excel import, the Lock
+Screen / Action button shortcut. It has not yet run on a real device.
 
-To run it, follow `docs/run-on-your-mac.md`. Decisions so far are in
-`docs/decisions.md`.
+Start with `docs/status.md`. To run it, follow `docs/run-on-your-mac.md`.
+Decisions and why are in `docs/decisions.md`.

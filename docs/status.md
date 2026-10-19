@@ -3,49 +3,52 @@
 Updated 2026-10-18, late evening (US Eastern). Read this first in a new
 session; then `CLAUDE.md` for the rules and `decisions.md` for the why.
 
-## Done
+## Done (written and compiling; not yet run on a device)
 
-- Step 1 of the build order is written: Speech test (WhisperKit) and Claude
-  test (Haiku + Sonnet side by side) behind a Debug section, plus the API
-  key screen. `README.md` describes the screens; `run-on-your-mac.md` is
-  Kyle's guide for the first run.
-- I verified: the project compiles for iPhone and Mac on GitHub's build
-  check with Xcode 26.6 (runs #1, #2, #3 all green on 2026-10-18). The
-  check runs on every push that touches `Ace/` or the project file.
-- Reviewed: every file by independent reviewers (behavior bugs), and the
-  WhisperKit wrapper against the library's source. All confirmed findings
-  were fixed and are listed in the commit messages of 2026-10-18.
-- Research saved: `whisperkit-api.md` (source-verified) and
-  `platform-facts.md` (iOS/macOS minimums, device support, Xcode
-  requirements, free vs paid Apple account, controls and Action button,
-  Anthropic API, storage and sync; 7 topics, 11 claims fact-checked by three
-  independent checkers each). Read its "What this means for the plan"
-  section before step 2. Two things it changed: Apple's SpeechTranscriber is
-  not available on every iOS 26 phone (iPhone 11 and SE 2 fail), and the
-  current Xcode is 27.1, which needs an Apple silicon Mac on macOS 26.6+.
+- **Data (step 2):** customers, jobs, six dumpsters and rental history
+  stored on the device with SwiftData. `Ace/Data/`.
+- **iPhone screens (steps 3 and 4):** tab bar Today, Jobs, Customers,
+  Dumpsters; add/edit for jobs and customers; search; swipe to mark done or
+  delete; dumpster drop-off, due-back, overdue status, and the weigh-in at
+  pickup with the overweight charge (rate in Settings). `Ace/Today`,
+  `Ace/Jobs`, `Ace/Customers`, `Ace/Dumpsters`.
+- **Mac layout:** sidebar, list, detail (`Ace/Mac/MacMainView.swift`);
+  ⌘N new job, ⇧⌘N new customer, ⌥⌘N new window, ⌘F search, ⇧⌘A Assistant;
+  right-click menus on jobs and customers; Settings in the app menu (⌘,).
+  File › Import is a disabled placeholder until step 7.
+- **Assistant (step 6, first version):** toolbar button on every screen.
+  Record → WhisperKit transcribes on the phone → Claude fills the form
+  (structured output) → review screen with flagged fields in the warning
+  color → remaining problems asked one at a time as yes/no questions
+  (missing phone, missing price, past date, double booking, Claude's own
+  flags) → customer matched by phone or name, or created → job saved.
+  Spoken questions ("which dumpsters are due back Friday") are answered
+  from a snapshot of the records. Not yet: MapKit address completion,
+  Lock Screen / Control Center / Action button entry (step 8).
+- **Settings:** API key (Keychain), Claude model and effort, speech model,
+  overweight rate per ton, Debug (Speech test, Claude test, Load sample
+  data, Clear all data).
+- **Build checks:** every push compiles on GitHub's Macs with Xcode 26.6 and
+  27.1 for iPhone and Mac. Screenshots workflow photographs each screen in
+  the Simulator with sample data (`docs/screenshots/`).
+- Research saved: `whisperkit-api.md`, `platform-facts.md`.
+- Kyle's setup (confirmed 2026-10-18): paid Apple Developer Program;
+  iPhone 16 Pro Max on iOS 27.1; Xcode 27.1. Distribution: Ad Hoc.
 
-## Not done, and who is next
+## Not done
 
-- Nothing has run on a real device. Kyle runs it on his iPhone 16 Pro Max
-  (see `run-on-your-mac.md`) and reports: did it build, did a model load,
-  did a recording transcribe, did Claude fill the form. Any error text goes
-  back to the assistant verbatim.
-- Apple's SpeechTranscriber is not in the Speech test yet (decision of
-  2026-10-18: WhisperKit first). The row placeholder is there.
-- Kyle's setup (confirmed by Kyle, 2026-10-18): paid Apple Developer Program
-  member; iPhone 16 Pro Max on iOS 27.1; Xcode 27.1 on his Mac (so the Mac
-  is Apple silicon on macOS 26.6 or newer). Distribution will be Ad Hoc
-  (one install per device per year); see `platform-facts.md`.
+- Nothing has run on a real device. First run: `run-on-your-mac.md`.
+- Step 1's engine comparison (Apple SpeechTranscriber vs WhisperKit) is
+  still WhisperKit-only; the Debug screen has the placeholder row.
+- Step 5 Cloudflare sync. Step 7 Excel import. Step 8 one-tap entry.
+  Step 9 the text-size and dark-mode pass.
 - Open questions only Kyle can answer: Ashley's and Alex's iPhone models,
-  and Ashley's MacBook model and macOS version.
+  Ashley's MacBook model and macOS version, the Cloudflare account details,
+  the Excel column headings.
 
 ## Decisions pending Kyle's word
 
-- Keep or remove the Effort picker on the Claude test screen.
-- Keep or remove the GitHub build check (`.github/workflows/build.yml`).
+- Keep or remove the Effort picker (Claude test and Settings).
+- Keep or remove the GitHub build check and screenshot workflow.
+- Keep or remove "Load sample data" / "Clear all data" in Settings › Debug.
 - Exclude the downloaded speech models (up to 630 MB) from iCloud backup.
-
-## Next steps in the build order
-
-2. Data model and local storage for customers, jobs, dumpsters.
-3. Customers and jobs screens, iPhone first, then Mac.

@@ -51,9 +51,27 @@ step fails, copy the exact error text and send it to me.
 2. The first time, the phone shows "Untrusted Developer". On the phone go to
    Settings → General → VPN & Device Management → your Apple ID → Trust.
    Then press Run again.
-3. The app opens on the **Ace** screen with two sections: Assistant and Debug.
+3. The app opens on the **Today** tab. To fill it with example records for a
+   demo: gear (top left) → Settings → Debug → **Load sample data**.
 
-## Using the Debug screens
+## Using the app
+
+- **Today:** dumpsters due back or overdue, today's and tomorrow's jobs.
+- **Jobs:** every job, soonest first. Plus button for a new job; swipe
+  right to mark done, swipe left to delete.
+- **Customers:** search by name, phone or address. Tap for details and
+  their jobs.
+- **Dumpsters:** the six dumpsters. In the yard: fill the drop-off form.
+  Out: enter the weight at pickup, see the overweight charge, mark picked up.
+- **Assistant** (top right on every tab): add the API key first under
+  Settings. Tap Record, say the job, tap Stop. The first use downloads the
+  speech model (needs internet, a few minutes). You get the filled-in form;
+  flagged fields are in the warning color; Save asks any remaining
+  questions one at a time.
+- **On the Mac:** sidebar, list, detail. ⌘N new job, ⌘F search, ⇧⌘A
+  Assistant, Settings under the app menu.
+
+## Using the Debug screens (Settings › Debug)
 
 **Speech test**
 1. Pick a model. Start with `base.en`: it is small and quick. Tap **Load

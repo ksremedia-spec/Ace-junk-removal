@@ -3,6 +3,32 @@
 Short log of decisions and why, newest first. Written in plain English so it
 can be read later without the conversation.
 
+## 2026-10-18 (evening) · Build the real app now, iPhone and Mac together
+
+Kyle needs something to show the client, so steps 2, 3, 4 and the voice
+Assistant (step 6) were built in one pass rather than waiting for step 1
+results, and the Mac layout was built alongside the iPhone one rather than
+after it. The Assistant uses WhisperKit (per the earlier decision) and the
+Claude model chosen in Settings (Haiku by default, Sonnet as the switch).
+Step 1's Debug screens stay under Settings › Debug for the engine and model
+comparison on Kyle's phone.
+
+## 2026-10-18 (evening) · On-device storage: SwiftData
+
+Customers, jobs, dumpsters and rental history are stored with SwiftData,
+Apple's own on-device database. Reason: it fits SwiftUI with the least code
+and the least to go wrong before the deadline. The research sheet
+(`platform-facts.md`) preferred GRDB because sync needs a schema under our
+control; that still holds for step 5, where the plan is to sync by record
+id with `updatedAt` timestamps and a per-device change log, which SwiftData
+supports well enough. Revisit only if step 5 hits a wall.
+
+## 2026-10-18 (evening) · Sample data lives in Settings › Debug
+
+"Load sample data" fills the app with six dumpsters, six customers and a
+week of jobs for showing the client, and "Clear all data" empties it. Both
+ask for confirmation. Kyle's addition to approve or remove.
+
 ## 2026-10-18 · Tooling and distribution confirmed by Kyle
 
 Kyle has a paid Apple Developer Program membership, an iPhone 16 Pro Max on
