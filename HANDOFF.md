@@ -159,7 +159,8 @@ is in `docs/status.md`.
 1. Is there one business Google account (Gmail or Google Workspace), and do
    Ashley and Alex already have it on their phones and Ashley's Mac?
    Currently assumed yes.
-2. Ashley's spreadsheet column headings, for the Excel import.
+2. Ashley's spreadsheet column headings, for the Excel import. (A guessed
+   test sheet is in `test-data/` for now; rebuild it to match once known.)
 3. The Cloudflare account details, for sync and the demo relay. Free or
    paid Workers plan?
 4. Ashley's and Alex's iPhone models (does either have an Action button?),
@@ -239,6 +240,11 @@ is in `docs/status.md`.
   - `run-on-your-mac.md`: Kyle's guide to building and running the app.
   - `screenshots/`: Simulator pictures, morning of Oct 19.
   - `demo-relay/`: the Cloudflare Worker for the demo.
+- `test-data/`: a fake stand-in for Ashley's spreadsheet, for trying the
+  Excel import (step 7) without her real file. Made-up customers only; the
+  layout is a guess until her headings are known (Kyle, Oct 19: "reasonable
+  test for now"). `README.md` there lists the mess it holds and an answer
+  key; `make_test_sheet.py` rebuilds it.
 - `demo/`: the demo pages and their automatic checks. See `demo/README.md`.
   - Clickable demo (shared with the client):
     https://claude.ai/artifact/Mv1yKwDUgPyxR2jaj8qQ3j
