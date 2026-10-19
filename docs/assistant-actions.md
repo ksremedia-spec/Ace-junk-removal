@@ -152,6 +152,15 @@ allow other properties.
 }
 ```
 
+Checked against Anthropic's structured-outputs page (2026-10-19,
+https://platform.claude.com/docs/en/build-with-claude/structured-outputs):
+this schema has no optional parameters (limit 24) and no union types
+(limit 16); a schema that is too large for the grammar gets a 400 "Schema is
+too complex for compilation", which has not been seen yet because no real
+request has been made from the cloud session. Enum values can come back with
+different capitals ("Junk Removal" for "Junk removal"), so the app compares
+every enum value without case.
+
 ## The instructions sent to Claude (system prompt)
 
 `{today}` is like "Monday, October 19, 2026", `{zone}` the time zone name,
