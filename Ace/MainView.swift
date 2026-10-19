@@ -98,7 +98,8 @@ struct MainView: View {
 
     /// Testing aid for screenshots. `-open jobs` selects a tab; `-open settings`
     /// (or apikey, speech, claude) pushes that screen on the Today tab;
-    /// `-open assistant` shows the Assistant; `-sampledata` loads the sample
+    /// `-open assistant` shows the Assistant; `-open newjob` opens a blank new
+    /// job on the Jobs tab; `-sampledata` loads the sample
     /// records first. Normal launches carry none of these and nothing happens.
     private func handleLaunchArguments() {
         guard !handledLaunchArguments else { return }
@@ -120,6 +121,9 @@ struct MainView: View {
 
         if let tab = AppTab(rawValue: name) {
             lastTabRaw = tab.rawValue
+        } else if name == "newjob" {
+            // The Jobs tab opens the blank form itself (see JobsView).
+            lastTabRaw = AppTab.jobs.rawValue
         } else if name == "assistant" {
             showingAssistant = true
         } else if let screen = Screen(rawValue: name) {

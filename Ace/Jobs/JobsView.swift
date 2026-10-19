@@ -57,6 +57,23 @@ struct JobsView: View {
                 JobEditView(job: nil)
             }
         }
+        .onAppear {
+            // Give the tab a moment to settle before the sheet opens.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { openNewJobIfAsked() }
+        }
+    }
+
+    /// Screenshot aid: a launch with `-open newjob` opens a blank new job
+    /// once. Normal launches carry no such argument and nothing happens.
+    private static var openedNewJobFromLaunch = false
+
+    private func openNewJobIfAsked() {
+        guard !Self.openedNewJobFromLaunch else { return }
+        Self.openedNewJobFromLaunch = true
+        let args = ProcessInfo.processInfo.arguments
+        let asked = args.contains("-open=newjob")
+            || zip(args, args.dropFirst()).contains { $0.0 == "-open" && $0.1.lowercased() == "newjob" }
+        if asked { showingNewJob = true }
     }
 
     // MARK: Sections

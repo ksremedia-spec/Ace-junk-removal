@@ -241,7 +241,8 @@ struct MacMainView: View {
     }
 
     /// Same testing aid as on iPhone: `-sampledata` loads the sample records,
-    /// `-open jobs` picks a sidebar item, `-open assistant` shows the Assistant.
+    /// `-open jobs` picks a sidebar item, `-open assistant` shows the Assistant,
+    /// `-open newjob` opens a blank new job.
     private func handleLaunchArguments() {
         guard !handledLaunchArguments else { return }
         handledLaunchArguments = true
@@ -261,6 +262,9 @@ struct MacMainView: View {
             sidebarRaw = item.rawValue
         } else if name == "assistant" {
             showingAssistant = true
+        } else if name == "newjob" {
+            sidebarRaw = SidebarItem.jobs.rawValue
+            showingNewJob = true
         }
     }
 }
