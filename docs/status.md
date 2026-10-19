@@ -1,6 +1,7 @@
 # Where things stand
 
-Updated 2026-10-19, about 20:00 UTC (about 16:00 US Eastern). Read this first in a new
+Updated 2026-10-19, about 20:30 UTC (about 16:30 US Eastern), as Kyle moves
+from the cloud session to his Mac. Read this first in a new
 session; then `CLAUDE.md` for the rules and `decisions.md` for the why.
 
 ## Done (written and compiling; not yet run on a device)
@@ -161,6 +162,15 @@ session; then `CLAUDE.md` for the rules and `decisions.md` for the why.
   still WhisperKit-only; the Debug screen has the placeholder row.
 - Step 5 Cloudflare sync. Step 7 Excel import. Step 8 one-tap entry.
   Step 9 the text-size and dark-mode pass.
+- Google Calendar: one business Google account on every device is assumed
+  (Kyle: "im assuming yes but TBD"). One-time setup steps are in
+  `calendar.md` section 5; the device tests that settle the unknowns are at
+  the end of `calendar.md`.
+- The client Preview page and the phone slideshow (`demo/`) still show the
+  old Today tab, with no Quotes, end times or Calendar. The clickable demo
+  is current (version 21). See `demo/README.md`.
+- The demo relay (`docs/demo-relay/`) waits on Kyle setting up the
+  Cloudflare Worker.
 - Open questions only Kyle can answer: Ashley's and Alex's iPhone models,
   Ashley's MacBook model and macOS version, the Cloudflare account details,
   the Excel column headings.
