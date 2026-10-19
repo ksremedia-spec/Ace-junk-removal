@@ -300,9 +300,10 @@ Totals: owed $19,550 from 31 jobs; done this week $2,140 from 6 jobs; booked tod
   saved."), and on the Mac the changed record is selected.
 - cancel_job removes the job after a confirmation alert.
 - new_quote: the New Quote form, filled in. A reference wins; otherwise the
-  customer is matched by phone, then name, then address, like a new job. When
-  nobody matches, saving adds a customer with the name, phone and address
-  said. Quoted is today. The call-back day is the one said, else three days
+  customer is matched the way the new-job form matches: the same phone
+  number, or the same full name. A shared last name or an address alone is
+  not enough, so a quote never lands on a different person. When nobody
+  matches, saving adds a customer with the name, phone and address said. Quoted is today. The call-back day is the one said, else three days
   out (shown, not flagged). Confirmation "Quote saved."
 - update_quote: finds the quote by its reference; otherwise among open
   quotes by the customer's phone, name or address ("Which quote?" for
