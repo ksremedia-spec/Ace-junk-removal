@@ -23,8 +23,10 @@ struct JobReviewView: View {
     @State private var jobType: JobType
     @State private var date: Date
     @State private var hasTime: Bool
-    /// The length in minutes; 0 follows the job type's default.
-    @State private var minutes: Int
+    /// "Set an end time", on when an end time was said.
+    @State private var hasEnd: Bool
+    /// The Ends picker; only its clock time is used, on the job's day.
+    @State private var endTime: Date
     @State private var priceText: String
     @State private var paymentType: PaymentType
     @State private var isPaid: Bool
@@ -37,7 +39,7 @@ struct JobReviewView: View {
         var jobType: JobType
         var date: Date
         var hasTime: Bool
-        var minutes: Int
+        var endDate: Date?
         var price: Double?
         var paymentType: PaymentType
         var isPaid: Bool
@@ -65,12 +67,13 @@ struct JobReviewView: View {
         let parsedType = JobType.allCases.first { $0.rawValue.caseInsensitiveCompare(draft.jobType) == .orderedSame } ?? .junkRemoval
         let parsedPayment = Self.payment(from: draft.paymentType)
         let parsedPaid = draft.paid.lowercased() == "paid"
-        let parsedMinutes = JobLength.minutes(fromHours: draft.hours) ?? 0
+        // An end time only counts with a start time; nothing is assumed.
+        let parsedEnd = parsedDate.hasTime ? JobTimes.end(fromClock: draft.endTime, on: parsedDate.date) : nil
         original = Original(
             jobType: parsedType,
             date: parsedDate.date,
             hasTime: parsedDate.hasTime,
-            minutes: parsedMinutes,
+            endDate: parsedEnd,
             price: Parse.money(draft.price),
             paymentType: parsedPayment,
             isPaid: parsedPaid
@@ -82,7 +85,8 @@ struct JobReviewView: View {
         _jobType = State(initialValue: parsedType)
         _date = State(initialValue: parsedDate.date)
         _hasTime = State(initialValue: parsedDate.hasTime)
-        _minutes = State(initialValue: parsedMinutes)
+        _hasEnd = State(initialValue: parsedEnd != nil)
+        _endTime = State(initialValue: parsedEnd ?? JobTimes.suggestedEnd(after: parsedDate.date))
         _priceText = State(initialValue: draft.price)
         _paymentType = State(initialValue: parsedPayment)
         _isPaid = State(initialValue: parsedPaid)
@@ -127,9 +131,7 @@ struct JobReviewView: View {
                     field("time") {
                         DatePicker("Time", selection: $date, displayedComponents: .hourAndMinute)
                     }
-                    field("hours") {
-                        JobLengthPicker(minutes: $minutes, jobType: jobType)
-                    }
+                    EndTimeRows(hasEnd: $hasEnd, endTime: $endTime, start: date, note: questions[Self.key("endTime")])
                     OverlapNote(overlapping: overlapping)
                 } else if let question = questions[Self.key("time")] {
                     Text(question)
@@ -170,6 +172,7 @@ struct JobReviewView: View {
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save") { beginSave() }
+                    .disabled(!endIsValid)
             }
         }
         .alert(current?.text ?? "", isPresented: $showingQuestion) {
@@ -220,15 +223,20 @@ struct JobReviewView: View {
 
     // MARK: Overlaps
 
-    /// The length How long shows: the one picked or said, or the type's default.
-    private var lengthMinutes: Int {
-        minutes > 0 ? minutes : jobType.defaultMinutes
+    /// The end time to save, on the job's day; nil without one.
+    private var endDate: Date? {
+        hasTime ? JobTimes.end(start: date, hasEnd: hasEnd, endTime: endTime) : nil
     }
 
-    /// Unfinished timed jobs that day this one would overlap.
+    /// False while an end time is set that is not after the start.
+    private var endIsValid: Bool {
+        !hasTime || JobTimes.endIsValid(start: date, hasEnd: hasEnd, endTime: endTime)
+    }
+
+    /// Unfinished timed jobs that day this one would clash with.
     private var overlapping: [Job] {
         guard hasTime else { return [] }
-        return JobOverlap.find(start: date, minutes: lengthMinutes, excluding: nil, in: jobs)
+        return JobOverlap.find(start: date, end: endDate, excluding: nil, in: jobs)
     }
 
     // MARK: Matching
@@ -307,8 +315,8 @@ struct JobReviewView: View {
             return !Calendar.current.isDate(date, inSameDayAs: original.date)
         case "time":
             return hasTime && (!original.hasTime || date != original.date)
-        case "hours":
-            return minutes != original.minutes
+        case "endtime":
+            return endDate != original.endDate
         case "price":
             return Parse.money(priceText) != original.price && Parse.money(priceText) != nil
         case "paymenttype":
@@ -377,7 +385,7 @@ struct JobReviewView: View {
         )
         context.insert(job)
         job.customer = customer
-        job.durationMinutes = minutes
+        job.endsAt = endDate
         try? context.save()
         saved.toggle()
         onSaved()

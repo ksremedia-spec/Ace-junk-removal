@@ -85,10 +85,10 @@ final class Job {
     var createdAt: Date
     var updatedAt: Date
 
-    /// How long the job takes, in whole minutes. 0 means not set: the job
-    /// then takes its type's default length (see JobLength.swift). Matters
-    /// only when `hasTime` is on.
-    var durationMinutes: Int = 0
+    /// When the work ends, if an end time was picked or said. Nil means no
+    /// end time: the job is its start time only (see JobTimes.swift). Same
+    /// day as the start and later than it; matters only when `hasTime` is on.
+    var endsAt: Date? = nil
 
     /// The quote this job was booked from, if any. Declared here so that
     /// deleting the job clears the quote's link (the quote stays booked).
@@ -126,7 +126,7 @@ final class Job {
         set { paymentTypeRaw = newValue.rawValue }
     }
 
-    /// "Fri, Oct 24, 9:00 to 11:00 AM" or "Fri, Oct 24".
+    /// "Fri, Oct 24, 9:00 to 11:00 AM", "Fri, Oct 24, 9:00 AM" or "Fri, Oct 24".
     var whenText: String {
         let day = scheduledAt.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
         return hasTime ? day + ", " + timeRangeText : day

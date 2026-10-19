@@ -29,7 +29,7 @@ struct AssistantAction: Codable, Identifiable {
     var jobType = ""
     var date = ""
     var time = ""
-    var hours = ""
+    var endTime = ""
     var price = ""
     var paymentType = ""
     var paid = ""
@@ -56,7 +56,7 @@ struct AssistantAction: Codable, Identifiable {
     var id: Int { index }
 
     enum CodingKeys: String, CodingKey {
-        case type, ref, customerName, phone, address, jobType, date, time, hours, price, paymentType, paid, done
+        case type, ref, customerName, phone, address, jobType, date, time, endTime, price, paymentType, paid, done
         case newDate, newTime, dumpsterNumber, otherDumpsterNumber, actualTons, agreedTons, dueBack
         case followUp, quoteStatus, note
         case newName, newPhone, newAddress, contact, message
@@ -103,7 +103,7 @@ struct AssistantAction: Codable, Identifiable {
         var fieldsOnScreen: Set<String>? {
             switch self {
             case .newJob: return nil
-            case .updateJob: return ["done", "paid", "jobtype", "paymenttype", "price", "newdate", "newtime", "hours", "note"]
+            case .updateJob: return ["done", "paid", "jobtype", "paymenttype", "price", "newdate", "newtime", "endtime", "note"]
             case .cancelJob: return ["ref"]
             case .newCustomer: return ["customername", "phone", "address", "note"]
             case .updateCustomer: return ["ref", "newname", "newphone", "newaddress", "note"]
@@ -114,7 +114,7 @@ struct AssistantAction: Codable, Identifiable {
             case .updateRental: return ["dumpsternumber", "ref", "dueback", "price", "agreedtons", "newaddress", "note"]
             case .dumpsterNote: return ["dumpsternumber", "ref", "note"]
             case .newQuote: return ["customername", "phone", "address", "jobtype", "price", "note", "followup"]
-            case .updateQuote: return ["ref", "price", "followup", "note", "date", "time", "hours", "paymenttype", "paid"]
+            case .updateQuote: return ["ref", "price", "followup", "note", "date", "time", "endtime", "paymenttype", "paid"]
             }
         }
     }
@@ -132,7 +132,7 @@ struct AssistantAction: Codable, Identifiable {
     var filledFields: [Field] {
         let all: [(String, String)] = [
             ("ref", ref), ("customerName", customerName), ("phone", phone), ("address", address),
-            ("jobType", jobType), ("date", date), ("time", time), ("hours", hours), ("price", price),
+            ("jobType", jobType), ("date", date), ("time", time), ("endTime", endTime), ("price", price),
             ("paymentType", paymentType), ("paid", paid), ("done", done), ("newDate", newDate),
             ("newTime", newTime), ("dumpsterNumber", dumpsterNumber), ("otherDumpsterNumber", otherDumpsterNumber),
             ("actualTons", actualTons), ("agreedTons", agreedTons), ("dueBack", dueBack),
@@ -160,7 +160,7 @@ extension AssistantAction {
         jobType = text(.jobType)
         date = text(.date)
         time = text(.time)
-        hours = text(.hours)
+        endTime = text(.endTime)
         price = text(.price)
         paymentType = text(.paymentType)
         paid = text(.paid)
@@ -230,7 +230,7 @@ extension AssistantAction {
             jobType: jobType,
             date: date,
             time: time,
-            hours: hours,
+            endTime: endTime,
             price: price,
             paymentType: paymentType.isEmpty ? "unknown" : paymentType,
             paid: paidText,
@@ -284,7 +284,7 @@ extension AssistantPlan {
         "jobType": oneOf(["Junk removal", "Demolition", "Dumpster drop-off", "Dumpster pickup", "Dumpster swap", "Estimate", "Other", ""]),
         "date": string("YYYY-MM-DD: the day of a new job, or the day of the job meant, or empty."),
         "time": string("HH:MM, 24-hour, or empty."),
-        "hours": string("Length of the job in hours as digits, like 2 or 1.5, or empty."),
+        "endTime": string("HH:MM, 24-hour: when the job ends, or empty."),
         "price": string("Dollars as digits, like 300, or empty."),
         "paymentType": oneOf(["cash", "check", "card", ""]),
         "paid": oneOf(["yes", "no", ""]),
@@ -307,12 +307,12 @@ extension AssistantPlan {
     ]
 
     private static let actionRequired: [String] = [
-        "type", "ref", "customerName", "phone", "address", "jobType", "date", "time", "hours", "price", "paymentType", "paid", "done", "newDate", "newTime", "dumpsterNumber", "otherDumpsterNumber", "actualTons", "agreedTons", "dueBack", "followUp", "quoteStatus", "note", "newName", "newPhone", "newAddress", "contact", "message",
+        "type", "ref", "customerName", "phone", "address", "jobType", "date", "time", "endTime", "price", "paymentType", "paid", "done", "newDate", "newTime", "dumpsterNumber", "otherDumpsterNumber", "actualTons", "agreedTons", "dueBack", "followUp", "quoteStatus", "note", "newName", "newPhone", "newAddress", "contact", "message",
     ]
 
     private static let issueProperties: [String: Any] = [
         "action": integer("Position of the action in the list, 0 for the first."),
-        "field": oneOf(["customerName", "phone", "address", "jobType", "date", "time", "hours", "price", "paymentType", "paid", "done", "newDate", "newTime", "dumpsterNumber", "otherDumpsterNumber", "actualTons", "agreedTons", "dueBack", "followUp", "note", "newName", "newPhone", "newAddress", "ref"]),
+        "field": oneOf(["customerName", "phone", "address", "jobType", "date", "time", "endTime", "price", "paymentType", "paid", "done", "newDate", "newTime", "dumpsterNumber", "otherDumpsterNumber", "actualTons", "agreedTons", "dueBack", "followUp", "note", "newName", "newPhone", "newAddress", "ref"]),
         "question": string("One short plain yes/no question."),
     ]
 
@@ -371,8 +371,8 @@ extension AssistantPlan {
         The records sent with the note list dumpsters, jobs, open quotes and customers, each with a reference like D3, J12, Q2 or C4. When an action is about a record in the list, put its reference in "ref". When the note names someone or something not in the list, leave "ref" empty and fill in the name, phone, address or dumpster number as said; the app looks it up.
 
         Actions:
-        - new_job: book new work. Fill customerName, phone and address as said, jobType, date, time, hours (how long it will take, when said), price, paymentType, paid and note. A dumpster delivery, pickup or swap booked for later is a new_job with that jobType. An on-site quote visit is jobType "Estimate". A call-back or reminder is jobType "Other" on that day, with the reason in note.
-        - update_job: change a job that exists. done "yes" when it is finished, "no" when it is not finished after all. paid "yes" when it was paid, with paymentType and, if an amount was said, price; paid "no" when payment did not happen or a check bounced. newDate and newTime when it moved. hours when how long it takes changed. price when the price changed. jobType when the kind of work changed. note for anything to write down: a no-show, a dump fee, an extra item, a promise to pay later. Being paid on site means the work is done. Fill only what changes.
+        - new_job: book new work. Fill customerName, phone and address as said, jobType, date, time, endTime (when it will end, when an end or a length was said), price, paymentType, paid and note. A dumpster delivery, pickup or swap booked for later is a new_job with that jobType. An on-site quote visit is jobType "Estimate". A call-back or reminder is jobType "Other" on that day, with the reason in note.
+        - update_job: change a job that exists. done "yes" when it is finished, "no" when it is not finished after all. paid "yes" when it was paid, with paymentType and, if an amount was said, price; paid "no" when payment did not happen or a check bounced. newDate and newTime when it moved. endTime when its end changed or a new end was said. price when the price changed. jobType when the kind of work changed. note for anything to write down: a no-show, a dump fee, an extra item, a promise to pay later. Being paid on site means the work is done. Fill only what changes.
         - cancel_job: the job is off. The app asks before removing it.
         - new_customer: add a customer without booking work: customerName, phone, address, note.
         - update_customer: a customer's details changed or there is something to remember about them: newName, newPhone, newAddress, note (gate codes, dogs, how they pay, who to ask for).
@@ -383,7 +383,7 @@ extension AssistantPlan {
         - update_rental: change a dumpster that is out: dueBack (kept longer or picked up sooner), price, agreedTons, newAddress (moved on the property or to another place), note.
         - dumpster_note: something about a dumpster itself, such as damage or that it should not go out: dumpsterNumber and note.
         - new_quote: a price was given that the customer has not accepted yet: customerName, phone and address as said, jobType, price, note (what was quoted, in a few words) and followUp (the day to call them back, when said).
-        - update_quote: an open quote changed. quoteStatus "approved" when the customer said yes or approved it, with date, time and hours for the work when said; "declined" when they said no or went elsewhere. price when it changed. followUp when a call-back day was said. note for anything to write down. A call-back about an open quote is an update_quote with followUp, not a new_job. When a price is given and accepted in the same note and no open quote matches, book a new_job instead.
+        - update_quote: an open quote changed. quoteStatus "approved" when the customer said yes or approved it, with date, time and endTime for the work when said; "declined" when they said no or went elsewhere. price when it changed. followUp when a call-back day was said. note for anything to write down. A call-back about an open quote is an update_quote with followUp, not a new_job. When a price is given and accepted in the same note and no open quote matches, book a new_job instead.
 
         When the note asks a question, for example "which dumpsters are due back Friday", "what do we have tomorrow", "how much does Pereira owe", "what's Johnson's address", "is a dumpster free Friday" or "which quotes need a call back", answer it in "reply" from the records in one or two plain sentences, and return actions only if something should also be done. If the records do not hold the answer, say so.
 
@@ -394,7 +394,7 @@ extension AssistantPlan {
         Rules for fields:
         - Fill only what the note says. Use an empty string for anything not said. Never invent a name, number, price or address.
         - Dates as YYYY-MM-DD, worked out from today: "tomorrow", "Friday" (the next Friday, or today if today is Friday), "next week". Times as HH:MM in 24-hour time. "This morning", "just now", "just finished" and "on site" mean today.
-        - Money as digits: "three hundred" is 300. Weights in tons as digits: "two point eight" is 2.8. Lengths in hours as digits: "two hours" is 2, "an hour and a half" is 1.5, "half a day" is 4, "all day" is 8.
+        - Money as digits: "three hundred" is 300. Weights in tons as digits: "two point eight" is 2.8. An end time is worked out from what was said: "till noon" is 12:00; "about three hours" from a 9:00 start is 12:00. With no end or length said, leave endTime empty; never guess one.
         - jobType from the work described; nobody says "junk removal" out loud. Junk removal: clearing, emptying or cleaning out a garage, basement, attic, shed, house, estate or office, or hauling away furniture, appliances, debris or a hot tub. Demolition: tearing down or taking out a shed, deck, pool, fence, wall, kitchen, bathroom or flooring, or any mention of "demo". Dumpster drop-off, Dumpster pickup and Dumpster swap: booking those for a later day. Estimate: going to look and give a price. Other: anything else. Leave it empty only when nothing says what the work is.
         - paymentType is cash, check or card. "PD cash 300" means paid, cash, 300.
 

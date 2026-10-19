@@ -117,8 +117,10 @@ private struct JobUpdateForm: View {
     @State private var priceText: String
     @State private var date: Date
     @State private var hasTime: Bool
-    /// The length in minutes; 0 follows the job type's default.
-    @State private var minutes: Int
+    /// "Set an end time" and the Ends picker (only its clock time is used,
+    /// on the job's day).
+    @State private var hasEnd: Bool
+    @State private var endTime: Date
     @State private var noteToAdd: String
     @State private var saved = false
     @State private var flagged = 0
@@ -161,15 +163,23 @@ private struct JobUpdateForm: View {
         }
         _date = State(initialValue: when)
         _hasTime = State(initialValue: hasTime)
-        let saidMinutes = JobLength.minutes(fromHours: draft.hours)
-        _minutes = State(initialValue: saidMinutes ?? job.durationMinutes)
+        // A new end said wins. Otherwise a job with an end keeps the same
+        // span when it moves (9:00 to 11:00 moved to 2:00 ends at 4:00).
+        let saidEnd = JobTimes.end(fromClock: draft.endTime, on: when)
+        var currentEnd: Date? = nil
+        if job.hasTime, let end = job.endsAt, end > job.scheduledAt {
+            currentEnd = end.addingTimeInterval(when.timeIntervalSince(job.scheduledAt))
+        }
+        let startingEnd = saidEnd ?? currentEnd
+        _hasEnd = State(initialValue: startingEnd != nil)
+        _endTime = State(initialValue: startingEnd ?? JobTimes.suggestedEnd(after: when))
         _noteToAdd = State(initialValue: draft.notes)
 
         var flags = AssistantFlags(draft: draft)
-        let lengthSaid: Bool = saidMinutes != nil
+        let endSaid: Bool = saidEnd != nil
         let heardAChange = done == "yes" || done == "no" || paid == "paid" || paid == "unpaid" || paymentSaid != nil
             || !draft.price.isEmpty || !draft.newDate.isEmpty || !draft.newTime.isEmpty || !draft.notes.isEmpty
-            || typeSaid != nil || lengthSaid
+            || typeSaid != nil || endSaid
         if !heardAChange {
             flags.add("done", "No change was heard. Mark the job done?")
         }
@@ -190,6 +200,7 @@ private struct JobUpdateForm: View {
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save") { trySave() }
+                    .disabled(!endIsValid)
             }
         }
         .alert(overlapQuestion, isPresented: $askingOverlap) {
@@ -205,18 +216,24 @@ private struct JobUpdateForm: View {
 
     // MARK: Overlaps
 
-    private var lengthMinutes: Int {
-        minutes > 0 ? minutes : jobType.defaultMinutes
+    /// The end time to save, on the job's day; nil without one.
+    private var endDate: Date? {
+        hasTime ? JobTimes.end(start: date, hasEnd: hasEnd, endTime: endTime) : nil
     }
 
-    /// Only when the job is moved, given a time, made longer or shorter, or
-    /// changes type (and so its default length), and is not being marked
-    /// done: the other unfinished timed jobs that day it would overlap.
+    /// False while an end time is set that is not after the start.
+    private var endIsValid: Bool {
+        !hasTime || JobTimes.endIsValid(start: date, hasEnd: hasEnd, endTime: endTime)
+    }
+
+    /// Only when the job is moved, given a time, or its end changes, and is
+    /// not being marked done: the other unfinished timed jobs that day it
+    /// would clash with.
     private var overlapping: [Job] {
         guard hasTime, !isDone else { return [] }
-        let changed = !job.hasTime || date != job.scheduledAt || lengthMinutes != job.lengthMinutes
+        let changed = !job.hasTime || date != job.scheduledAt || endDate != job.endsAt
         guard changed else { return [] }
-        return JobOverlap.find(start: date, minutes: lengthMinutes, excluding: job, in: jobs)
+        return JobOverlap.find(start: date, end: endDate, excluding: job, in: jobs)
     }
 
     /// Asks "This overlaps … Save anyway?" first; No keeps the screen open.
@@ -294,9 +311,7 @@ private struct JobUpdateForm: View {
                 FlaggedRow(flags["newTime"]) {
                     DatePicker("Time", selection: $date, displayedComponents: .hourAndMinute)
                 }
-                FlaggedRow(flags["hours"]) {
-                    JobLengthPicker(minutes: $minutes, jobType: jobType)
-                }
+                EndTimeRows(hasEnd: $hasEnd, endTime: $endTime, start: date, note: flags["endTime"])
                 OverlapNote(overlapping: overlapping)
             }
         }
@@ -324,7 +339,7 @@ private struct JobUpdateForm: View {
         job.price = Parse.money(priceText)
         job.scheduledAt = hasTime ? date : Calendar.current.startOfDay(for: date)
         job.hasTime = hasTime
-        job.durationMinutes = minutes
+        job.endsAt = endDate
         let note = noteToAdd.trimmingCharacters(in: .whitespacesAndNewlines)
         if !note.isEmpty {
             job.notes = job.notes.isEmpty ? note : job.notes + "\n" + note

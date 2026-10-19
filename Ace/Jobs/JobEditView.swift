@@ -56,7 +56,7 @@ struct JobEditView: View {
                 Toggle("Set a time", isOn: $form.hasTime)
                 if form.hasTime {
                     DatePicker("Time", selection: $form.date, displayedComponents: .hourAndMinute)
-                    JobLengthPicker(minutes: $form.durationMinutes, jobType: form.jobType)
+                    EndTimeRows(hasEnd: $form.hasEnd, endTime: $form.endTime, start: form.date)
                     OverlapNote(overlapping: overlapping)
                 }
             }
@@ -98,7 +98,7 @@ struct JobEditView: View {
             }
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save") { trySave() }
-                    .disabled(form.customer == nil)
+                    .disabled(form.customer == nil || !form.endIsValid)
             }
         }
         .sheet(isPresented: $showingCustomerPicker) {
@@ -128,20 +128,20 @@ struct JobEditView: View {
         #endif
     }
 
-    /// Other unfinished timed jobs that day that this one would overlap.
+    /// Other unfinished timed jobs that day that this one would clash with.
     /// None while "Set a time" is off or the job is marked done.
     private var overlapping: [Job] {
         guard form.hasTime, !form.isDone else { return [] }
-        return JobOverlap.find(start: form.date, minutes: form.lengthMinutes, excluding: job, in: jobs)
+        return JobOverlap.find(start: form.date, end: form.endDate, excluding: job, in: jobs)
     }
 
-    /// A new job, or one whose day, time or length was changed here. Saving
-    /// an unchanged job (marking it paid, say) does not ask again.
+    /// A new job, or one whose day, time or end time was changed here.
+    /// Saving an unchanged job (marking it paid, say) does not ask again.
     private var timingChanged: Bool {
         guard let job else { return true }
         return job.hasTime != form.hasTime
             || job.scheduledAt != form.date
-            || job.lengthMinutes != form.lengthMinutes
+            || job.endsAt != form.endDate
     }
 
     /// Asks "This overlaps … Save anyway?" first when the job overlaps

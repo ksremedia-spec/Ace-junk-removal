@@ -191,8 +191,7 @@ enum AssistantRecords {
 
         /// "J1 Mon, Oct 19 9:00 to 11:00 AM · C1 Linda Johnson · Junk removal · $300 cash · not paid · not done · 42 Elm St, Taunton, MA"
         /// Under a customer, the customer and address are left out. A job
-        /// with a time shows its start and end (its length, or its type's
-        /// default).
+        /// with a time shows its start, and its end when it has one.
         func jobLine(_ job: Job, withCustomer: Bool) -> String {
             var when = Format.day(job.scheduledAt)
             if job.hasTime { when += " " + job.timeRangeText }

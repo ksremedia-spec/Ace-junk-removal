@@ -336,8 +336,8 @@ struct QuoteDetailsSection: View {
 
 // MARK: Approved: book the job
 
-/// The quote at the top and the job's date, time, length, price and payment
-/// below. Saving adds the job (the quote's customer and type, what was
+/// The quote at the top and the job's date, time, end time, price and
+/// payment below. Saving adds the job (the quote's customer and type, what was
 /// quoted as its notes) and marks the quote booked and linked to it. An
 /// overlap with another timed job is shown and asked about first.
 private struct BookQuoteForm: View {
@@ -351,8 +351,10 @@ private struct BookQuoteForm: View {
 
     @State private var date: Date
     @State private var hasTime: Bool
-    /// The length in minutes; 0 follows the quote's job type default.
-    @State private var minutes: Int
+    /// "Set an end time" and the Ends picker (only its clock time is used,
+    /// on the job's day). On when an end time was said.
+    @State private var hasEnd: Bool
+    @State private var endTime: Date
     @State private var priceText: String
     @State private var paymentType: PaymentType
     @State private var isPaid: Bool
@@ -380,7 +382,9 @@ private struct BookQuoteForm: View {
         }
         _date = State(initialValue: when)
         _hasTime = State(initialValue: timeSaid)
-        _minutes = State(initialValue: JobLength.minutes(fromHours: action.hours) ?? 0)
+        let saidEnd = timeSaid ? JobTimes.end(fromClock: action.endTime, on: when) : nil
+        _hasEnd = State(initialValue: saidEnd != nil)
+        _endTime = State(initialValue: saidEnd ?? JobTimes.suggestedEnd(after: when))
         // The quote's price unless a new one was said.
         _priceText = State(initialValue: action.price.isEmpty ? Parse.moneyText(quote.price) : action.price)
         _paymentType = State(initialValue: JobDraft.paymentType(from: action.paymentType) ?? .unknown)
@@ -396,14 +400,20 @@ private struct BookQuoteForm: View {
         self.flags = flags
     }
 
-    private var lengthMinutes: Int {
-        minutes > 0 ? minutes : quote.jobType.defaultMinutes
+    /// The end time to save, on the job's day; nil without one.
+    private var endDate: Date? {
+        hasTime ? JobTimes.end(start: date, hasEnd: hasEnd, endTime: endTime) : nil
     }
 
-    /// Unfinished timed jobs that day the new job would overlap.
+    /// False while an end time is set that is not after the start.
+    private var endIsValid: Bool {
+        !hasTime || JobTimes.endIsValid(start: date, hasEnd: hasEnd, endTime: endTime)
+    }
+
+    /// Unfinished timed jobs that day the new job would clash with.
     private var overlapping: [Job] {
         guard hasTime else { return [] }
-        return JobOverlap.find(start: date, minutes: lengthMinutes, excluding: nil, in: jobs)
+        return JobOverlap.find(start: date, end: endDate, excluding: nil, in: jobs)
     }
 
     var body: some View {
@@ -419,9 +429,7 @@ private struct BookQuoteForm: View {
                     FlaggedRow(flags["time"]) {
                         DatePicker("Time", selection: $date, displayedComponents: .hourAndMinute)
                     }
-                    FlaggedRow(flags["hours"]) {
-                        JobLengthPicker(minutes: $minutes, jobType: quote.jobType)
-                    }
+                    EndTimeRows(hasEnd: $hasEnd, endTime: $endTime, start: date, note: flags["endTime"])
                     OverlapNote(overlapping: overlapping)
                 }
             }
@@ -457,6 +465,7 @@ private struct BookQuoteForm: View {
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("Book Job") { trySave() }
+                    .disabled(!endIsValid)
             }
         }
         .alert(overlapQuestion, isPresented: $askingOverlap) {
@@ -496,7 +505,7 @@ private struct BookQuoteForm: View {
         // stored record.
         context.insert(job)
         job.customer = quote.customer
-        job.durationMinutes = minutes
+        job.endsAt = endDate
         quote.markBooked(with: job)
         try? context.save()
         saved.toggle()

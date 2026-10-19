@@ -25,7 +25,7 @@ struct JobDraft: Codable, Equatable {
     var jobType: String
     var date: String        // YYYY-MM-DD or ""
     var time: String        // HH:MM (24-hour) or ""
-    var hours: String = ""  // length in hours, like "2" or "1.5", or ""
+    var endTime: String = "" // HH:MM (24-hour) when the job ends, or ""
     var price: String       // digits only, e.g. "300", or ""
     var paymentType: String // cash, check, card, unknown
     var paid: String        // paid, unpaid, unknown
