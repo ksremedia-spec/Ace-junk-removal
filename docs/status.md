@@ -1,6 +1,6 @@
 # Where things stand
 
-Updated 2026-10-18, late evening (US Eastern). Read this first in a new
+Updated 2026-10-19, early morning UTC (late evening 2026-10-18 US Eastern). Read this first in a new
 session; then `CLAUDE.md` for the rules and `decisions.md` for the why.
 
 ## Done (written and compiling; not yet run on a device)
@@ -34,6 +34,42 @@ session; then `CLAUDE.md` for the rules and `decisions.md` for the why.
 - Research saved: `whisperkit-api.md`, `platform-facts.md`.
 - Kyle's setup (confirmed 2026-10-18): paid Apple Developer Program;
   iPhone 16 Pro Max on iOS 27.1; Xcode 27.1. Distribution: Ad Hoc.
+
+## Added 2026-10-19 (all still unbuilt on a device; the cloud build checks pass)
+
+- **Browser demo for the client** (claude.ai artifact, private until Kyle
+  shares it: https://claude.ai/artifact/Mv1yKwDUgPyxR2jaj8qQ3j). Source:
+  the session scratchpad `ace-demo/index.html`; a standalone copy
+  `ace-demo-standalone/Ace-demo.html` opens in any browser. iPhone view and
+  a Mac view (sidebar, list, detail, menu bar, search, sort, right-click
+  menus). Opens with about 620 customers and 1,000 jobs already in, the way
+  the app looks after the Excel import; File › Import shows the preview
+  flow. Figures everywhere: today's totals, owed, per-day totals, customer
+  history, dumpster rental history. The Assistant is typed, not spoken, and
+  uses Sonnet. It can use a key pasted into the demo's Settings (kept in
+  that browser), the viewer's claude.ai login, or the relay below. Settings
+  shows a "Connection" row that says whether claude.ai lets the page reach
+  Anthropic; that was still unknown when this was written. Verified in
+  headless Chrome by a 68-check Playwright script (`ace-demo-tools/`).
+- **Demo relay** (`docs/demo-relay/`): a Cloudflare Worker that forwards the
+  demo's request with the key as a server secret, so the client can use the
+  Assistant from the link with nothing to type. Kyle sets it up; the demo is
+  republished with its address (`RELAY_URL` in the demo source).
+- **Client screenshot page** (https://claude.ai/artifact/8wvbCffQ4deC7uh8ThqXsC):
+  the five iPhone screens; the Mac screens were being added once the cloud
+  Mac produced clean ones (the app draws its own windows with `-screenshot`,
+  see `Ace/Mac/WindowSnapshot.swift`; with `-screenshot` the sidebar uses a
+  plain highlight because the glass one draws black offscreen).
+- **App screens show the business:** Today figures and Owed; Jobs with
+  Upcoming / Unpaid / Done and per-day totals; "Unpaid" marker; customer
+  summary (since, jobs, total, owed), Call and Directions, dumpster rentals;
+  dumpster "This month"; Mac sidebar Unpaid and Done, customer sort, richer
+  right-click menu. Sample data now has about 600 generated customers,
+  1,000 past jobs and 20 past rentals (`SampleData.swift`, seeded, the same
+  every load).
+- **Demolition** is a job type, and the Assistant works out the job type
+  from the work described instead of asking whenever "junk removal" was not
+  said (see `decisions.md`).
 
 ## Not done
 
