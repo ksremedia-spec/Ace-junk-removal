@@ -387,6 +387,7 @@ struct JobReviewView: View {
         job.customer = customer
         job.endsAt = endDate
         try? context.save()
+        CalendarStore.shared.jobSaved(job)
         saved.toggle()
         onSaved()
     }

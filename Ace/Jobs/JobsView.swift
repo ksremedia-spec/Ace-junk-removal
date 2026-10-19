@@ -128,23 +128,42 @@ struct JobsView: View {
         } label: {
             JobRow(job: job)
         }
-        .swipeActions(edge: .leading) {
-            Button {
-                job.isDone.toggle()
-                job.updatedAt = Date()
-                try? context.save()
-            } label: {
-                Label(job.isDone ? "Not done" : "Done", systemImage: job.isDone ? "arrow.uturn.backward" : "checkmark")
+        .jobSwipeActions(job)
+    }
+}
+
+/// Swipe right to mark a job done (or not done), left to delete it. The
+/// same on every iPhone list of jobs (Jobs and Calendar).
+@MainActor
+struct JobSwipeActions: ViewModifier {
+    @Environment(\.modelContext) private var context
+    let job: Job
+
+    func body(content: Content) -> some View {
+        content
+            .swipeActions(edge: .leading) {
+                Button {
+                    job.isDone.toggle()
+                    job.updatedAt = Date()
+                    try? context.save()
+                    CalendarStore.shared.jobSaved(job)
+                } label: {
+                    Label(job.isDone ? "Not done" : "Done", systemImage: job.isDone ? "arrow.uturn.backward" : "checkmark")
+                }
+                .tint(.green)
             }
-            .tint(.green)
-        }
-        .swipeActions(edge: .trailing) {
-            Button(role: .destructive) {
-                context.delete(job)
-                try? context.save()
-            } label: {
-                Label("Delete", systemImage: "trash")
+            .swipeActions(edge: .trailing) {
+                Button(role: .destructive) {
+                    job.remove(from: context)
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
             }
-        }
+    }
+}
+
+extension View {
+    func jobSwipeActions(_ job: Job) -> some View {
+        modifier(JobSwipeActions(job: job))
     }
 }

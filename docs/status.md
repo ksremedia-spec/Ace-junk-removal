@@ -1,6 +1,6 @@
 # Where things stand
 
-Updated 2026-10-19, about 05:30 UTC (about 01:30 US Eastern). Read this first in a new
+Updated 2026-10-19, about 20:00 UTC (about 16:00 US Eastern). Read this first in a new
 session; then `CLAUDE.md` for the rules and `decisions.md` for the why.
 
 ## Done (written and compiling; not yet run on a device)
@@ -10,7 +10,8 @@ session; then `CLAUDE.md` for the rules and `decisions.md` for the why.
 - **iPhone screens (steps 3 and 4):** tab bar Today, Jobs, Customers,
   Dumpsters; add/edit for jobs and customers; search; swipe to mark done or
   delete; dumpster drop-off, due-back, overdue status, and the weigh-in at
-  pickup with the overweight charge (rate in Settings). `Ace/Today`,
+  pickup with the overweight charge (rate in Settings). `Ace/Calendar`
+  (was `Ace/Today`; see Calendar below),
   `Ace/Jobs`, `Ace/Customers`, `Ace/Dumpsters`.
 - **Mac layout:** sidebar, list, detail (`Ace/Mac/MacMainView.swift`);
   ⌘N new job, ⇧⌘N new customer, ⌥⌘N new window, ⌘F search, ⇧⌘A Assistant;
@@ -125,6 +126,33 @@ session; then `CLAUDE.md` for the rules and `decisions.md` for the why.
   18). Unbuilt on a device; see the build checks after commit 2b7581e.
 - **Manual entry screenshots:** `docs/screenshots/9-new-job.png` and
   `mac-6-new-job.png`, from `-open newjob` in the screenshot workflow.
+- **Calendar replaces Today** (`docs/calendar-tab.md`, asked for by Kyle).
+  Built and compiling on GitHub's Macs; not run on a device, so nothing
+  about it is tested. What it adds:
+  - iPhone tabs are now Calendar, Jobs, Quotes, Customers, Dumpsters. The
+    Calendar tab has Apple's month view on top with a dot under days that
+    have a job not done. Today shows everything the Today screen showed
+    (today's list now keeps done jobs, crossed out), plus Call back (quotes
+    to ring today or earlier) and Other calendars. Another day shows its
+    jobs (New job opens the form on that day), dumpster drop-offs, due-backs
+    and pickups, call-backs and other calendars. A Today button appears next
+    to the gear while another day is chosen. Tapping another calendar's
+    event opens Apple's own event screen.
+  - Mac: Calendar is first in the sidebar, with Apple's month picker in the
+    middle column, a read-only page for other calendars' events, and
+    View › Go to Today (⌘T).
+  - Settings › Calendar: Calendar Access (Allow Calendar Access is the only
+    place Ace asks), Calendar for Jobs (None to start), Show Calendars.
+    Load sample data sets Calendar for Jobs back to None.
+  - Each saved job is written to the chosen calendar (for example a Google
+    calendar "Ace Jobs" added in the device's Settings) from every save and
+    delete path, with a marker line "Ace job <ID>" so devices recognise it
+    and duplicates are tidied. Jobs now carry a permanent ID. Code:
+    `Ace/Calendar/CalendarStore.swift`.
+  - Assumed, not checked: SwiftData adds the three new job fields to
+    existing installs by itself; the dots under days refresh when a job
+    changes; Google keeps an event that starts and ends at the same time
+    (test 6 in `calendar.md`).
 
 ## Not done
 

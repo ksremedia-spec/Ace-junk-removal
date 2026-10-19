@@ -269,6 +269,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				"INFOPLIST_KEY_LSApplicationCategoryType[sdk=macosx*]" = "public.app-category.business";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Ace shows your calendars next to your jobs and adds jobs to the calendar you choose.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Ace records your voice so it can fill in a job form.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
@@ -312,6 +313,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				"INFOPLIST_KEY_LSApplicationCategoryType[sdk=macosx*]" = "public.app-category.business";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Ace shows your calendars next to your jobs and adds jobs to the calendar you choose.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Ace records your voice so it can fill in a job form.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;

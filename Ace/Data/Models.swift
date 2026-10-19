@@ -95,6 +95,21 @@ final class Job {
     @Relationship(deleteRule: .nullify, inverse: \Quote.job)
     var quote: Quote? = nil
 
+    /// The job's permanent ID, the same on every device. Given when the job
+    /// is created; jobs from before it existed get one the first time they
+    /// are written to the calendar (CalendarStore). Optional with no default
+    /// so existing jobs do not all get the same value when the database is
+    /// upgraded. Ace's own sync (step 5) needs it too.
+    var jobID: UUID? = nil
+
+    /// The identifier of the job's event in the Calendar for Jobs on this
+    /// device, for a quick look-up. Only a shortcut: the marker line in the
+    /// event's notes is what proves it is this job's event.
+    var calendarItemID: String? = nil
+
+    /// When the job's event was last written on this device.
+    var calendarWrittenAt: Date? = nil
+
     init(customer: Customer?,
          jobType: JobType,
          scheduledAt: Date,
@@ -114,6 +129,7 @@ final class Job {
         self.notes = notes
         self.createdAt = Date()
         self.updatedAt = Date()
+        self.jobID = UUID()
     }
 
     var jobType: JobType {
@@ -363,6 +379,16 @@ extension Job {
         guard !isPaid else { return false }
         if isDone { return true }
         return price != nil && scheduledAt < today
+    }
+
+    /// Removes the job's event from the Calendar for Jobs, then deletes the
+    /// job and saves. Every delete path calls this so they all behave the
+    /// same.
+    @MainActor
+    func remove(from context: ModelContext) {
+        CalendarStore.shared.jobDeleting(self)
+        context.delete(self)
+        try? context.save()
     }
 }
 

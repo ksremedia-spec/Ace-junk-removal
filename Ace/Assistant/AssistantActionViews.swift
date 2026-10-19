@@ -256,8 +256,7 @@ private struct CancelJobForm: View {
     }
 
     private func delete() {
-        context.delete(job)
-        try? context.save()
+        job.remove(from: context)
         deleted.toggle()
         onDeleted()
     }

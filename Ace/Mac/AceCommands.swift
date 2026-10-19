@@ -9,6 +9,7 @@ extension Notification.Name {
     static let aceNewQuote = Notification.Name("aceNewQuote")
     static let aceAssistant = Notification.Name("aceAssistant")
     static let aceFind = Notification.Name("aceFind")
+    static let aceGoToToday = Notification.Name("aceGoToToday")
 }
 
 struct AceCommands: Commands {
@@ -55,6 +56,16 @@ struct AceCommands: Commands {
                 NotificationCenter.default.post(name: .aceFind, object: nil)
             }
             .keyboardShortcut("f", modifiers: .command)
+        }
+
+        // View menu, as in Apple's Calendar app.
+        CommandGroup(before: .sidebar) {
+            Button("Go to Today") {
+                NotificationCenter.default.post(name: .aceGoToToday, object: nil)
+            }
+            .keyboardShortcut("t", modifiers: .command)
+
+            Divider()
         }
     }
 }

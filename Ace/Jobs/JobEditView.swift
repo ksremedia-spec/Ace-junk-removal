@@ -166,6 +166,7 @@ struct JobEditView: View {
         }
         form.apply(to: target)
         try? context.save()
+        CalendarStore.shared.jobSaved(target)
         saved.toggle()
         onSaved?(target)
         dismiss()
@@ -173,8 +174,7 @@ struct JobEditView: View {
 
     private func delete() {
         if let job {
-            context.delete(job)
-            try? context.save()
+            job.remove(from: context)
         }
         dismiss()
     }

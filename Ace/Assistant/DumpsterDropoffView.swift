@@ -253,6 +253,9 @@ struct DumpsterDropoffView: View {
             linked.updatedAt = Date()
         }
         try? context.save()
+        if let linked {
+            CalendarStore.shared.jobSaved(linked)
+        }
         saved.toggle()
         onSaved("Dumpster \(dumpster.number) dropped off.")
     }

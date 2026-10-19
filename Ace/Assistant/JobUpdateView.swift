@@ -346,6 +346,7 @@ private struct JobUpdateForm: View {
         }
         job.updatedAt = Date()
         try? context.save()
+        CalendarStore.shared.jobSaved(job)
         saved.toggle()
         onSaved()
     }

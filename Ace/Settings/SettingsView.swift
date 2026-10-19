@@ -1,7 +1,8 @@
 import SwiftData
 import SwiftUI
 
-/// Settings, reached from the gear on the Today screen.
+/// Settings, reached from the gear on the Calendar screen (iPhone) or the
+/// app menu (Mac).
 struct SettingsView: View {
     @Environment(\.modelContext) private var context
 
@@ -68,6 +69,8 @@ struct SettingsView: View {
                 Text("Charged for each ton over the agreed weight at pickup. Partial tons are charged in proportion.")
             }
 
+            CalendarSettingsSection()
+
             Section {
                 NavigationLink("Speech test", value: MainView.Screen.speech)
                 NavigationLink("Claude test", value: MainView.Screen.claude)
@@ -76,7 +79,7 @@ struct SettingsView: View {
             } header: {
                 Text("Debug")
             } footer: {
-                Text("Sample data replaces everything with example customers, jobs and dumpsters, for showing the app.")
+                Text("Sample data replaces everything with example customers, jobs and dumpsters, for showing the app, and sets Calendar for Jobs to None.")
             }
 
             Section("About") {
@@ -91,9 +94,12 @@ struct SettingsView: View {
             if rateText.isEmpty {
                 rateText = Parse.moneyText(ratePerTon)
             }
+            CalendarStore.shared.refresh()
         }
         .confirmationDialog("Replace all data with sample data?", isPresented: $confirmSample, titleVisibility: .visible) {
             Button("Replace with sample data", role: .destructive) {
+                // Example jobs must never reach a real calendar.
+                CalendarStore.shared.setJobsCalendar("")
                 SampleData.clear(context: context)
                 SampleData.load(into: context)
                 done += 1

@@ -21,6 +21,14 @@ enum AppSettings {
     /// Last selected tab, so the app opens where it was left.
     static let lastTabKey = "settings.lastTab"
 
+    /// The calendar jobs are written to (its EventKit identifier). Empty
+    /// means None. Kept on each device, not synced.
+    static let jobsCalendarKey = "settings.jobsCalendar"
+
+    /// Calendars switched off under Show Calendars (EventKit identifiers).
+    /// Kept on each device, not synced.
+    static let hiddenCalendarsKey = "settings.hiddenCalendars"
+
     static var overweightRate: Double {
         let stored = UserDefaults.standard.double(forKey: overweightRateKey)
         return stored > 0 ? stored : defaultOverweightRate

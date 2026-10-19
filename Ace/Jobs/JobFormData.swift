@@ -24,6 +24,15 @@ struct JobFormData {
         self.customer = customer
     }
 
+    /// A blank form for a new job on `day` (the Calendar's New job), with
+    /// "Set a time" off. Turning it on starts the picker at the next full
+    /// hour's clock time on that day.
+    init(day: Date) {
+        date = JobTimes.combine(day: day, time: Dates.nextFullHour())
+        hasTime = false
+        endTime = JobTimes.suggestedEnd(after: date)
+    }
+
     /// The end time to save: on the job's day, or nil without a time or
     /// an end time.
     var endDate: Date? {

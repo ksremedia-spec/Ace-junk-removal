@@ -234,6 +234,9 @@ private struct DumpsterPickupForm: View {
             linked.updatedAt = Date()
         }
         try? context.save()
+        if let linked {
+            CalendarStore.shared.jobSaved(linked)
+        }
         saved.toggle()
         onSaved()
     }

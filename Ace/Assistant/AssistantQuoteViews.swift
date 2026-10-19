@@ -508,6 +508,7 @@ private struct BookQuoteForm: View {
         job.endsAt = endDate
         quote.markBooked(with: job)
         try? context.save()
+        CalendarStore.shared.jobSaved(job)
         saved.toggle()
         onFinish("Job saved.")
     }

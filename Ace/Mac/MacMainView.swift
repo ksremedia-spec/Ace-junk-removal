@@ -7,13 +7,13 @@ import SwiftUI
 /// The Mac layout: sidebar, list, detail, like Mail and Notes.
 struct MacMainView: View {
     enum SidebarItem: String, CaseIterable, Identifiable {
-        case today, jobs, unpaid, done, quotes, customers, dumpsters
+        case calendar, jobs, unpaid, done, quotes, customers, dumpsters
 
         var id: String { rawValue }
 
         var title: String {
             switch self {
-            case .today: return "Today"
+            case .calendar: return "Calendar"
             case .jobs: return "Jobs"
             case .unpaid: return "Unpaid"
             case .done: return "Done"
@@ -25,8 +25,8 @@ struct MacMainView: View {
 
         var symbol: String {
             switch self {
-            case .today: return "sun.max"
-            case .jobs: return "calendar"
+            case .calendar: return "calendar"
+            case .jobs: return "list.bullet"
             case .unpaid: return "dollarsign.circle"
             case .done: return "checkmark.circle"
             case .quotes: return "doc.text"
@@ -54,20 +54,28 @@ struct MacMainView: View {
         }
     }
 
-    enum TodayItem: Hashable {
+    /// What can be selected in the Calendar list.
+    enum CalendarItem: Hashable {
         case job(Job)
         case dumpster(Dumpster)
+        case quote(Quote)
+        case event(OtherEvent)
     }
 
     @Environment(\.modelContext) private var context
-    @AppStorage(AppSettings.lastTabKey) private var sidebarRaw = SidebarItem.today.rawValue
+    @Environment(\.scenePhase) private var scenePhase
+    /// A stored "today" (from before Calendar replaced Today) opens Calendar.
+    @AppStorage(AppSettings.lastTabKey) private var sidebarRaw = SidebarItem.calendar.rawValue
 
     @State private var engine = WhisperKitEngine()
     @State private var selectedJob: Job?
     @State private var selectedCustomer: Customer?
     @State private var selectedDumpster: Dumpster?
     @State private var selectedQuote: Quote?
-    @State private var selectedTodayItem: TodayItem?
+    @State private var selectedCalendarItem: CalendarItem?
+    /// The day chosen in the Calendar list. Not remembered: the app always
+    /// opens on today.
+    @State private var calendarDay = Dates.startOfToday()
     @State private var showingAssistant = false
     @State private var showingNewJob = false
     @State private var showingNewCustomer = false
@@ -78,12 +86,12 @@ struct MacMainView: View {
 
     private var sidebarSelection: Binding<SidebarItem?> {
         Binding(
-            get: { SidebarItem(rawValue: sidebarRaw) ?? .today },
+            get: { SidebarItem(rawValue: sidebarRaw) ?? .calendar },
             set: { if let item = $0 { sidebarRaw = item.rawValue } }
         )
     }
 
-    private var section: SidebarItem { SidebarItem(rawValue: sidebarRaw) ?? .today }
+    private var section: SidebarItem { SidebarItem(rawValue: sidebarRaw) ?? .calendar }
 
     /// The jobs list's filter, kept in step with the sidebar: picking
     /// "Unpaid" in the list highlights Unpaid in the sidebar and back.
@@ -150,6 +158,15 @@ struct MacMainView: View {
         .onReceive(NotificationCenter.default.publisher(for: .aceNewQuote)) { _ in showingNewQuote = true }
         .onReceive(NotificationCenter.default.publisher(for: .aceAssistant)) { _ in showingAssistant = true }
         .onReceive(NotificationCenter.default.publisher(for: .aceFind)) { _ in searchFocused = true }
+        .onReceive(NotificationCenter.default.publisher(for: .aceGoToToday)) { _ in goToToday() }
+        .onChange(of: calendarDay) { _, _ in
+            // The chosen job or event belongs to the day that was showing.
+            selectedCalendarItem = nil
+        }
+        .onChange(of: scenePhase) { _, phase in
+            // Calendar access may have been changed in System Settings.
+            if phase == .active { CalendarStore.shared.refresh() }
+        }
         .onAppear {
             handleLaunchArguments()
             WindowSnapshot.captureIfRequested()
@@ -163,7 +180,7 @@ struct MacMainView: View {
 
     private var sidebarRows: some View {
         List(selection: sidebarSelection) {
-            sidebarRow(.today)
+            sidebarRow(.calendar)
             sidebarRow(.jobs)
             sidebarRow(.unpaid, indented: true)
             sidebarRow(.done, indented: true)
@@ -193,9 +210,9 @@ struct MacMainView: View {
     @ViewBuilder
     private var contentColumn: some View {
         switch section {
-        case .today:
-            MacTodayList(selection: $selectedTodayItem)
-                .navigationTitle("Today")
+        case .calendar:
+            MacCalendarList(selection: $selectedCalendarItem, day: $calendarDay)
+                .navigationTitle("Calendar")
         case .jobs, .unpaid, .done:
             MacJobsList(selection: $selectedJob, filter: jobsFilter, searchText: searchText)
                 .navigationTitle(section.title)
@@ -214,16 +231,22 @@ struct MacMainView: View {
     @ViewBuilder
     private var detailColumn: some View {
         switch section {
-        case .today:
-            switch selectedTodayItem {
+        case .calendar:
+            switch selectedCalendarItem {
             case .job(let job):
                 JobEditView(job: job)
                     .id(job.persistentModelID)
             case .dumpster(let dumpster):
                 DumpsterDetailView(dumpster: dumpster)
                     .id(dumpster.persistentModelID)
+            case .quote(let quote):
+                QuoteEditView(quote: quote, onDeleted: { selectedCalendarItem = nil })
+                    .id(quote.persistentModelID)
+            case .event(let item):
+                CalendarEventPage(event: item.event)
+                    .id(item.id)
             case .none:
-                placeholder("Select a job or a dumpster.")
+                placeholder("Select a job, dumpster, quote or event.")
             }
         case .jobs, .unpaid, .done:
             if let job = selectedJob {
@@ -262,9 +285,16 @@ struct MacMainView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    /// View › Go to Today (⌘T): the Calendar, on today.
+    private func goToToday() {
+        sidebarRaw = SidebarItem.calendar.rawValue
+        calendarDay = Dates.startOfToday()
+    }
+
     /// Same testing aid as on iPhone: `-sampledata` loads the sample records,
-    /// `-open jobs` picks a sidebar item, `-open assistant` shows the Assistant,
-    /// `-open newjob` opens a blank new job.
+    /// `-open jobs` picks a sidebar item (`-open today` opens Calendar, as
+    /// before Calendar replaced Today), `-open assistant` shows the
+    /// Assistant, `-open newjob` opens a blank new job.
     private func handleLaunchArguments() {
         guard !handledLaunchArguments else { return }
         handledLaunchArguments = true
@@ -282,6 +312,8 @@ struct MacMainView: View {
         guard let name else { return }
         if let item = SidebarItem(rawValue: name) {
             sidebarRaw = item.rawValue
+        } else if name == "today" {
+            sidebarRaw = SidebarItem.calendar.rawValue
         } else if name == "assistant" {
             showingAssistant = true
         } else if name == "newjob" {
@@ -292,84 +324,6 @@ struct MacMainView: View {
 }
 
 // MARK: - Lists for the middle column
-
-struct MacTodayList: View {
-    @Environment(\.modelContext) private var context
-    @Query(sort: \Job.scheduledAt) private var jobs: [Job]
-    @Query(sort: \Dumpster.number) private var dumpsters: [Dumpster]
-    @Query(sort: \Quote.quotedOn) private var quotes: [Quote]
-    @Binding var selection: MacMainView.TodayItem?
-
-    private var calendar: Calendar { .current }
-
-    private var attentionDumpsters: [Dumpster] {
-        dumpsters.filter { [.dueToday, .overdue].contains($0.status()) }
-    }
-
-    private var todaysJobs: [Job] { jobs.filter { calendar.isDateInToday($0.scheduledAt) && !$0.isDone } }
-    private var tomorrowsJobs: [Job] { jobs.filter { calendar.isDateInTomorrow($0.scheduledAt) && !$0.isDone } }
-    private var slippedJobs: [Job] { jobs.filter { !$0.isDone && $0.scheduledAt < Dates.startOfToday() } }
-
-    /// Open quotes whose call-back day is today or earlier.
-    private var quotesToFollowUp: Int { quotes.filter { $0.isFollowUpDue() }.count }
-
-    /// "2 jobs today · $750 · 2 quotes to follow up". The money is left off
-    /// when no job today has a price, the quotes when none are due.
-    private var figuresLine: String {
-        var text = Plural.text(todaysJobs.count, "job") + " today"
-        let total = todaysJobs.priceTotal
-        if total > 0 { text += " · " + Money.text(total) }
-        if quotesToFollowUp > 0 { text += " · " + Plural.text(quotesToFollowUp, "quote") + " to follow up" }
-        return text
-    }
-
-    var body: some View {
-        List(selection: $selection) {
-            Section {
-                Text(figuresLine)
-            }
-            Section("Dumpsters") {
-                if attentionDumpsters.isEmpty {
-                    Text(dumpsters.isEmpty ? "No dumpsters set up yet." : "Nothing due back today.")
-                        .foregroundStyle(.secondary)
-                }
-                ForEach(attentionDumpsters) { dumpster in
-                    DumpsterRow(dumpster: dumpster)
-                        .tag(MacMainView.TodayItem.dumpster(dumpster))
-                }
-            }
-            Section(Date().formatted(.dateTime.weekday(.wide).month(.wide).day())) {
-                if todaysJobs.isEmpty {
-                    Text("No jobs today.").foregroundStyle(.secondary)
-                }
-                ForEach(todaysJobs) { job in
-                    JobRow(job: job, showDate: false)
-                        .tag(MacMainView.TodayItem.job(job))
-                        .contextMenu { JobContextMenu(job: job) }
-                }
-            }
-            if !slippedJobs.isEmpty {
-                Section("Not marked done") {
-                    ForEach(slippedJobs) { job in
-                        JobRow(job: job)
-                            .tag(MacMainView.TodayItem.job(job))
-                            .contextMenu { JobContextMenu(job: job) }
-                    }
-                }
-            }
-            Section("Tomorrow") {
-                if tomorrowsJobs.isEmpty {
-                    Text("No jobs tomorrow.").foregroundStyle(.secondary)
-                }
-                ForEach(tomorrowsJobs) { job in
-                    JobRow(job: job, showDate: false)
-                        .tag(MacMainView.TodayItem.job(job))
-                        .contextMenu { JobContextMenu(job: job) }
-                }
-            }
-        }
-    }
-}
 
 /// Jobs: upcoming by day, unpaid, or done. The filter is shared with the
 /// sidebar, so either one changes the other.
@@ -763,16 +717,17 @@ struct JobContextMenu: View {
             job.isDone.toggle()
             job.updatedAt = Date()
             try? context.save()
+            CalendarStore.shared.jobSaved(job)
         }
         Button(job.isPaid ? "Mark Unpaid" : "Mark Paid") {
             job.isPaid.toggle()
             job.updatedAt = Date()
             try? context.save()
+            CalendarStore.shared.jobSaved(job)
         }
         Divider()
         Button("Delete Job", role: .destructive) {
-            context.delete(job)
-            try? context.save()
+            job.remove(from: context)
         }
     }
 }
@@ -795,6 +750,8 @@ struct MacSettingsWindow: View {
                         SpeechTestView(engine: engine)
                     case .claude:
                         ClaudeTestView()
+                    case .calendars:
+                        ShowCalendarsView()
                     }
                 }
         }
