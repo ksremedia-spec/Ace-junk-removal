@@ -41,8 +41,8 @@ for it.
 | --- | --- | --- |
 | "Mrs. Johnson, 42 Elm, garage cleanout Friday morning, 300 cash" | new_job | New job form, problems flagged and asked one at a time |
 | "Pereira needs a dumpster Friday, 7 Bay Road, 450" | new_job (Dumpster drop-off) | New job form |
-| "Silva basement cleanout Friday at 9, about three hours" | new_job (hours 3) | New job form, 9:00 to 12:00, checked for overlaps |
-| "The Johnson job will take all day" | update_job (hours 8) | Job changes, checked for overlaps |
+| "Silva basement cleanout Friday at 9, about three hours" | new_job (time 09:00, endTime 12:00) | New job form, 9:00 to 12:00, checked for overlaps |
+| "The Johnson job will run till 3" | update_job (endTime 15:00) | Job changes, checked for overlaps |
 | "Swap at Keane's Thursday" | new_job (Dumpster swap) | New job form |
 | "Go look at the Silva basement Tuesday at 10 for a price" | new_job (Estimate) | New job form |
 | "Call back Mrs. Smith Thursday about the second dumpster" | new_job (Other, note "Call back about the second dumpster") | New job form; shows on Today that day |
@@ -130,7 +130,7 @@ allow other properties.
           "jobType": { "type": "string", "enum": ["Junk removal", "Demolition", "Dumpster drop-off", "Dumpster pickup", "Dumpster swap", "Estimate", "Other", ""] },
           "date": { "type": "string", "description": "YYYY-MM-DD: the day of a new job, or the day of the job meant, or empty." },
           "time": { "type": "string", "description": "HH:MM, 24-hour, or empty." },
-          "hours": { "type": "string", "description": "Length of the job in hours as digits, like 2 or 1.5, or empty." },
+          "endTime": { "type": "string", "description": "HH:MM, 24-hour: when the job ends, or empty." },
           "price": { "type": "string", "description": "Dollars as digits, like 300, or empty." },
           "paymentType": { "type": "string", "enum": ["cash", "check", "card", ""] },
           "paid": { "type": "string", "enum": ["yes", "no", ""] },
@@ -151,7 +151,7 @@ allow other properties.
           "contact": { "type": "string", "enum": ["call", "text", "directions", ""] },
           "message": { "type": "string", "description": "For a text: the message to send." }
         },
-        "required": ["type", "ref", "customerName", "phone", "address", "jobType", "date", "time", "hours", "price", "paymentType", "paid", "done", "newDate", "newTime", "dumpsterNumber", "otherDumpsterNumber", "actualTons", "agreedTons", "dueBack", "followUp", "quoteStatus", "note", "newName", "newPhone", "newAddress", "contact", "message"],
+        "required": ["type", "ref", "customerName", "phone", "address", "jobType", "date", "time", "endTime", "price", "paymentType", "paid", "done", "newDate", "newTime", "dumpsterNumber", "otherDumpsterNumber", "actualTons", "agreedTons", "dueBack", "followUp", "quoteStatus", "note", "newName", "newPhone", "newAddress", "contact", "message"],
         "additionalProperties": false
       }
     },
@@ -161,7 +161,7 @@ allow other properties.
         "type": "object",
         "properties": {
           "action": { "type": "integer", "description": "Position of the action in the list, 0 for the first." },
-          "field": { "type": "string", "enum": ["customerName", "phone", "address", "jobType", "date", "time", "hours", "price", "paymentType", "paid", "done", "newDate", "newTime", "dumpsterNumber", "otherDumpsterNumber", "actualTons", "agreedTons", "dueBack", "followUp", "note", "newName", "newPhone", "newAddress", "ref"] },
+          "field": { "type": "string", "enum": ["customerName", "phone", "address", "jobType", "date", "time", "endTime", "price", "paymentType", "paid", "done", "newDate", "newTime", "dumpsterNumber", "otherDumpsterNumber", "actualTons", "agreedTons", "dueBack", "followUp", "note", "newName", "newPhone", "newAddress", "ref"] },
           "question": { "type": "string", "description": "One short plain yes/no question." }
         },
         "required": ["action", "field", "question"],
@@ -198,8 +198,8 @@ The person speaking is Ashley in the office (booking work, answering the phone, 
 The records sent with the note list dumpsters, jobs, open quotes and customers, each with a reference like D3, J12, Q2 or C4. When an action is about a record in the list, put its reference in "ref". When the note names someone or something not in the list, leave "ref" empty and fill in the name, phone, address or dumpster number as said; the app looks it up.
 
 Actions:
-- new_job: book new work. Fill customerName, phone and address as said, jobType, date, time, hours (how long it will take, when said), price, paymentType, paid and note. A dumpster delivery, pickup or swap booked for later is a new_job with that jobType. An on-site quote visit is jobType "Estimate". A call-back or reminder is jobType "Other" on that day, with the reason in note.
-- update_job: change a job that exists. done "yes" when it is finished, "no" when it is not finished after all. paid "yes" when it was paid, with paymentType and, if an amount was said, price; paid "no" when payment did not happen or a check bounced. newDate and newTime when it moved. hours when how long it takes changed. price when the price changed. jobType when the kind of work changed. note for anything to write down: a no-show, a dump fee, an extra item, a promise to pay later. Being paid on site means the work is done. Fill only what changes.
+- new_job: book new work. Fill customerName, phone and address as said, jobType, date, time, endTime (when it will end, when an end or a length was said), price, paymentType, paid and note. A dumpster delivery, pickup or swap booked for later is a new_job with that jobType. An on-site quote visit is jobType "Estimate". A call-back or reminder is jobType "Other" on that day, with the reason in note.
+- update_job: change a job that exists. done "yes" when it is finished, "no" when it is not finished after all. paid "yes" when it was paid, with paymentType and, if an amount was said, price; paid "no" when payment did not happen or a check bounced. newDate and newTime when it moved. endTime when its end changed or a new end was said. price when the price changed. jobType when the kind of work changed. note for anything to write down: a no-show, a dump fee, an extra item, a promise to pay later. Being paid on site means the work is done. Fill only what changes.
 - cancel_job: the job is off. The app asks before removing it.
 - new_customer: add a customer without booking work: customerName, phone, address, note.
 - update_customer: a customer's details changed or there is something to remember about them: newName, newPhone, newAddress, note (gate codes, dogs, how they pay, who to ask for).
@@ -210,7 +210,7 @@ Actions:
 - update_rental: change a dumpster that is out: dueBack (kept longer or picked up sooner), price, agreedTons, newAddress (moved on the property or to another place), note.
 - dumpster_note: something about a dumpster itself, such as damage or that it should not go out: dumpsterNumber and note.
 - new_quote: a price was given that the customer has not accepted yet: customerName, phone and address as said, jobType, price, note (what was quoted, in a few words) and followUp (the day to call them back, when said).
-- update_quote: an open quote changed. quoteStatus "approved" when the customer said yes or approved it, with date, time and hours for the work when said; "declined" when they said no or went elsewhere. price when it changed. followUp when a call-back day was said. note for anything to write down. A call-back about an open quote is an update_quote with followUp, not a new_job. When a price is given and accepted in the same note and no open quote matches, book a new_job instead.
+- update_quote: an open quote changed. quoteStatus "approved" when the customer said yes or approved it, with date, time and endTime for the work when said; "declined" when they said no or went elsewhere. price when it changed. followUp when a call-back day was said. note for anything to write down. A call-back about an open quote is an update_quote with followUp, not a new_job. When a price is given and accepted in the same note and no open quote matches, book a new_job instead.
 
 When the note asks a question, for example "which dumpsters are due back Friday", "what do we have tomorrow", "how much does Pereira owe", "what's Johnson's address", "is a dumpster free Friday" or "which quotes need a call back", answer it in "reply" from the records in one or two plain sentences, and return actions only if something should also be done. If the records do not hold the answer, say so.
 
@@ -221,7 +221,7 @@ Leave "reply" empty when the actions cover the note.
 Rules for fields:
 - Fill only what the note says. Use an empty string for anything not said. Never invent a name, number, price or address.
 - Dates as YYYY-MM-DD, worked out from today: "tomorrow", "Friday" (the next Friday, or today if today is Friday), "next week". Times as HH:MM in 24-hour time. "This morning", "just now", "just finished" and "on site" mean today.
-- Money as digits: "three hundred" is 300. Weights in tons as digits: "two point eight" is 2.8. Lengths in hours as digits: "two hours" is 2, "an hour and a half" is 1.5, "half a day" is 4, "all day" is 8.
+- Money as digits: "three hundred" is 300. Weights in tons as digits: "two point eight" is 2.8. An end time is worked out from what was said: "till noon" is 12:00; "about three hours" from a 9:00 start is 12:00. With no end or length said, leave endTime empty; never guess one.
 - jobType from the work described; nobody says "junk removal" out loud. Junk removal: clearing, emptying or cleaning out a garage, basement, attic, shed, house, estate or office, or hauling away furniture, appliances, debris or a hot tub. Demolition: tearing down or taking out a shed, deck, pool, fence, wall, kitchen, bathroom or flooring, or any mention of "demo". Dumpster drop-off, Dumpster pickup and Dumpster swap: booking those for a later day. Estimate: going to look and give a price. Other: anything else. Leave it empty only when nothing says what the work is.
 - paymentType is cash, check or card. "PD cash 300" means paid, cash, 300.
 
@@ -267,10 +267,9 @@ Totals: owed $19,550 from 31 jobs; done this week $2,140 from 6 jobs; booked tod
   when none), the day quoted, and the call-back day marked "(overdue)" or
   "(today)" when due. "- none" when there are none. Booked and lost quotes
   are not sent. Customers on open quotes are listed under Customers.
-- A job with a time shows its start and end ("9:00 to 11:00 AM", or "11:00
-  AM to 1:00 PM" across noon), from its length or its type's default (see
-  `job-length.md`), so questions like "is the crew free at 10" can be
-  answered.
+- A job with a time shows its start, and its end when it has one ("9:00 to
+  11:00 AM", or "11:00 AM to 1:00 PM" across noon; see `job-length.md`), so
+  questions like "is the crew free at 10" can be answered.
 - A job line ends with the job's notes when it has any, joined into one
   line ("· Call back about a second dumpster"). Without them a call-back
   booked as "Other" would carry no reason.
@@ -309,8 +308,8 @@ Totals: owed $19,550 from 31 jobs; done this week $2,140 from 6 jobs; booked tod
 - Overlaps are checked in code, not by Claude, on every save of a job with a
   time (see `job-length.md`): any overlap with another unfinished timed job
   that day gives a note in the warning color and one yes/no question before
-  saving. This replaces the old same-start-time check. `hours` empty means
-  the job type's default length.
+  saving. This replaces the old same-start-time check. A job with no end
+  time counts as its start moment only.
 - new_quote: the New Quote form, filled in. A reference wins; otherwise the
   customer is matched the way the new-job form matches: the same phone
   number, or the same full name. A shared last name or an address alone is
