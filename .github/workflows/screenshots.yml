@@ -56,13 +56,15 @@ jobs:
           shot() {
             name="$1"; shift
             xcrun simctl terminate "$DEVICE" "$BUNDLE" 2>/dev/null || true
-            xcrun simctl launch "$DEVICE" "$BUNDLE" -sampledata YES "$@"
+            xcrun simctl launch "$DEVICE" "$BUNDLE" -sampledata YES -debug.speechready YES "$@"
             sleep 6
             xcrun simctl io "$DEVICE" screenshot "docs/screenshots/$name.png"
           }
 
           TRANSCRIPT="Mrs. Johnson on Elm Street in Taunton, junk removal Friday morning, three hundred cash, she said she'd pay when we get there, number is 508 555 0147"
 
+          # -debug.speechready makes the Assistant show its ready state instead of the
+          # one-time speech-model download the cloud Mac would otherwise start.
           # Light mode only (Kyle's preference, 2026-10-18). Dark mode and the
           # text-size pass happen on the real phone in step 9.
           xcrun simctl ui "$DEVICE" appearance light
@@ -99,7 +101,7 @@ jobs:
             # Every flag gets a value. A bare word (a flag without one would leave
             # "today" on its own) is taken by macOS as a file to open, and SwiftUI
             # then skips creating the normal window.
-            open -n "$APP" --args -sampledata YES "$@" -screenshot "$OUT" > "mac-launch-$name.log" 2>&1 || true
+            open -n "$APP" --args -sampledata YES -debug.speechready YES "$@" -screenshot "$OUT" > "mac-launch-$name.log" 2>&1 || true
             for i in $(seq 1 30); do
               [ -s "$OUT" ] && break
               sleep 1
