@@ -51,6 +51,11 @@ session; then `CLAUDE.md` for the rules and `decisions.md` for the why.
   shows a "Connection" row that says whether claude.ai lets the page reach
   Anthropic; that was still unknown when this was written. Verified in
   headless Chrome by a Playwright script (`ace-demo-tools/`, 108 checks as of demo version 14).
+  Version 15: on a phone-sized screen the demo fills the screen with no drawn
+  phone frame or second clock, and the Mac view is offered only on bigger
+  screens. Kyle has shared it as "Anyone with the link". A viewer who is not
+  signed in to claude.ai gets the word-matching stand-in, not Claude, unless
+  the relay is set up.
 - **Demo relay** (`docs/demo-relay/`): a Cloudflare Worker that forwards the
   demo's request with the key as a server secret, so the client can use the
   Assistant from the link with nothing to type. Kyle sets it up; the demo is
