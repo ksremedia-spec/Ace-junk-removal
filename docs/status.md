@@ -1,6 +1,6 @@
 # Where things stand
 
-Updated 2026-10-19, about 04:50 UTC (about 00:50 US Eastern). Read this first in a new
+Updated 2026-10-19, about 05:30 UTC (about 01:30 US Eastern). Read this first in a new
 session; then `CLAUDE.md` for the rules and `decisions.md` for the why.
 
 ## Done (written and compiling; not yet run on a device)
@@ -50,7 +50,7 @@ session; then `CLAUDE.md` for the rules and `decisions.md` for the why.
   that browser), the viewer's claude.ai login, or the relay below. Settings
   shows a "Connection" row that says whether claude.ai lets the page reach
   Anthropic; that was still unknown when this was written. Verified in
-  headless Chrome by a 68-check Playwright script (`ace-demo-tools/`).
+  headless Chrome by a Playwright script (`ace-demo-tools/`, 108 checks as of demo version 14).
 - **Demo relay** (`docs/demo-relay/`): a Cloudflare Worker that forwards the
   demo's request with the key as a server secret, so the client can use the
   Assistant from the link with nothing to type. Kyle sets it up; the demo is
@@ -91,6 +91,22 @@ session; then `CLAUDE.md` for the rules and `decisions.md` for the why.
   shares it: https://claude.ai/artifact/J8UKoRfm4Zg8qpaw8t1GLR): 14 slides,
   the iPhone and Mac screenshots from run #9, what the Assistant can be
   told, and speaker notes. Source: the session scratchpad `ace-deck/`.
+
+- **Phone slideshow** (private until Kyle shares it:
+  https://claude.ai/artifact/MikLi52xrfdmSewj4KyLHb): the same 14 slides as
+  the deck, one per screen, swiped sideways, for a client looking on a
+  phone. The Slides deck shrinks a widescreen slide onto an upright phone,
+  so its text is unreadable there. The Mac slides add a close-up of the
+  window's list on phones; tapping any picture enlarges it. Source: the
+  session scratchpad `ace-phone-show/`. Checked once in headless Chromium
+  at phone, sideways-phone and laptop sizes; not opened on a real phone.
+- **Demo review fixes** (demo version 14): a review found 13 problems in the
+  demo's Assistant. All are fixed and each was re-checked in headless
+  Chromium with the reviewer's own scripts, plus the 108-check test. Three
+  of them also applied to the app and are fixed there (build check #17
+  passed): a reference to a deleted job no longer opens another job,
+  Claude's questions about which record was meant are shown, and the
+  customers sent to Claude are ranked so the named one is not crowded out.
 
 ## Not done
 
