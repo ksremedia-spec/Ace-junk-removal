@@ -7,14 +7,19 @@ import SwiftUI
 struct DumpsterPickupView: View {
     let draft: JobDraft
     let dumpsters: [Dumpster]
-    var onSaved: () -> Void
+    /// The dumpster the note's reference pointed at.
+    var refDumpster: Dumpster? = nil
+    /// The customer the note's reference pointed at: their dumpsters.
+    var refCustomer: Customer? = nil
+    /// Called with the confirmation, e.g. "Dumpster 3 picked up."
+    var onSaved: (String) -> Void
     var onStartOver: () -> Void
     var onDone: () -> Void
 
     @State private var picked: Dumpster?
 
     private var candidates: [Dumpster] {
-        matchDumpster(draft, dumpsters: dumpsters, wantOut: true)
+        findOutDumpsters(draft, refDumpster: refDumpster, refCustomer: refCustomer, dumpsters: dumpsters)
     }
 
     private var dumpster: Dumpster? {
@@ -32,7 +37,7 @@ struct DumpsterPickupView: View {
                     // Keep showing this dumpster while the sheet closes, even
                     // though it is no longer out.
                     picked = dumpster
-                    onSaved()
+                    onSaved("Dumpster \(dumpster.number) picked up.")
                 },
                 onStartOver: onStartOver
             )
@@ -90,7 +95,7 @@ struct DumpsterPickupView: View {
         }
         let address = draft.address.trimmingCharacters(in: .whitespaces)
         if !address.isEmpty { return "No dumpster is out at \(address)." }
-        let name = draft.customerName.trimmingCharacters(in: .whitespaces)
+        let name = refCustomer?.name ?? draft.customerName.trimmingCharacters(in: .whitespaces)
         if !name.isEmpty { return "No dumpster is out at \(name)'s." }
         return "No dumpster is out."
     }
@@ -100,6 +105,7 @@ struct DumpsterPickupView: View {
 private struct DumpsterPickupForm: View {
     @Environment(\.modelContext) private var context
     @AppStorage(AppSettings.overweightRateKey) private var ratePerTon = AppSettings.defaultOverweightRate
+    @Query(sort: \Job.scheduledAt) private var jobs: [Job]
 
     let dumpster: Dumpster
     let draft: JobDraft
@@ -107,6 +113,7 @@ private struct DumpsterPickupForm: View {
     var onStartOver: () -> Void
 
     @State private var actualTonsText: String
+    @State private var markJobDone = true
     @State private var saved = false
     @State private var flagged = 0
 
@@ -131,6 +138,11 @@ private struct DumpsterPickupForm: View {
         Overweight.charge(agreedTons: dumpster.agreedWeightTons, actualTons: actualTons, ratePerTon: ratePerTon)
     }
 
+    /// The booked pickup job for this customer, today or earlier, if any.
+    private var linkedJob: Job? {
+        bookedJob(.dumpsterPickup, for: dumpster.customer, in: jobs)
+    }
+
     /// The weight note clears as soon as a weight is typed in.
     private var weightNote: String? {
         actualTons == nil ? (flags["actualTons"] ?? "No weight was said.") : nil
@@ -140,6 +152,7 @@ private struct DumpsterPickupForm: View {
         Form {
             rentalSection
             pickupSection
+            linkedJobSection
             Section {
                 Button("Start over") { onStartOver() }
             }
@@ -201,8 +214,25 @@ private struct DumpsterPickupForm: View {
         }
     }
 
+    @ViewBuilder
+    private var linkedJobSection: some View {
+        if let linkedJob {
+            Section {
+                Toggle("Also mark the booked pickup job done", isOn: $markJobDone)
+            } footer: {
+                Text(linkedJob.jobType.rawValue + ", " + linkedJob.whenText)
+            }
+        }
+    }
+
     private func markPickedUp() {
+        // Found before the pickup, which clears the dumpster's customer.
+        let linked = markJobDone ? linkedJob : nil
         dumpster.markPickedUp(actualWeightTons: actualTons, ratePerTon: ratePerTon)
+        if let linked {
+            linked.isDone = true
+            linked.updatedAt = Date()
+        }
         try? context.save()
         saved.toggle()
         onSaved()

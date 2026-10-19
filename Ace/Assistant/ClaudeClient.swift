@@ -22,13 +22,6 @@ enum ClaudeEffort: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-struct ClaudeFormResult {
-    var draft: JobDraft
-    var seconds: Double
-    var inputTokens: Int
-    var outputTokens: Int
-}
-
 enum ClaudeError: LocalizedError {
     case missingKey
     case badStatus(Int, String)
@@ -56,30 +49,26 @@ struct ClaudeClient {
     private static let endpoint = URL(string: "https://api.anthropic.com/v1/messages")!
     private static let apiVersion = "2023-06-01"
 
-    /// Sends the transcript and gets back the filled-in form as structured JSON.
-    /// `records` is a short plain-text summary of current dumpsters and jobs,
-    /// so a question like "which dumpsters are due Friday" can be answered
-    /// and an update like "Johnson's done" can be placed on the right day.
-    static func fillJobForm(transcript: String, model: ClaudeModel, effort: ClaudeEffort, records: String? = nil) async throws -> ClaudeFormResult {
+    /// Sends the spoken note and the records, and gets back the plan: a
+    /// reply, the actions to confirm and the questions to ask, as
+    /// structured JSON in the shape of docs/assistant-actions.md.
+    static func plan(note: String, records: String, model: ClaudeModel, effort: ClaudeEffort) async throws -> (plan: AssistantPlan, seconds: Double, inputTokens: Int, outputTokens: Int) {
         guard let apiKey = Keychain.read(Keychain.anthropicAPIKey), !apiKey.isEmpty else {
             throw ClaudeError.missingKey
         }
 
-        var userText = "Transcript of the spoken note:\n\n\(transcript)"
-        if let records, !records.isEmpty {
-            userText += "\n\nCurrent records, for answering questions and for telling which job or dumpster is meant:\n\(records)"
-        }
+        let userText = "Spoken note:\n\(note)\n\nRecords:\n\(records)"
 
         let body: [String: Any] = [
             "model": model.rawValue,
             // Thinking tokens count toward this cap; leave plenty of room.
             "max_tokens": 16000,
-            "system": JobDraft.systemPrompt(),
+            "system": AssistantPlan.systemPrompt(),
             "output_config": [
                 "effort": effort.rawValue,
                 "format": [
                     "type": "json_schema",
-                    "schema": JobDraft.jsonSchema,
+                    "schema": AssistantPlan.jsonSchema,
                 ],
             ],
             "messages": [
@@ -126,16 +115,17 @@ struct ClaudeClient {
             throw ClaudeError.unreadable("No text in the reply.")
         }
 
-        let draft: JobDraft
+        var plan: AssistantPlan
         do {
-            draft = try JSONDecoder().decode(JobDraft.self, from: Data(text.utf8))
+            plan = try JSONDecoder().decode(AssistantPlan.self, from: Data(text.utf8))
         } catch {
             throw ClaudeError.unreadable(error.localizedDescription)
         }
+        plan.numberActions()
 
         let usage = json["usage"] as? [String: Any] ?? [:]
-        return ClaudeFormResult(
-            draft: draft,
+        return (
+            plan: plan,
             seconds: seconds,
             inputTokens: usage["input_tokens"] as? Int ?? 0,
             outputTokens: usage["output_tokens"] as? Int ?? 0

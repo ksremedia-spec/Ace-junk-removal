@@ -88,6 +88,66 @@ func matchJobs(_ draft: JobDraft, customers: [Customer], allJobs: [Job], today: 
     return []
 }
 
+// MARK: References first
+
+/// True when the note named someone: a name, a phone number, or an address
+/// with a house number and street.
+func namesSomeone(_ draft: JobDraft) -> Bool {
+    if draft.phone.filter(\.isNumber).count >= 7 { return true }
+    if !SpokenName(draft.customerName).words.isEmpty { return true }
+    let address = SpokenAddress(draft.address)
+    return address.houseNumber != nil && address.streetWord != nil
+}
+
+/// Customers an action is about. A reference wins (see
+/// `RecordRefs.customerMeant`); otherwise phone, then name, then address.
+func findCustomers(_ draft: JobDraft, refCustomer: Customer?, customers: [Customer]) -> [Customer] {
+    if let refCustomer { return [refCustomer] }
+    return matchCustomers(draft, in: customers)
+}
+
+/// Jobs an action is about, best first. A job reference wins; a customer
+/// reference narrows the search to that customer's jobs. A name, phone or
+/// address that matches nobody finds nothing, so the note never lands on
+/// someone else's job without asking. Only when nobody was named are
+/// today's open jobs offered.
+func findJobs(_ draft: JobDraft, refJob: Job?, refCustomer: Customer?, customers: [Customer], jobs: [Job], today: Date) -> [Job] {
+    if let refJob { return [refJob] }
+    if let refCustomer {
+        return matchJobs(draft, customers: [refCustomer], allJobs: jobs, today: today)
+    }
+    let matched = matchCustomers(draft, in: customers)
+    if matched.isEmpty && namesSomeone(draft) { return [] }
+    return matchJobs(draft, customers: matched, allJobs: jobs, today: today)
+}
+
+/// Out dumpsters an action is about: a dumpster reference or number first,
+/// then the ones out with the referenced customer, then the spoken name or
+/// address (see `matchDumpster`).
+func findOutDumpsters(_ draft: JobDraft, refDumpster: Dumpster?, refCustomer: Customer?, dumpsters: [Dumpster]) -> [Dumpster] {
+    if let refDumpster, refDumpster.isOut { return [refDumpster] }
+    if Int(draft.dumpsterNumber.filter(\.isNumber)) == nil, let refCustomer {
+        let theirs = dumpsters
+            .filter { $0.isOut && $0.customer?.persistentModelID == refCustomer.persistentModelID }
+            .sorted { $0.number < $1.number }
+        if !theirs.isEmpty { return theirs }
+    }
+    return matchDumpster(draft, dumpsters: dumpsters, wantOut: true)
+}
+
+/// The open job of this type booked for the customer today or earlier, the
+/// latest first: the drop-off or pickup a dumpster screen can also mark done.
+func bookedJob(_ type: JobType, for customer: Customer?, in jobs: [Job], today: Date = Dates.startOfToday()) -> Job? {
+    guard let customer else { return nil }
+    let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: today) ?? today
+    return jobs
+        .filter { job in
+            !job.isDone && job.jobType == type && job.scheduledAt < tomorrow
+                && job.customer?.persistentModelID == customer.persistentModelID
+        }
+        .max { $0.scheduledAt < $1.scheduledAt }
+}
+
 // MARK: Dumpsters
 
 /// Dumpsters the note could mean. `wantOut` true is a pickup: the numbered

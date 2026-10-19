@@ -10,6 +10,11 @@ struct AssistantFlags {
         notes = Dictionary(draft.issues.map { (Self.key($0.field), $0.question) }, uniquingKeysWith: { first, _ in first })
     }
 
+    /// The plan's questions for one action, keyed by the schema's field names.
+    init(issues: [PlanIssue]) {
+        notes = Dictionary(issues.map { (Self.key($0.field), $0.question) }, uniquingKeysWith: { first, _ in first })
+    }
+
     static func key(_ field: String) -> String {
         field.lowercased().filter { $0 != "_" && $0 != " " }
     }

@@ -42,6 +42,11 @@ struct DumpsterRow: View {
                         .foregroundStyle(status == .out ? .secondary : statusColor)
                 }
             }
+            if !dumpster.conditionNote.isEmpty {
+                Text(dumpster.conditionNote)
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+            }
         }
         .padding(.vertical, 2)
     }

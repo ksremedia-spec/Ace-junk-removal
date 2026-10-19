@@ -52,6 +52,7 @@ struct DumpsterDetailView: View {
                     Text(dumpster.status().rawValue)
                 }
                 TextField("Size or nickname", text: $dumpster.label, prompt: Text("Size or nickname, e.g. 15 yard"))
+                TextField("Dumpster note", text: $dumpster.conditionNote, prompt: Text("Dumpster note, e.g. cracked door"), axis: .vertical)
             }
 
             if dumpster.isOut {

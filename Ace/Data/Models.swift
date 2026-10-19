@@ -50,6 +50,8 @@ enum JobType: String, CaseIterable, Codable, Identifiable {
     case demolition = "Demolition"
     case dumpsterDropOff = "Dumpster drop-off"
     case dumpsterPickup = "Dumpster pickup"
+    case dumpsterSwap = "Dumpster swap"
+    case estimate = "Estimate"
     case other = "Other"
 
     var id: String { rawValue }
@@ -143,6 +145,9 @@ final class Dumpster {
     /// Weight included in the price, in tons.
     var agreedWeightTons: Double?
     var notes: String
+    /// Something about the dumpster itself ("cracked door, don't send it
+    /// out"). Kept until changed; a pickup or drop-off leaves it alone.
+    var conditionNote: String = ""
     var updatedAt: Date
 
     @Relationship(deleteRule: .cascade, inverse: \RentalRecord.dumpster)

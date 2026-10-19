@@ -377,6 +377,8 @@ private enum SampleLists {
         case .junkRemoval: return Double(dice.int(6...36) * 25)      // 150–900
         case .dumpsterDropOff: return Double(dice.int(16...26) * 25) // 400–650
         case .dumpsterPickup: return nil
+        case .dumpsterSwap: return Double(dice.int(16...26) * 25)    // 400–650
+        case .estimate: return nil
         case .demolition: return Double(dice.int(16...70) * 50)      // 800–3,500
         case .other: return Double(dice.int(4...20) * 25)            // 100–500
         }

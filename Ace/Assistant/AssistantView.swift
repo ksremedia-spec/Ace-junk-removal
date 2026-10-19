@@ -1,11 +1,12 @@
 import SwiftData
 import SwiftUI
 
-/// The voice entry point. Record a note, it is written down on the phone,
-/// Claude works out what it was and fills in the matching form: a new job
-/// (Ashley checks it and saves), an update to a job on the books ("Johnson's
-/// done, paid cash"), a dumpster pickup with the weight, or a drop-off. A
-/// spoken question about the records gets a short answer instead.
+/// The voice entry point. Record a note; it is written down on the phone;
+/// Claude reads it with the records that matter and answers with a list of
+/// actions (a new job, a job done and paid, a dumpster swapped, a text to a
+/// customer...), a reply, or both. Each action gets its own confirmation
+/// screen, in order ("1 of 3"), with Skip; nothing is saved without a tap.
+/// A question gets a plain answer.
 struct AssistantView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
@@ -20,8 +21,9 @@ struct AssistantView: View {
         case recording
         case transcribing
         case asking
-        case review
+        case steps
         case answer
+        case finished(String)
         case failed(String)
     }
 
@@ -29,94 +31,201 @@ struct AssistantView: View {
     @State private var phase: Phase = .idle
     @State private var recordingURL: URL?
     @State private var transcript = ""
-    @State private var draft: JobDraft?
     @State private var answerText = ""
-    @State private var flagged = 0
+
+    // The plan being stepped through.
+    @State private var reply = ""
+    @State private var steps: [AssistantAction] = []
+    @State private var stepIndex = 0
+    @State private var refs = RecordRefs()
+    @State private var issues: [PlanIssue] = []
+    @State private var confirmations: [String] = []
+    @State private var savedCount = 0
 
     var body: some View {
         NavigationStack {
-            Group {
-                switch phase {
-                case .review:
-                    if let draft {
-                        reviewView(for: draft)
-                    }
-                case .answer:
-                    answerView
-                default:
-                    recordView
-                }
-            }
-            .navigationTitle(title)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        if recorder.isRecording { _ = recorder.stop() }
-                        dismiss()
-                    }
-                }
-            }
+            content
+                .navigationTitle(title)
+                #if os(iOS)
+                // The title and "1 of 3" sit together in the bar.
+                .navigationBarTitleDisplayMode(stepCounter == nil ? .automatic : .inline)
+                #endif
+                .toolbar { toolbarContent }
+                .safeAreaInset(edge: .top) { stepBanner }
         }
-        .onAppear {
-            // A plain Task, not .task, so closing the sheet does not cancel a
-            // model download that is halfway through.
-            switch engine.state {
-            case .notLoaded, .failed:
-                Task { await engine.load(model: AppSettings.speechModel) }
-            case .ready where engine.loadedModel != AppSettings.speechModel:
-                Task { await engine.load(model: AppSettings.speechModel) }
-            default:
-                break
-            }
-        }
-        .sensoryFeedback(.warning, trigger: flagged)
+        .onAppear(perform: loadEngine)
+        .sensoryFeedback(.success, trigger: savedCount)
     }
 
-    // MARK: Review
-
-    /// The screen for what Claude heard. Questions and "other" notes are
-    /// answered in words instead and never get here.
     @ViewBuilder
-    private func reviewView(for draft: JobDraft) -> some View {
-        switch draft.noteKind {
-        case .job, .question, .other:
-            JobReviewView(draft: draft, onSaved: { dismiss() }, onStartOver: { reset() })
-        case .update:
-            JobUpdateView(
-                draft: draft,
-                customers: customers,
-                jobs: jobs,
-                onSaved: { dismiss() },
-                onStartOver: { reset() },
-                onStartNewJob: { self.draft = draft.asNewJob }
-            )
-        case .pickup:
-            DumpsterPickupView(
-                draft: draft,
-                dumpsters: dumpsters,
-                onSaved: { dismiss() },
-                onStartOver: { reset() },
-                onDone: { dismiss() }
-            )
-        case .dropoff:
-            DumpsterDropoffView(
-                draft: draft,
-                customers: customers,
-                dumpsters: dumpsters,
-                onSaved: { dismiss() },
-                onStartOver: { reset() }
-            )
+    private var content: some View {
+        switch phase {
+        case .steps:
+            stepView
+        case .answer:
+            answerView
+        case .finished(let text):
+            finishedView(text)
+        default:
+            recordView
         }
+    }
+
+    private func loadEngine() {
+        // A plain Task, not .task, so closing the sheet does not cancel a
+        // model download that is halfway through.
+        switch engine.state {
+        case .notLoaded, .failed:
+            Task { await engine.load(model: AppSettings.speechModel) }
+        case .ready where engine.loadedModel != AppSettings.speechModel:
+            Task { await engine.load(model: AppSettings.speechModel) }
+        default:
+            break
+        }
+    }
+
+    // MARK: Title and toolbar
+
+    private var currentStep: AssistantAction? {
+        guard phase == .steps, stepIndex < steps.count else { return nil }
+        return steps[stepIndex]
     }
 
     private var title: String {
-        guard phase == .review, let draft else { return "Assistant" }
-        switch draft.noteKind {
-        case .update: return "Update Job"
-        case .pickup: return "Dumpster Pickup"
-        case .dropoff: return "Dumpster Drop-off"
-        case .job, .question, .other: return "Assistant"
+        currentStep?.kind?.title ?? "Assistant"
+    }
+
+    /// "1 of 3", only when there is more than one step.
+    private var stepCounter: String? {
+        guard currentStep != nil, steps.count > 1 else { return nil }
+        return "\(stepIndex + 1) of \(steps.count)"
+    }
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .cancellationAction) {
+            Button("Cancel") {
+                if recorder.isRecording { _ = recorder.stop() }
+                dismiss()
+            }
         }
+        if stepCounter != nil {
+            ToolbarItem(placement: skipPlacement) {
+                Button("Skip") { advance() }
+            }
+        }
+        #if os(iOS)
+        if let counter = stepCounter {
+            ToolbarItem(placement: .principal) {
+                StepTitle(title: title, counter: counter)
+            }
+        }
+        #endif
+    }
+
+    private var skipPlacement: ToolbarItemPlacement {
+        #if os(iOS)
+        return .bottomBar
+        #else
+        return .cancellationAction
+        #endif
+    }
+
+    /// The reply above the first step. On the Mac, where a sheet has no
+    /// title bar, also the step's title and "1 of 3".
+    @ViewBuilder
+    private var stepBanner: some View {
+        if let text = bannerText {
+            Text(text)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+                .background(.bar)
+        }
+    }
+
+    private var bannerText: String? {
+        guard currentStep != nil else { return nil }
+        var lines: [String] = []
+        #if os(macOS)
+        if let counter = stepCounter { lines.append(title + " · " + counter) }
+        #endif
+        if stepIndex == 0, !reply.isEmpty { lines.append(reply) }
+        return lines.isEmpty ? nil : lines.joined(separator: "\n")
+    }
+
+    // MARK: Steps
+
+    @ViewBuilder
+    private var stepView: some View {
+        if let step = currentStep {
+            AssistantStepView(
+                action: step,
+                issues: issues.filter { $0.action == step.index },
+                refs: refs,
+                customers: customers,
+                jobs: jobs,
+                dumpsters: dumpsters,
+                onFinish: { finishStep($0) },
+                onSkip: { advance() },
+                onStartOver: { reset() },
+                onStartNewJob: { startNewJobInstead() }
+            )
+            // A fresh screen for every step, even two of the same kind.
+            .id("\(stepIndex) \(step.type)")
+        }
+    }
+
+    /// One step saved (or, with an empty text, closed without a change).
+    private func finishStep(_ confirmation: String) {
+        if !confirmation.isEmpty {
+            confirmations.append(confirmation)
+            savedCount += 1
+        }
+        advance()
+    }
+
+    /// The next step, or the end.
+    private func advance() {
+        if stepIndex + 1 < steps.count {
+            stepIndex += 1
+        } else {
+            finishAll()
+        }
+    }
+
+    /// "Job saved." or "3 changes saved.", briefly, then the sheet closes.
+    /// With nothing saved it just closes.
+    private func finishAll() {
+        guard let last = confirmations.last else {
+            dismiss()
+            return
+        }
+        phase = .finished(confirmations.count == 1 ? last : "\(confirmations.count) changes saved.")
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.5))
+            if case .finished = phase { dismiss() }
+        }
+    }
+
+    /// "Start a new job instead" on an update that found no job.
+    private func startNewJobInstead() {
+        guard stepIndex < steps.count else { return }
+        steps[stepIndex].type = AssistantAction.ActionType.newJob.rawValue
+    }
+
+    private func finishedView(_ text: String) -> some View {
+        Form {
+            Section {
+                Label(text, systemImage: "checkmark.circle")
+            }
+            Section {
+                Button("Done") { dismiss() }
+            }
+        }
+        .formStyle(.grouped)
     }
 
     // MARK: Record
@@ -148,7 +257,7 @@ struct AssistantView: View {
                 case .asking:
                     HStack {
                         ProgressView()
-                        Text("Filling in the form.")
+                        Text("Working out what to do.")
                             .foregroundStyle(.secondary)
                     }
                 case .failed(let message):
@@ -163,7 +272,7 @@ struct AssistantView: View {
                         .foregroundStyle(.secondary)
                 }
             } footer: {
-                Text("Say a new job the way you would on the phone: who, where, when, what, and the price. Or say what happened: a job is done and paid, a dumpster was picked up and what it weighed, or a dumpster was dropped off. Or ask about the records, like which dumpsters are due back Friday.")
+                Text("Say it the way you would on the phone: a new job, a job done and paid, a job moved or cancelled, a dumpster dropped off, picked up or swapped, a customer's new number, or a call or text to a customer. Several things can go in one note. Or ask about the records, like which dumpsters are due back Friday.")
             }
 
             Section {
@@ -236,23 +345,30 @@ struct AssistantView: View {
                 return
             }
             phase = .asking
-            let response = try await ClaudeClient.fillJobForm(
-                transcript: transcript,
-                model: AppSettings.claudeModel,
-                effort: AppSettings.effort,
-                records: recordsSummary()
+            let records = AssistantRecords.build(
+                note: transcript,
+                customers: customers,
+                jobs: jobs,
+                dumpsters: dumpsters,
+                now: Date()
             )
-            draft = response.draft
-            switch response.draft.noteKind {
-            case .question, .other:
-                answerText = response.draft.answer.isEmpty ? "No answer was found in the records." : response.draft.answer
+            let response = try await ClaudeClient.plan(
+                note: transcript,
+                records: records.text,
+                model: AppSettings.claudeModel,
+                effort: AppSettings.effort
+            )
+            refs = records.refs
+            reply = response.plan.reply.trimmingCharacters(in: .whitespacesAndNewlines)
+            issues = response.plan.issues
+            if response.plan.actions.isEmpty {
+                answerText = reply.isEmpty ? "No answer was found." : reply
                 phase = .answer
-            case .job:
-                if !response.draft.issues.isEmpty { flagged += 1 }
-                phase = .review
-            case .update, .pickup, .dropoff:
-                // These screens give their own warning when something is flagged.
-                phase = .review
+            } else {
+                steps = response.plan.actions
+                stepIndex = 0
+                confirmations = []
+                phase = .steps
             }
         } catch {
             phase = .failed(error.localizedDescription)
@@ -278,8 +394,13 @@ struct AssistantView: View {
     private func reset() {
         phase = .idle
         transcript = ""
-        draft = nil
         answerText = ""
+        reply = ""
+        steps = []
+        stepIndex = 0
+        refs = RecordRefs()
+        issues = []
+        confirmations = []
         recordingURL = nil
     }
 
@@ -299,52 +420,6 @@ struct AssistantView: View {
         .formStyle(.grouped)
     }
 
-    /// A short, plain-text snapshot of the records: the dumpsters, the jobs
-    /// of the last week (so "the job this morning" can be placed) and the
-    /// jobs of the next two weeks.
-    private func recordsSummary() -> String {
-        var lines: [String] = []
-        lines.append("Dumpsters:")
-        for dumpster in dumpsters {
-            var line = "- \(dumpster.displayName): \(dumpster.status().rawValue)"
-            if dumpster.isOut {
-                if let customer = dumpster.customer { line += ", \(customer.name)" }
-                if !dumpster.location.isEmpty { line += ", at \(dumpster.location)" }
-                if let due = dumpster.dueBackAt { line += ", due back \(due.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))" }
-                if let agreed = dumpster.agreedWeightTons { line += ", \(Tons.text(agreed)) included" }
-            }
-            lines.append(line)
-        }
-        let calendar = Calendar.current
-        let today = Dates.startOfToday()
-        let weekAgo = calendar.date(byAdding: .day, value: -7, to: today) ?? today
-        let tomorrow = calendar.date(byAdding: .day, value: 1, to: today) ?? today
-        let horizon = calendar.date(byAdding: .day, value: 14, to: today) ?? today
-
-        // Past week, plus today's finished jobs; today's open jobs are listed below.
-        let recent = jobs.filter { $0.scheduledAt >= weekAgo && $0.scheduledAt < tomorrow && ($0.scheduledAt < today || $0.isDone) }.suffix(40)
-        lines.append("Jobs in the last 7 days:")
-        if recent.isEmpty { lines.append("- none") }
-        for job in recent { lines.append(jobLine(job)) }
-
-        let upcoming = jobs.filter { !$0.isDone && $0.scheduledAt >= today && $0.scheduledAt <= horizon }.prefix(40)
-        lines.append("Jobs today and in the next two weeks:")
-        if upcoming.isEmpty { lines.append("- none") }
-        for job in upcoming { lines.append(jobLine(job)) }
-        return lines.joined(separator: "\n")
-    }
-
-    /// "- Monday, Oct 19 9:00 AM: Linda Johnson, Junk removal, 12 Elm St, $300 cash, unpaid"
-    private func jobLine(_ job: Job) -> String {
-        var line = "- \(job.scheduledAt.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))"
-        if job.hasTime { line += " " + job.scheduledAt.formatted(date: .omitted, time: .shortened) }
-        line += ": \(job.customer?.name ?? "no customer"), \(job.jobType.rawValue)"
-        if let address = job.customer?.address, !address.isEmpty { line += ", \(address)" }
-        if !job.priceText.isEmpty { line += ", \(job.priceText) \(job.paymentType.rawValue.lowercased())\(job.isPaid ? ", paid" : ", unpaid")" }
-        if job.isDone { line += ", done" }
-        return line
-    }
-
     enum AssistantError: LocalizedError {
         case speechModel(String)
 
@@ -352,6 +427,22 @@ struct AssistantView: View {
             switch self {
             case .speechModel(let message): return "The speech model could not be loaded. \(message)"
             }
+        }
+    }
+}
+
+/// The title with "1 of 3" under it, in the iPhone's title area.
+private struct StepTitle: View {
+    let title: String
+    let counter: String
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Text(title)
+                .font(.headline)
+            Text(counter)
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 }

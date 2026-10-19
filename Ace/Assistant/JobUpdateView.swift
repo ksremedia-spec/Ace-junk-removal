@@ -8,6 +8,10 @@ struct JobUpdateView: View {
     let draft: JobDraft
     let customers: [Customer]
     let jobs: [Job]
+    /// The job the note's reference pointed at: no matching needed.
+    var refJob: Job? = nil
+    /// The customer the note's reference pointed at: only their jobs.
+    var refCustomer: Customer? = nil
     var onSaved: () -> Void
     var onStartOver: () -> Void
     var onStartNewJob: () -> Void
@@ -15,8 +19,11 @@ struct JobUpdateView: View {
     @State private var picked: Job?
 
     private var candidates: [Job] {
-        let matched = matchCustomers(draft, in: customers)
-        return matchJobs(draft, customers: matched, allJobs: jobs, today: Dates.startOfToday())
+        // A job type in an update is the new kind of work, not a way to
+        // find the job, so it is left out of the search.
+        var probe = draft
+        probe.jobType = ""
+        return findJobs(probe, refJob: refJob, refCustomer: refCustomer, customers: customers, jobs: jobs, today: Dates.startOfToday())
     }
 
     private var job: Job? {
@@ -83,6 +90,7 @@ struct JobUpdateView: View {
     }
 
     private var subject: String {
+        if let refCustomer { return refCustomer.name }
         let name = draft.customerName.trimmingCharacters(in: .whitespaces)
         if !name.isEmpty { return name }
         let address = draft.address.trimmingCharacters(in: .whitespaces)
@@ -102,6 +110,7 @@ private struct JobUpdateForm: View {
 
     @State private var isDone: Bool
     @State private var isPaid: Bool
+    @State private var jobType: JobType
     @State private var paymentType: PaymentType
     @State private var priceText: String
     @State private var date: Date
@@ -111,6 +120,8 @@ private struct JobUpdateForm: View {
     @State private var flagged = 0
 
     private let flags: AssistantFlags
+    /// A new kind of work was said, so the type picker is shown.
+    private let jobTypeSaid: Bool
 
     init(job: Job, draft: JobDraft, onSaved: @escaping () -> Void, onStartOver: @escaping () -> Void) {
         self.job = job
@@ -124,6 +135,9 @@ private struct JobUpdateForm: View {
         _isDone = State(initialValue: done == "yes" ? true : (done == "no" ? false : job.isDone))
         _isPaid = State(initialValue: paid == "paid" ? true : (paid == "unpaid" ? false : job.isPaid))
         _paymentType = State(initialValue: paymentSaid ?? job.paymentType)
+        let typeSaid = JobType.allCases.first { $0.rawValue.caseInsensitiveCompare(draft.jobType) == .orderedSame }
+        _jobType = State(initialValue: typeSaid ?? job.jobType)
+        jobTypeSaid = typeSaid != nil
         _priceText = State(initialValue: draft.price.isEmpty ? Parse.moneyText(job.price) : draft.price)
 
         let calendar = Calendar.current
@@ -145,6 +159,7 @@ private struct JobUpdateForm: View {
         var flags = AssistantFlags(draft: draft)
         let heardAChange = done == "yes" || done == "no" || paid == "paid" || paid == "unpaid" || paymentSaid != nil
             || !draft.price.isEmpty || !draft.newDate.isEmpty || !draft.newTime.isEmpty || !draft.notes.isEmpty
+            || typeSaid != nil
         if !heardAChange {
             flags.add("done", "No change was heard. Mark the job done?")
         }
@@ -210,6 +225,15 @@ private struct JobUpdateForm: View {
             FlaggedRow(flags["paid"]) {
                 Toggle("Paid", isOn: $isPaid)
             }
+            if jobTypeSaid {
+                FlaggedRow(flags["jobType"]) {
+                    Picker("Type", selection: $jobType) {
+                        ForEach(JobType.allCases) { type in
+                            Text(type.rawValue).tag(type)
+                        }
+                    }
+                }
+            }
             FlaggedRow(flags["paymentType"]) {
                 Picker("Payment", selection: $paymentType) {
                     ForEach(PaymentType.allCases) { type in
@@ -250,6 +274,7 @@ private struct JobUpdateForm: View {
     private func save() {
         job.isDone = isDone
         job.isPaid = isPaid
+        job.jobType = jobType
         job.paymentType = paymentType
         job.price = Parse.money(priceText)
         job.scheduledAt = hasTime ? date : Calendar.current.startOfDay(for: date)

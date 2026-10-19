@@ -11,6 +11,9 @@ struct JobReviewView: View {
     @Query(sort: \Customer.name) private var customers: [Customer]
 
     let draft: JobDraft
+    /// The customer the note's reference pointed at, if any. The job goes to
+    /// them unless the name is changed to someone else.
+    let knownCustomer: Customer?
     var onSaved: () -> Void
     var onStartOver: () -> Void
 
@@ -49,8 +52,9 @@ struct JobReviewView: View {
     @State private var saved = false
     @State private var flagged = 0
 
-    init(draft: JobDraft, onSaved: @escaping () -> Void, onStartOver: @escaping () -> Void) {
+    init(draft: JobDraft, knownCustomer: Customer? = nil, onSaved: @escaping () -> Void, onStartOver: @escaping () -> Void) {
         self.draft = draft
+        self.knownCustomer = knownCustomer
         self.onSaved = onSaved
         self.onStartOver = onStartOver
 
@@ -162,6 +166,9 @@ struct JobReviewView: View {
             Button("Yes") { answeredYes() }
             Button("No", role: .cancel) { answeredNo() }
         }
+        .onAppear {
+            if !draft.issues.isEmpty { flagged += 1 }
+        }
         .sensoryFeedback(.success, trigger: saved)
         .sensoryFeedback(.warning, trigger: flagged)
     }
@@ -206,6 +213,10 @@ struct JobReviewView: View {
     private var phoneDigits: String { phone.filter(\.isNumber) }
 
     private var matchingCustomer: Customer? {
+        if let knownCustomer,
+           SpokenName(name).text == SpokenName(knownCustomer.name).text {
+            return knownCustomer
+        }
         if phoneDigits.count >= 7, let byPhone = customers.first(where: { $0.phoneDigits == phoneDigits }) {
             return byPhone
         }

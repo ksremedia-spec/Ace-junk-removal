@@ -7,10 +7,12 @@ import SwiftUI
 /// out the same way the dumpster screen does.
 struct DumpsterDropoffView: View {
     @Environment(\.modelContext) private var context
+    @Query(sort: \Job.scheduledAt) private var jobs: [Job]
 
     let draft: JobDraft
     let dumpsters: [Dumpster]
-    var onSaved: () -> Void
+    /// Called with the confirmation, e.g. "Dumpster 3 dropped off."
+    var onSaved: (String) -> Void
     var onStartOver: () -> Void
 
     @State private var selectedNumber: Int
@@ -24,12 +26,16 @@ struct DumpsterDropoffView: View {
     @State private var agreedTonsText: String
     @State private var notes: String
     @State private var showingCustomerPicker = false
+    @State private var markJobDone = true
     @State private var saved = false
     @State private var flagged = 0
 
     private let flags: AssistantFlags
 
-    init(draft: JobDraft, customers: [Customer], dumpsters: [Dumpster], onSaved: @escaping () -> Void, onStartOver: @escaping () -> Void) {
+    /// `refCustomer` is the customer the note's reference pointed at; it wins
+    /// over matching the spoken name.
+    init(draft: JobDraft, customers: [Customer], dumpsters: [Dumpster], refCustomer: Customer? = nil,
+         onSaved: @escaping (String) -> Void, onStartOver: @escaping () -> Void) {
         self.draft = draft
         self.dumpsters = dumpsters
         self.onSaved = onSaved
@@ -39,7 +45,7 @@ struct DumpsterDropoffView: View {
         let spokenNumber = Int(draft.dumpsterNumber.filter(\.isNumber))
         _selectedNumber = State(initialValue: inYard.first?.number ?? 0)
 
-        let match = matchCustomers(draft, in: customers).first
+        let match = refCustomer ?? matchCustomers(draft, in: customers).first
         _customer = State(initialValue: match)
         _name = State(initialValue: draft.customerName.trimmingCharacters(in: .whitespaces))
         _phone = State(initialValue: PhoneFormat.formatted(draft.phone))
@@ -78,6 +84,11 @@ struct DumpsterDropoffView: View {
 
     private var trimmedName: String { name.trimmingCharacters(in: .whitespaces) }
 
+    /// The booked drop-off job for this customer, today or earlier, if any.
+    private var linkedJob: Job? {
+        bookedJob(.dumpsterDropOff, for: customer, in: jobs)
+    }
+
     private var canSave: Bool {
         selectedDumpster != nil && (customer != nil || !trimmedName.isEmpty)
     }
@@ -97,6 +108,7 @@ struct DumpsterDropoffView: View {
             dumpsterSection
             customerSection
             rentalSection
+            linkedJobSection
             Section {
                 Button("Start over") { onStartOver() }
             }
@@ -138,6 +150,22 @@ struct DumpsterDropoffView: View {
                         }
                     }
                 }
+                if let note = selectedDumpster?.conditionNote, !note.isEmpty {
+                    Text(note)
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var linkedJobSection: some View {
+        if let linkedJob {
+            Section {
+                Toggle("Also mark the booked drop-off job done", isOn: $markJobDone)
+            } footer: {
+                Text(linkedJob.jobType.rawValue + ", " + linkedJob.whenText)
             }
         }
     }
@@ -193,6 +221,7 @@ struct DumpsterDropoffView: View {
     private func markDroppedOff() {
         guard let dumpster = selectedDumpster else { return }
         let trimmedLocation = location.trimmingCharacters(in: .whitespacesAndNewlines)
+        let linked = markJobDone ? linkedJob : nil
 
         let who: Customer
         if let customer {
@@ -219,8 +248,12 @@ struct DumpsterDropoffView: View {
             agreedWeightTons: Parse.tons(agreedTonsText),
             notes: notes
         )
+        if let linked {
+            linked.isDone = true
+            linked.updatedAt = Date()
+        }
         try? context.save()
         saved.toggle()
-        onSaved()
+        onSaved("Dumpster \(dumpster.number) dropped off.")
     }
 }
