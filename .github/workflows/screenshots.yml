@@ -1,0 +1,89 @@
+# Runs the app in the iPhone Simulator on a GitHub-hosted Mac and saves a
+# screenshot of each screen (light and dark, plus the largest text size) into
+# docs/screenshots/. Started by hand only; it costs about 5 Mac minutes
+# (50 of the monthly allowance). It shows how screens look; it cannot run the
+# speech model properly or call Claude (no API key on the cloud Mac).
+name: Screenshots
+
+on:
+  workflow_dispatch:
+
+jobs:
+  screenshots:
+    name: Simulator screenshots (Xcode 27.1)
+    runs-on: xcode-27
+    timeout-minutes: 40
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pick Xcode 27.1 and an iPhone simulator
+        id: sim
+        run: |
+          sudo xcode-select -s /Applications/Xcode_27.1.app
+          xcodebuild -version
+          DEVICE=$(xcrun simctl list devices available -j | python3 -c "
+          import json, sys
+          d = json.load(sys.stdin)['devices']
+          phones = [x for rt, xs in d.items() if 'iOS' in rt for x in xs if x['name'].startswith('iPhone')]
+          pm = [x for x in phones if 'Pro Max' in x['name']]
+          pick = (pm or phones)[-1]
+          print(pick['udid'])
+          print(pick['name'], file=sys.stderr)
+          ")
+          echo "device=$DEVICE" >> "$GITHUB_OUTPUT"
+          xcrun simctl boot "$DEVICE"
+          xcrun simctl bootstatus "$DEVICE" -b
+
+      - name: Build for the Simulator
+        run: |
+          xcodebuild build -project Ace.xcodeproj -scheme Ace -derivedDataPath DerivedData \
+            -destination "id=${{ steps.sim.outputs.device }}" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            > sim-build.log 2>&1 || { grep -E "error:|BUILD" sim-build.log; exit 1; }
+          grep -E "BUILD (SUCCEEDED|FAILED)" sim-build.log
+
+      - name: Install, open each screen, photograph it
+        run: |
+          DEVICE="${{ steps.sim.outputs.device }}"
+          APP=$(find DerivedData/Build/Products -name "Ace.app" -path "*iphonesimulator*" | head -1)
+          BUNDLE=com.acejunkremoval.app
+          mkdir -p docs/screenshots
+          xcrun simctl install "$DEVICE" "$APP"
+
+          shot() {
+            name="$1"; appearance="$2"; shift 2
+            xcrun simctl ui "$DEVICE" appearance "$appearance"
+            xcrun simctl terminate "$DEVICE" "$BUNDLE" 2>/dev/null || true
+            xcrun simctl launch "$DEVICE" "$BUNDLE" "$@"
+            sleep 5
+            xcrun simctl io "$DEVICE" screenshot "docs/screenshots/$name.png"
+          }
+
+          TRANSCRIPT="Mrs. Johnson on Elm Street in Taunton, junk removal Friday morning, three hundred cash, she said she'd pay when we get there, number is 508 555 0147"
+
+          xcrun simctl ui "$DEVICE" content_size medium || true
+          shot "1-home-light" light
+          shot "1-home-dark" dark
+          shot "2-api-key-light" light -open apikey
+          shot "2-api-key-dark" dark -open apikey
+          shot "3-speech-test-light" light -open speech
+          shot "3-speech-test-dark" dark -open speech
+          shot "4-claude-test-light" light -open claude -debug.transcript "$TRANSCRIPT"
+          shot "4-claude-test-dark" dark -open claude -debug.transcript "$TRANSCRIPT"
+
+          xcrun simctl ui "$DEVICE" content_size accessibility-extra-extra-extra-large || true
+          shot "5-home-largest-text" light
+          shot "5-claude-test-largest-text" light -open claude -debug.transcript "$TRANSCRIPT"
+          xcrun simctl ui "$DEVICE" content_size extra-small || true
+          shot "6-claude-test-smallest-text" light -open claude -debug.transcript "$TRANSCRIPT"
+          ls -la docs/screenshots
+
+      - name: Save the screenshots into the repository
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/screenshots
+          git commit -m "Simulator screenshots (automated)" || { echo "nothing new"; exit 0; }
+          git push
