@@ -12,6 +12,10 @@ struct AceApp: App {
         } catch {
             fatalError("The app's database could not be opened: \(error.localizedDescription)")
         }
+        #if os(macOS)
+        // Screenshot workflow aid; does nothing without the -screenshot argument.
+        WindowSnapshot.captureIfRequested()
+        #endif
     }
 
     var body: some Scene {

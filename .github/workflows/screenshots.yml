@@ -105,6 +105,9 @@ jobs:
             pkill -x Ace 2>/dev/null || true
             sleep 2
             if [ -s "$OUT" ]; then echo "captured $name"; else echo "NO IMAGE for $name"; cat "mac-launch-$name.log" || true; fi
+            # The app's own account of what it saw (see WindowSnapshot.swift).
+            if [ -f "$OUT.log" ]; then echo "---- app log ($name) ----"; cat "$OUT.log"; rm -f "$OUT.log"; else echo "(the app wrote no log: it did not start, or did not see -screenshot)"; fi
+            [ -s "$OUT" ] || log show --last 90s --predicate 'process == "Ace" OR (process == "ReportCrash" AND eventMessage CONTAINS "Ace")' --style compact 2>/dev/null | tail -25 || true
           }
           macshot "mac-1-today" -open today
           macshot "mac-2-jobs" -open jobs
@@ -117,7 +120,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/screenshots
+          git add docs/screenshots/*.png
           git commit -m "Simulator and Mac screenshots (automated)" || { echo "nothing new"; exit 0; }
           # Other commits may have landed while this ran; put ours on top of them.
           git pull --rebase origin main
