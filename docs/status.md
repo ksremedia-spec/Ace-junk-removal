@@ -116,6 +116,16 @@ session; then `CLAUDE.md` for the rules and `decisions.md` for the why.
   Claude's questions about which record was meant are shown, and the
   customers sent to Claude are ranked so the named one is not crowded out.
 
+- **Quotes** (`docs/quotes.md`, asked for by Ashley through Kyle): a fifth
+  iPhone tab and a Mac sidebar section listing prices given that are waiting
+  on a yes (Open, Booked, Lost; Follow up and Waiting), a quote form with Book
+  Job, Mark Lost, Reopen and Delete. Today shows "Quotes to follow up". The
+  Assistant has new_quote and update_quote (approved books the job, declined
+  marks it lost, or a new price or call-back day). Same in the demo (version
+  18). Unbuilt on a device; see the build checks after commit 2b7581e.
+- **Manual entry screenshots:** `docs/screenshots/9-new-job.png` and
+  `mac-6-new-job.png`, from `-open newjob` in the screenshot workflow.
+
 ## Not done
 
 - Nothing has run on a real device. First run: `run-on-your-mac.md`.
