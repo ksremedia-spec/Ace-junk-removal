@@ -232,6 +232,9 @@ Totals: owed $19,550 from 31 jobs; done this week $2,140 from 6 jobs; booked tod
   or more letters that matches a customer's last name or full name, or by a
   house number plus street word. Each mentioned customer also gets their last
   8 jobs, so questions about them can be answered.
+- A job line ends with the job's notes when it has any, joined into one
+  line ("· Call back about a second dumpster"). Without them a call-back
+  booked as "Other" would carry no reason.
 
 ## How the app handles the answer
 
