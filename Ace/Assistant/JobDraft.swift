@@ -61,7 +61,7 @@ struct JobDraft: Codable, Equatable {
             "customerName": ["type": "string", "description": "Customer's full name as spoken, or empty."],
             "phone": ["type": "string", "description": "Phone number as digits with dashes, like 508-555-0123, or empty."],
             "address": ["type": "string", "description": "Street address including house number, town and state, or empty."],
-            "jobType": ["type": "string", "enum": ["Junk removal", "Dumpster drop-off", "Dumpster pickup", "Other", ""], "description": "Empty if the note does not say."],
+            "jobType": ["type": "string", "enum": ["Junk removal", "Demolition", "Dumpster drop-off", "Dumpster pickup", "Other", ""], "description": "Worked out from the work described (see the rules). Empty only when the note gives no clue what the work is."],
             "date": ["type": "string", "description": "Job date as YYYY-MM-DD, or empty."],
             "time": ["type": "string", "description": "Job time as HH:MM in 24-hour time, or empty."],
             "price": ["type": "string", "description": "Agreed price in dollars as digits only, like 300, or empty."],
@@ -110,11 +110,18 @@ struct JobDraft: Codable, Equatable {
 
         Rules for jobs:
         - Fill only what the note says. Use an empty string for anything not mentioned. Never invent a name, number, price or address.
+        - Work out the job type from the work described; nobody says "junk removal" out loud. \
+        Junk removal: clearing, emptying or cleaning out a garage, basement, attic, shed, house, estate or office, or hauling away furniture, appliances, debris or a hot tub. \
+        Demolition: tearing down or taking out a shed, deck, pool, fence, wall, kitchen, bathroom or flooring, or any mention of "demo". \
+        Dumpster drop-off: delivering, dropping off, renting or needing a dumpster (a dumpster rental is a drop-off). \
+        Dumpster pickup: picking up, swapping or hauling off a dumpster that is already out. \
+        Other: any other kind of work. Leave the job type empty, with an issue, only when nothing in the note says what the work is. \
+        If a note covers more than one kind of work, pick the main one and put the rest in notes.
         - Resolve relative dates against today: "tomorrow", "Friday" (the next Friday, or today if today is Friday), "next week". Output YYYY-MM-DD.
         - Times in 24-hour HH:MM. "Morning" with no time stays empty and gets an issue.
         - Price: digits only, no dollar sign. "Three hundred" is 300.
         - Payment type: cash, check, card, or unknown. Paid: paid, unpaid, or unknown. "PD cash 300" means paid, cash, 300.
-        - Raise an issue when: no date, no price, no phone number, the job type is not said, the date is in the past, the address has no house number, the name or address sounds unclear, or two different values were said for one field. \
+        - Raise an issue when: no date, no price, no phone number, the kind of work cannot be told from the note, the date is in the past, the address has no house number, the name or address sounds unclear, or two different values were said for one field. \
         Each issue names the field and asks one short yes/no question Ashley can answer.
         - Plain business language. No exclamation points.
         """

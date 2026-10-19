@@ -47,6 +47,7 @@ final class Customer {
 
 enum JobType: String, CaseIterable, Codable, Identifiable {
     case junkRemoval = "Junk removal"
+    case demolition = "Demolition"
     case dumpsterDropOff = "Dumpster drop-off"
     case dumpsterPickup = "Dumpster pickup"
     case other = "Other"

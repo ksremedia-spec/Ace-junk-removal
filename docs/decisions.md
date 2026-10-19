@@ -87,3 +87,17 @@ command-line tool. Rejected for now to keep Kyle's steps to "open and run".
 
 The construction app (`resio-clone`) and this app share nothing. This is its
 own repository with its own rules file (`CLAUDE.md`).
+
+## Job types and how the Assistant picks one (2026-10-19)
+
+- Job types are Junk removal, Demolition, Dumpster drop-off, Dumpster pickup and
+  Other. Demolition was added because Alex also does demo work (Kyle, 2026-10-19).
+- The Assistant works out the job type from the work described ("garage empty"
+  is junk removal, "take down the shed" is demolition, "needs a dumpster" is a
+  drop-off) and asks only when nothing in the note says what the work is. Kyle
+  found that asking whenever the words "junk removal" were missing was wrong.
+- The browser demo for the client uses Sonnet (`claude-sonnet-5-5`, effort
+  medium) because it cannot be tested from the cloud session and a wrong guess
+  in front of the client costs more than the extra pennies. The phone app keeps
+  Haiku as the default with Sonnet as the switch, pending the step-1 comparison
+  on Kyle's iPhone. Kyle allowed Sonnet ("use sonnet if you have to").
