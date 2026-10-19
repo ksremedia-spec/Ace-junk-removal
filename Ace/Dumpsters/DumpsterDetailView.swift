@@ -202,15 +202,15 @@ struct DumpsterDetailView: View {
     }
 
     private func markDroppedOff() {
-        dumpster.isOut = true
-        dumpster.customer = dropOffCustomer
-        dumpster.location = dropOffLocation.trimmingCharacters(in: .whitespacesAndNewlines)
-        dumpster.droppedOffAt = dropOffDate
-        dumpster.dueBackAt = dueBackDate
-        dumpster.price = Parse.money(dropOffPriceText)
-        dumpster.agreedWeightTons = Parse.tons(dropOffAgreedTonsText)
-        dumpster.notes = dropOffNotes.trimmingCharacters(in: .whitespacesAndNewlines)
-        dumpster.updatedAt = Date()
+        dumpster.dropOff(
+            to: dropOffCustomer,
+            location: dropOffLocation,
+            on: dropOffDate,
+            dueBack: dueBackDate,
+            price: Parse.money(dropOffPriceText),
+            agreedWeightTons: Parse.tons(dropOffAgreedTonsText),
+            notes: dropOffNotes
+        )
         try? context.save()
 
         dropOffCustomer = nil

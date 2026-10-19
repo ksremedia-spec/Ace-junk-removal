@@ -58,7 +58,8 @@ struct ClaudeClient {
 
     /// Sends the transcript and gets back the filled-in form as structured JSON.
     /// `records` is a short plain-text summary of current dumpsters and jobs,
-    /// so a question like "which dumpsters are due Friday" can be answered.
+    /// so a question like "which dumpsters are due Friday" can be answered
+    /// and an update like "Johnson's done" can be placed on the right day.
     static func fillJobForm(transcript: String, model: ClaudeModel, effort: ClaudeEffort, records: String? = nil) async throws -> ClaudeFormResult {
         guard let apiKey = Keychain.read(Keychain.anthropicAPIKey), !apiKey.isEmpty else {
             throw ClaudeError.missingKey
@@ -66,7 +67,7 @@ struct ClaudeClient {
 
         var userText = "Transcript of the spoken note:\n\n\(transcript)"
         if let records, !records.isEmpty {
-            userText += "\n\nCurrent records, for answering questions:\n\(records)"
+            userText += "\n\nCurrent records, for answering questions and for telling which job or dumpster is meant:\n\(records)"
         }
 
         let body: [String: Any] = [

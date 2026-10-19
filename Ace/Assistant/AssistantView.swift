@@ -2,12 +2,15 @@ import SwiftData
 import SwiftUI
 
 /// The voice entry point. Record a note, it is written down on the phone,
-/// Claude fills in the job form, Ashley checks it and saves. A spoken
-/// question about the records gets a short answer instead.
+/// Claude works out what it was and fills in the matching form: a new job
+/// (Ashley checks it and saves), an update to a job on the books ("Johnson's
+/// done, paid cash"), a dumpster pickup with the weight, or a drop-off. A
+/// spoken question about the records gets a short answer instead.
 struct AssistantView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     @Query(sort: \Job.scheduledAt) private var jobs: [Job]
+    @Query(sort: \Customer.name) private var customers: [Customer]
     @Query(sort: \Dumpster.number) private var dumpsters: [Dumpster]
 
     let engine: WhisperKitEngine
@@ -36,7 +39,7 @@ struct AssistantView: View {
                 switch phase {
                 case .review:
                     if let draft {
-                        JobReviewView(draft: draft, onSaved: { dismiss() }, onStartOver: { reset() })
+                        reviewView(for: draft)
                     }
                 case .answer:
                     answerView
@@ -44,7 +47,7 @@ struct AssistantView: View {
                     recordView
                 }
             }
-            .navigationTitle("Assistant")
+            .navigationTitle(title)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
@@ -67,6 +70,53 @@ struct AssistantView: View {
             }
         }
         .sensoryFeedback(.warning, trigger: flagged)
+    }
+
+    // MARK: Review
+
+    /// The screen for what Claude heard. Questions and "other" notes are
+    /// answered in words instead and never get here.
+    @ViewBuilder
+    private func reviewView(for draft: JobDraft) -> some View {
+        switch draft.noteKind {
+        case .job, .question, .other:
+            JobReviewView(draft: draft, onSaved: { dismiss() }, onStartOver: { reset() })
+        case .update:
+            JobUpdateView(
+                draft: draft,
+                customers: customers,
+                jobs: jobs,
+                onSaved: { dismiss() },
+                onStartOver: { reset() },
+                onStartNewJob: { self.draft = draft.asNewJob }
+            )
+        case .pickup:
+            DumpsterPickupView(
+                draft: draft,
+                dumpsters: dumpsters,
+                onSaved: { dismiss() },
+                onStartOver: { reset() },
+                onDone: { dismiss() }
+            )
+        case .dropoff:
+            DumpsterDropoffView(
+                draft: draft,
+                customers: customers,
+                dumpsters: dumpsters,
+                onSaved: { dismiss() },
+                onStartOver: { reset() }
+            )
+        }
+    }
+
+    private var title: String {
+        guard phase == .review, let draft else { return "Assistant" }
+        switch draft.noteKind {
+        case .update: return "Update Job"
+        case .pickup: return "Dumpster Pickup"
+        case .dropoff: return "Dumpster Drop-off"
+        case .job, .question, .other: return "Assistant"
+        }
     }
 
     // MARK: Record
@@ -113,7 +163,7 @@ struct AssistantView: View {
                         .foregroundStyle(.secondary)
                 }
             } footer: {
-                Text("Say the job the way you would on the phone: who, where, when, what, and the price. Or ask about the records, like which dumpsters are due back Friday.")
+                Text("Say a new job the way you would on the phone: who, where, when, what, and the price. Or say what happened: a job is done and paid, a dumpster was picked up and what it weighed, or a dumpster was dropped off. Or ask about the records, like which dumpsters are due back Friday.")
             }
 
             Section {
@@ -193,11 +243,15 @@ struct AssistantView: View {
                 records: recordsSummary()
             )
             draft = response.draft
-            if response.draft.isQuestion {
+            switch response.draft.noteKind {
+            case .question, .other:
                 answerText = response.draft.answer.isEmpty ? "No answer was found in the records." : response.draft.answer
                 phase = .answer
-            } else {
+            case .job:
                 if !response.draft.issues.isEmpty { flagged += 1 }
+                phase = .review
+            case .update, .pickup, .dropoff:
+                // These screens give their own warning when something is flagged.
                 phase = .review
             }
         } catch {
@@ -245,7 +299,9 @@ struct AssistantView: View {
         .formStyle(.grouped)
     }
 
-    /// A short, plain-text snapshot of the records for answering questions.
+    /// A short, plain-text snapshot of the records: the dumpsters, the jobs
+    /// of the last week (so "the job this morning" can be placed) and the
+    /// jobs of the next two weeks.
     private func recordsSummary() -> String {
         var lines: [String] = []
         lines.append("Dumpsters:")
@@ -255,24 +311,38 @@ struct AssistantView: View {
                 if let customer = dumpster.customer { line += ", \(customer.name)" }
                 if !dumpster.location.isEmpty { line += ", at \(dumpster.location)" }
                 if let due = dumpster.dueBackAt { line += ", due back \(due.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))" }
+                if let agreed = dumpster.agreedWeightTons { line += ", \(Tons.text(agreed)) included" }
             }
             lines.append(line)
         }
         let calendar = Calendar.current
         let today = Dates.startOfToday()
+        let weekAgo = calendar.date(byAdding: .day, value: -7, to: today) ?? today
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: today) ?? today
         let horizon = calendar.date(byAdding: .day, value: 14, to: today) ?? today
+
+        // Past week, plus today's finished jobs; today's open jobs are listed below.
+        let recent = jobs.filter { $0.scheduledAt >= weekAgo && $0.scheduledAt < tomorrow && ($0.scheduledAt < today || $0.isDone) }.suffix(40)
+        lines.append("Jobs in the last 7 days:")
+        if recent.isEmpty { lines.append("- none") }
+        for job in recent { lines.append(jobLine(job)) }
+
         let upcoming = jobs.filter { !$0.isDone && $0.scheduledAt >= today && $0.scheduledAt <= horizon }.prefix(40)
-        lines.append("Jobs in the next two weeks:")
+        lines.append("Jobs today and in the next two weeks:")
         if upcoming.isEmpty { lines.append("- none") }
-        for job in upcoming {
-            var line = "- \(job.scheduledAt.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))"
-            if job.hasTime { line += " " + job.scheduledAt.formatted(date: .omitted, time: .shortened) }
-            line += ": \(job.customer?.name ?? "no customer"), \(job.jobType.rawValue)"
-            if let address = job.customer?.address, !address.isEmpty { line += ", \(address)" }
-            if !job.priceText.isEmpty { line += ", \(job.priceText) \(job.paymentType.rawValue.lowercased())\(job.isPaid ? ", paid" : ", unpaid")" }
-            lines.append(line)
-        }
+        for job in upcoming { lines.append(jobLine(job)) }
         return lines.joined(separator: "\n")
+    }
+
+    /// "- Monday, Oct 19 9:00 AM: Linda Johnson, Junk removal, 12 Elm St, $300 cash, unpaid"
+    private func jobLine(_ job: Job) -> String {
+        var line = "- \(job.scheduledAt.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))"
+        if job.hasTime { line += " " + job.scheduledAt.formatted(date: .omitted, time: .shortened) }
+        line += ": \(job.customer?.name ?? "no customer"), \(job.jobType.rawValue)"
+        if let address = job.customer?.address, !address.isEmpty { line += ", \(address)" }
+        if !job.priceText.isEmpty { line += ", \(job.priceText) \(job.paymentType.rawValue.lowercased())\(job.isPaid ? ", paid" : ", unpaid")" }
+        if job.isDone { line += ", done" }
+        return line
     }
 
     enum AssistantError: LocalizedError {

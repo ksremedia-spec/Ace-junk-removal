@@ -60,6 +60,14 @@ final class WhisperKitEngine {
     /// The very first load of a model also fetches a small tokenizer file, so
     /// that one time needs internet.
     func load(model: String) async {
+        // Screenshot runs on Macs with no model files: `-debug.speechready`
+        // shows the ready state without loading anything. Recording does not
+        // work in that mode; a normal launch never carries this argument.
+        if ProcessInfo.processInfo.arguments.contains("-debug.speechready") {
+            loadedModel = model
+            state = .ready
+            return
+        }
         if loadedModel == model, whisperKit != nil { return }
         whisperKit = nil
         loadedModel = nil

@@ -176,6 +176,26 @@ final class Dumpster {
         return .out
     }
 
+    /// Sends the dumpster out on a new rental. Every drop-off path (the
+    /// dumpster screen and the Assistant) calls this so they behave the same.
+    func dropOff(to customer: Customer?,
+                 location: String,
+                 on date: Date,
+                 dueBack: Date,
+                 price: Double?,
+                 agreedWeightTons: Double?,
+                 notes: String) {
+        isOut = true
+        self.customer = customer
+        self.location = location.trimmingCharacters(in: .whitespacesAndNewlines)
+        droppedOffAt = date
+        dueBackAt = dueBack
+        self.price = price
+        self.agreedWeightTons = agreedWeightTons
+        self.notes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        updatedAt = Date()
+    }
+
     /// Clears the current rental and files it in the history.
     func markPickedUp(actualWeightTons: Double?, ratePerTon: Double, on date: Date = Date()) {
         let record = RentalRecord(
