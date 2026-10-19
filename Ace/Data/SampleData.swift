@@ -72,11 +72,20 @@ enum SampleData {
     }
 
     /// Removes everything. Used before loading samples and by "Clear all data".
+    /// Deletes record by record (not as a batch), so relationships are
+    /// cleaned up and nothing is left behind without its customer.
     static func clear(context: ModelContext) {
-        try? context.delete(model: RentalRecord.self)
-        try? context.delete(model: Job.self)
-        try? context.delete(model: Dumpster.self)
-        try? context.delete(model: Customer.self)
+        deleteAll(RentalRecord.self, in: context)
+        deleteAll(Job.self, in: context)
+        deleteAll(Dumpster.self, in: context)
+        deleteAll(Customer.self, in: context)
         try? context.save()
+    }
+
+    private static func deleteAll<T: PersistentModel>(_ type: T.Type, in context: ModelContext) {
+        let everything = (try? context.fetch(FetchDescriptor<T>())) ?? []
+        for record in everything {
+            context.delete(record)
+        }
     }
 }

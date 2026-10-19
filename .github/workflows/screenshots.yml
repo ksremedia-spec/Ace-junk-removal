@@ -86,17 +86,22 @@ jobs:
             > mac-build.log 2>&1 || { grep -E "error:|BUILD" mac-build.log; exit 1; }
           APP=$(find DerivedData/Build/Products -name "Ace.app" -path "*Debug/Ace.app" -not -path "*iphone*" | head -1)
           echo "Mac app: $APP"
-          BIN="$APP/Contents/MacOS/Ace"
+          ls -la "$APP/Contents/MacOS"
           defaults write com.acejunkremoval.app AppleInterfaceStyle -string Light 2>/dev/null || true
 
           macshot() {
             name="$1"; shift
-            "$BIN" -sampledata "$@" > /dev/null 2>&1 &
-            PID=$!
-            sleep 9
-            screencapture -x "docs/screenshots/$name.png" || true
-            kill $PID 2>/dev/null || true
+            # Open through macOS (LaunchServices) so it gets a real window and
+            # comes to the front, as a user double-clicking it would.
+            open -n -W "$APP" --args -sampledata "$@" > "mac-launch-$name.log" 2>&1 &
+            sleep 12
+            osascript -e 'tell application "Ace" to activate' 2>/dev/null || true
             sleep 2
+            screencapture -x "docs/screenshots/$name.png" || true
+            osascript -e 'tell application "Ace" to quit' 2>/dev/null || pkill -x Ace || true
+            sleep 3
+            echo "---- launch log ($name) ----"; cat "mac-launch-$name.log" || true
+            log show --last 40s --predicate 'process == "Ace"' --style compact 2>/dev/null | tail -20 || true
           }
           macshot "mac-1-today" -open today
           macshot "mac-2-jobs" -open jobs
