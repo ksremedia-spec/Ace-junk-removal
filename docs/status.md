@@ -56,10 +56,12 @@ session; then `CLAUDE.md` for the rules and `decisions.md` for the why.
   Assistant from the link with nothing to type. Kyle sets it up; the demo is
   republished with its address (`RELAY_URL` in the demo source).
 - **Client screenshot page** (https://claude.ai/artifact/8wvbCffQ4deC7uh8ThqXsC):
-  the five iPhone screens; the Mac screens were being added once the cloud
-  Mac produced clean ones (the app draws its own windows with `-screenshot`,
-  see `Ace/Mac/WindowSnapshot.swift`; with `-screenshot` the sidebar uses a
-  plain highlight because the glass one draws black offscreen).
+  the five iPhone screens and the five Mac screens, all from screenshot run
+  #8 with the 600-customer sample data (the app draws its own windows with
+  `-screenshot`, see `Ace/Mac/WindowSnapshot.swift`; with `-screenshot` the
+  sidebar uses a plain highlight because the glass one draws black
+  offscreen). The Mac Assistant picture shows the one-time speech-model
+  download, because the cloud Mac has no model cached.
 - **App screens show the business:** Today figures and Owed; Jobs with
   Upcoming / Unpaid / Done and per-day totals; "Unpaid" marker; customer
   summary (since, jobs, total, owed), Call and Directions, dumpster rentals;
