@@ -534,20 +534,21 @@ Things that need Kyle's decision:
 The GitHub build check does not sign the app, so these changes do not
 affect it. Assumed.
 
-## Questions for Kyle (one at a time)
+## Questions for Kyle, and the answers so far
 
-1. Does Ace Junk Removal have one Google account for the business (plain
-   Gmail or Google Workspace), and do Ashley and Alex already use it on
-   their phones and Ashley's Mac?
-2. Where should Calendar go on the iPhone: replace the Jobs tab with a
-   List / Calendar switch at the top, add a sixth tab (two tabs move under
-   More), or sit inside Today?
-3. If someone moves or edits an Ace job's event in Google Calendar, should
-   Ace pick up the change, or put the event back to match Ace?
-4. A job with a start time but no end time: how should it look in Google
-   Calendar?
-5. Which other calendars should appear in Ace: every calendar on the device,
-   or only ones each person picks?
+1. One Google account for the business, already on Ashley's and Alex's
+   phones and Ashley's Mac? Kyle, 2026-10-19: "im assuming yes but TBD".
+   Working assumption: yes, so "Ace Jobs" needs no sharing (setup step 2 is
+   skipped). To be confirmed with Ashley and Alex.
+2. Where Calendar goes: Kyle chose **Calendar replaces Today**.
+3. Changes made in Google Calendar: Ace stays the master copy; they do not
+   flow back (told to Kyle, not objected to).
+4. A job with a start but no end: an event with no length, following Kyle's
+   "no defaults"; test 6 below checks Google keeps it.
+5. Other calendars: every calendar on the device, each with a switch in
+   Ace's Settings.
+
+The build is in `calendar-tab.md`.
 
 ## Tests to run on a real device (to settle the unknowns)
 
