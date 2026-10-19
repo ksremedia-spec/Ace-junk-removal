@@ -295,7 +295,7 @@ struct AssistantView: View {
                         .foregroundStyle(.secondary)
                 }
             } footer: {
-                Text("Say it the way you would on the phone: a new job, a job done and paid, a job moved or cancelled, a dumpster dropped off, picked up or swapped, a customer's new number, or a call or text to a customer. Several things can go in one note. Or ask about the records, like which dumpsters are due back Friday.")
+                Text("Say it the way you would on the phone: a new job, a job done and paid, a job moved or cancelled, a dumpster dropped off, picked up or swapped, a customer's new number, a quote given or approved, or a call or text to a customer. Several things can go in one note. Or ask about the records, like which dumpsters are due back Friday.")
             }
 
             Section {
