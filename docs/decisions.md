@@ -140,3 +140,20 @@ own repository with its own rules file (`CLAUDE.md`).
   someone else's job: it asks, or offers "Start a new job instead".
 - "Paid on site" means the job is done. The same wording is in the demo's
   and the app's instructions to Claude so both behave alike.
+
+## Calendar replaces Today; jobs go to Google Calendar through the device (2026-10-19)
+
+- Kyle: "app need to have a fully functional calendar tab - and it needs to
+  integrate with google cal on mac and iphone". Offered three places for it
+  (replace Today, a switch inside Jobs, a sixth tab that pushes two tabs
+  under More), Kyle chose **Calendar replaces Today**. It keeps everything
+  Today showed, under a month view.
+- Google Calendar is reached through Apple's EventKit: the Google account is
+  added once in each device's Settings and Ace writes jobs to a calendar
+  named "Ace Jobs" picked in Ace's Settings. No Google developer setup, no
+  sign-in inside Ace. Research and sources: `calendar.md`. Writing from the
+  Cloudflare server instead is the later upgrade.
+- Ace is the master copy: changes made in Google Calendar do not flow back.
+- A job with a start but no end time goes to Google as an event with no
+  length, following Kyle's "no defaults"; to be checked on a real device.
+- Spec: `calendar-tab.md`.
