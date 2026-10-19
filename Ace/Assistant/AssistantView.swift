@@ -132,28 +132,49 @@ struct AssistantView: View {
     }
 
     /// The reply above the first step. On the Mac, where a sheet has no
-    /// title bar, also the step's title and "1 of 3".
+    /// title bar, also the step's title and "1 of 3". Under them, in the
+    /// warning color, Claude's questions about a field the screen has no row
+    /// for, such as which job was meant.
     @ViewBuilder
     private var stepBanner: some View {
-        if let text = bannerText {
-            Text(text)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal)
-                .padding(.vertical, 8)
-                .background(.bar)
+        if !bannerLines.isEmpty || !unshownQuestions.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(bannerLines, id: \.self) { line in
+                    Text(line)
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(unshownQuestions, id: \.self) { question in
+                    Text(question)
+                        .foregroundStyle(.orange)
+                }
+            }
+            .font(.subheadline)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+            .background(.bar)
         }
     }
 
-    private var bannerText: String? {
-        guard currentStep != nil else { return nil }
+    private var bannerLines: [String] {
+        guard currentStep != nil else { return [] }
         var lines: [String] = []
         #if os(macOS)
         if let counter = stepCounter { lines.append(title + " · " + counter) }
         #endif
         if stepIndex == 0, !reply.isEmpty { lines.append(reply) }
-        return lines.isEmpty ? nil : lines.joined(separator: "\n")
+        return lines
+    }
+
+    /// The current step's questions about fields its screen does not show.
+    private var unshownQuestions: [String] {
+        guard let step = currentStep,
+              let onScreen = (step.kind ?? .newJob).fieldsOnScreen else { return [] }
+        var seen = Set<String>()
+        return issues
+            .filter { $0.action == step.index && !onScreen.contains(AssistantFlags.key($0.field)) }
+            .map(\.question)
+            .filter { seen.insert($0).inserted }
     }
 
     // MARK: Steps

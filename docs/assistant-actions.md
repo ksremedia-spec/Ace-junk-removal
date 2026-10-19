@@ -228,10 +228,14 @@ Totals: owed $19,550 from 31 jobs; done this week $2,140 from 6 jobs; booked tod
   dumpster number) and kept with the request so the app can turn them back
   into records.
 - Customers listed: everyone on the listed jobs and dumpsters, plus up to six
-  customers the note seems to name: by phone digits, by a name word of three
-  or more letters that matches a customer's last name or full name, or by a
-  house number plus street word. Each mentioned customer also gets their last
-  8 jobs, so questions about them can be answered.
+  customers the note seems to name, strongest match first: phone digits (4
+  points), the full name or a house number plus street word (3), the last
+  name (1), and another word of the name, four letters or more, shared by
+  three customers or fewer (0.5, so "Harborview" finds Harborview Realty but
+  a common first name like "Mark" does not fill the list). Apostrophes and a
+  possessive are ignored on both sides ("O'Brien's" matches O'Brien). Ties
+  keep the list order. Each mentioned customer also gets their last 8 jobs,
+  so questions about them can be answered.
 - A job line ends with the job's notes when it has any, joined into one
   line ("· Call back about a second dumpster"). Without them a call-back
   booked as "Other" would carry no reason.
@@ -249,7 +253,13 @@ Totals: owed $19,550 from 31 jobs; done this week $2,140 from 6 jobs; booked tod
   latest done one; dumpsters by number, then by who or where they are out.
   Several matches: "Which job?" / "Which customer?" / "Which dumpster?" list.
   A name that matches nobody never lands on someone else's record without
-  asking.
+  asking. A reference that points at nothing (a job deleted by an earlier
+  step, or one that was never listed) gives "That job is no longer in the
+  records." for update_job and cancel_job, never another job.
+- Questions: each screen shows Claude's questions next to its own fields. A
+  question about a field the screen has no row for (most often "ref", which
+  record was meant) is shown above the screen in the warning color. The
+  new-job screen asks every question on Save.
 - Screens: new_job uses the new-job form with its one-at-a-time questions.
   update_job, dumpster_pickup and dumpster_dropoff use their screens. The rest
   use a simple form: the record's details, the changes as editable fields, and

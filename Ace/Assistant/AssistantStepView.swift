@@ -47,6 +47,14 @@ struct AssistantStepView: View {
 
     private var refDumpster: Dumpster? { refs.dumpster(action.ref) }
 
+    /// A reference that points at nothing: a job deleted by an earlier step,
+    /// or one that was never in the records. The note meant that record, so
+    /// no other job is offered in its place.
+    private var refMissing: Bool {
+        !action.ref.trimmingCharacters(in: .whitespaces).isEmpty
+            && refJob == nil && refCustomer == nil && refDumpster == nil
+    }
+
     /// The action in the form the older screens take. A dumpster reference
     /// wins over a spoken number.
     private var draft: JobDraft {
@@ -104,37 +112,48 @@ struct AssistantStepView: View {
         )
     }
 
+    @ViewBuilder
     private var updateJob: some View {
-        let job = refJob
-        return JobUpdateView(
-            draft: draft,
-            customers: customers,
-            jobs: jobs,
-            refJob: job,
-            refCustomer: job == nil ? refCustomer : nil,
-            onSaved: { onFinish("Job saved.") },
-            onStartOver: onStartOver,
-            onStartNewJob: onStartNewJob
-        )
+        if refMissing {
+            NothingFoundView(message: "That job is no longer in the records.", onSkip: onSkip, onStartOver: onStartOver)
+        } else {
+            JobUpdateView(
+                draft: draft,
+                customers: customers,
+                jobs: jobs,
+                refJob: refJob,
+                refCustomer: refJob == nil ? refCustomer : nil,
+                onSaved: { onFinish("Job saved.") },
+                onStartOver: onStartOver,
+                onStartNewJob: onStartNewJob
+            )
+        }
     }
 
+    @ViewBuilder
     private var cancelJob: some View {
-        let job = refJob
-        let candidates = findJobs(
+        if refMissing {
+            NothingFoundView(message: "That job is no longer in the records.", onSkip: onSkip, onStartOver: onStartOver)
+        } else {
+            CancelJobView(
+                candidates: cancelCandidates,
+                subject: subject,
+                issues: issues,
+                onFinish: onFinish,
+                onSkip: onSkip,
+                onStartOver: onStartOver
+            )
+        }
+    }
+
+    private var cancelCandidates: [Job] {
+        findJobs(
             draft,
-            refJob: job,
-            refCustomer: job == nil ? refCustomer : nil,
+            refJob: refJob,
+            refCustomer: refJob == nil ? refCustomer : nil,
             customers: customers,
             jobs: jobs,
             today: Dates.startOfToday()
-        )
-        return CancelJobView(
-            candidates: candidates,
-            subject: subject,
-            issues: issues,
-            onFinish: onFinish,
-            onSkip: onSkip,
-            onStartOver: onStartOver
         )
     }
 

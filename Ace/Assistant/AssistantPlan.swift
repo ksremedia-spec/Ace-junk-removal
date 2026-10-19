@@ -87,6 +87,26 @@ struct AssistantAction: Codable, Identifiable {
             case .dumpsterNote: return "Dumpster Note"
             }
         }
+
+        /// The fields this kind's screen shows with its own warning note, in
+        /// the form `AssistantFlags.key` gives. A question about any other
+        /// field is shown above the screen instead. Nil when the screen asks
+        /// every question itself (the new-job screen asks them on Save).
+        var fieldsOnScreen: Set<String>? {
+            switch self {
+            case .newJob: return nil
+            case .updateJob: return ["done", "paid", "jobtype", "paymenttype", "price", "newdate", "newtime", "note"]
+            case .cancelJob: return ["ref"]
+            case .newCustomer: return ["customername", "phone", "address", "note"]
+            case .updateCustomer: return ["ref", "newname", "newphone", "newaddress", "note"]
+            case .contactCustomer: return ["ref", "phone", "address"]
+            case .dumpsterDropoff: return ["customername", "address", "dumpsternumber", "phone", "dueback", "price", "agreedtons"]
+            case .dumpsterPickup: return ["actualtons"]
+            case .dumpsterSwap: return ["dumpsternumber", "ref", "actualtons", "otherdumpsternumber", "dueback", "price", "agreedtons", "note"]
+            case .updateRental: return ["dumpsternumber", "ref", "dueback", "price", "agreedtons", "newaddress", "note"]
+            case .dumpsterNote: return ["dumpsternumber", "ref", "note"]
+            }
+        }
     }
 
     var kind: ActionType? { ActionType(rawValue: type) }

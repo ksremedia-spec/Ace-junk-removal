@@ -241,52 +241,66 @@ enum AssistantRecords {
         "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
     ]
 
-    /// Up to `limit` customers the note seems to name: by phone number (7 or
-    /// more digits), by last name, by house number and street, then by any
-    /// other word of their name. Customers are indexed in one pass.
+    /// Up to `limit` customers the note seems to name, strongest match first:
+    /// a phone number of 7 or more digits (4 points), the full name or a house
+    /// number and street (3), the last name (1). Another word of a name, four
+    /// letters or more, counts a little (0.5), and only when three customers or
+    /// fewer share it, so a common first name does not fill the list. Ties keep
+    /// the order of `customers`.
     static func mentionedCustomers(in note: String, customers: [Customer], limit: Int = 6) -> [Customer] {
-        var found: [Customer] = []
-        var seen = Set<ObjectIdentifier>()
-        func take(_ list: [Customer]) {
-            for customer in list where found.count < limit {
-                if seen.insert(ObjectIdentifier(customer)).inserted { found.append(customer) }
-            }
+        var score: [ObjectIdentifier: Double] = [:]
+        func add(_ customer: Customer, _ points: Double) {
+            score[ObjectIdentifier(customer), default: 0] += points
         }
 
         for run in digitRuns(in: note) where run.count >= 7 {
-            take(customers.filter { customer in
+            for customer in customers {
                 let digits = customer.phoneDigits
-                return digits.count >= 7 && (digits.hasSuffix(run) || run.hasSuffix(digits))
-            })
+                if digits.count >= 7 && (digits.hasSuffix(run) || run.hasSuffix(digits)) { add(customer, 4) }
+            }
         }
 
-        var byLastName: [String: [Customer]] = [:]
-        var byNameWord: [String: [Customer]] = [:]
+        let noteWords = SpokenName(note).words
+        let noteLine = " " + noteWords.joined(separator: " ") + " "
+        let keyWords = Set(noteWords.filter { word in
+            word.filter(\.isLetter).count >= 3 && !commonWords.contains(word)
+        })
+
+        var byOtherWord: [String: [Customer]] = [:]
         var byStreet: [String: [Customer]] = [:]
         for customer in customers {
-            let words = SpokenName(customer.name).words
-            if let last = words.last { byLastName[last, default: []].append(customer) }
-            for word in Set(words) where word.count >= 3 { byNameWord[word, default: []].append(customer) }
+            let parts = SpokenName(customer.name).words
+            if let last = parts.last {
+                if parts.count >= 2 && noteLine.contains(" " + parts.joined(separator: " ") + " ") { add(customer, 3) }
+                if keyWords.contains(last) { add(customer, 1) }
+                for word in Set(parts.dropLast()) where word.count >= 4 && keyWords.contains(word) {
+                    byOtherWord[word, default: []].append(customer)
+                }
+            }
             let address = SpokenAddress(customer.address)
             if let number = address.houseNumber, let street = address.streetWord {
                 byStreet[number + " " + street, default: []].append(customer)
             }
         }
-
-        let nameWords = SpokenName(note).words.filter { word in
-            word.filter(\.isLetter).count >= 3 && !commonWords.contains(word)
+        for list in byOtherWord.values where list.count <= 3 {
+            for customer in list { add(customer, 0.5) }
         }
-        for word in nameWords { take(byLastName[word] ?? []) }
 
         let addressWords = SpokenAddress.words(of: note)
         for (position, word) in addressWords.enumerated() where position + 1 < addressWords.count {
             let next = addressWords[position + 1]
             guard word.allSatisfy(\.isNumber), !next.allSatisfy(\.isNumber) else { continue }
-            take(byStreet[word + " " + next] ?? [])
+            for customer in byStreet[word + " " + next] ?? [] { add(customer, 3) }
         }
 
-        for word in nameWords { take(byNameWord[word] ?? []) }
-        return found
+        let ranked: [(customer: Customer, points: Double, position: Int)] = customers.enumerated().compactMap { position, customer in
+            guard let points = score[ObjectIdentifier(customer)] else { return nil }
+            return (customer, points, position)
+        }
+        return ranked
+            .sorted { $0.points != $1.points ? $0.points > $1.points : $0.position < $1.position }
+            .prefix(limit)
+            .map { $0.customer }
     }
 
     /// Runs of digits, allowing the spaces, dashes, dots and brackets people
