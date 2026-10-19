@@ -10,6 +10,7 @@ struct ClaudeTestView: View {
     @Query(sort: \Job.scheduledAt) private var jobs: [Job]
     @Query(sort: \Customer.name) private var customers: [Customer]
     @Query(sort: \Dumpster.number) private var dumpsters: [Dumpster]
+    @Query(sort: \Quote.quotedOn) private var quotes: [Quote]
 
     @State private var outcomes: [ClaudeModel: Outcome] = [:]
     @State private var running = false
@@ -97,7 +98,7 @@ struct ClaudeTestView: View {
     private func runBoth() {
         let text = transcript
         let effort = ClaudeEffort(rawValue: effortRaw) ?? .medium
-        let records = AssistantRecords.build(note: text, customers: customers, jobs: jobs, dumpsters: dumpsters, now: Date()).text
+        let records = AssistantRecords.build(note: text, customers: customers, jobs: jobs, dumpsters: dumpsters, quotes: quotes, now: Date()).text
         running = true
         outcomes = [:]
         Task { @MainActor in

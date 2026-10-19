@@ -8,8 +8,10 @@ struct QuotesView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Quote.quotedOn) private var quotes: [Quote]
 
+    /// Open, Booked or Lost. Held by the tab bar, so the Today screen can
+    /// open this list on Open.
+    @Binding var filter: QuoteStatus
     @State private var searchText = ""
-    @State private var filter: QuoteStatus = .open
     @State private var showingNewQuote = false
     @State private var quoteToBook: Quote?
     /// "Quote marked lost." and the like, shown under the switch for a moment.

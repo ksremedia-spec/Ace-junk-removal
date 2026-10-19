@@ -7,6 +7,10 @@ struct TodayView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Job.scheduledAt) private var jobs: [Job]
     @Query(sort: \Dumpster.number) private var dumpsters: [Dumpster]
+    @Query(sort: \Quote.quotedOn) private var quotes: [Quote]
+
+    /// Opens the Quotes tab on Open. Set by the tab bar.
+    var onShowQuotes: (() -> Void)? = nil
 
     @State private var showingNewJob = false
 
@@ -36,6 +40,15 @@ struct TodayView: View {
 
     private var owedTotal: Double {
         owedJobs.reduce(0) { $0 + $1.owedAmount }
+    }
+
+    private var openQuotes: [Quote] {
+        quotes.filter { $0.status == .open }
+    }
+
+    /// Open quotes whose call-back day is today or earlier.
+    private var quotesToFollowUp: Int {
+        openQuotes.filter { $0.isFollowUpDue() }.count
     }
 
     var body: some View {
@@ -116,12 +129,26 @@ struct TodayView: View {
         }
     }
 
-    /// "2 jobs today · $750" and, when any, "1 dumpster due back or overdue".
+    /// "2 jobs today · $750", when any "1 dumpster due back or overdue",
+    /// and, while any quote is open, "Quotes to follow up" with the count.
     private var numbersSection: some View {
         Section {
             Text(todayLine)
             if !attentionDumpsters.isEmpty {
                 Text(Plural.text(attentionDumpsters.count, "dumpster") + " due back or overdue")
+            }
+            if !openQuotes.isEmpty {
+                Button {
+                    onShowQuotes?()
+                } label: {
+                    LabeledContent("Quotes to follow up") {
+                        Text("\(quotesToFollowUp)")
+                            .monospacedDigit()
+                            .foregroundStyle(quotesToFollowUp > 0 ? Color.orange : Color.secondary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
         }
     }

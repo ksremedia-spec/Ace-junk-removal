@@ -13,6 +13,7 @@ struct AssistantView: View {
     @Query(sort: \Job.scheduledAt) private var jobs: [Job]
     @Query(sort: \Customer.name) private var customers: [Customer]
     @Query(sort: \Dumpster.number) private var dumpsters: [Dumpster]
+    @Query(sort: \Quote.quotedOn) private var quotes: [Quote]
 
     let engine: WhisperKitEngine
 
@@ -189,6 +190,7 @@ struct AssistantView: View {
                 customers: customers,
                 jobs: jobs,
                 dumpsters: dumpsters,
+                quotes: quotes,
                 onFinish: { finishStep($0) },
                 onSkip: { advance() },
                 onStartOver: { reset() },
@@ -371,6 +373,7 @@ struct AssistantView: View {
                 customers: customers,
                 jobs: jobs,
                 dumpsters: dumpsters,
+                quotes: quotes,
                 now: Date()
             )
             let response = try await ClaudeClient.plan(

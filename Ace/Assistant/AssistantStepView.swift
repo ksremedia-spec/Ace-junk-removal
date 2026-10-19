@@ -2,7 +2,7 @@ import SwiftData
 import SwiftUI
 
 /// One action from the plan, on the screen that confirms it. A reference in
-/// the action (C4, J12, D3) wins over matching what was said; see
+/// the action (C4, J12, Q2, D3) wins over matching what was said; see
 /// docs/assistant-actions.md, "Finding the record".
 struct AssistantStepView: View {
     let action: AssistantAction
@@ -12,6 +12,8 @@ struct AssistantStepView: View {
     let customers: [Customer]
     let jobs: [Job]
     let dumpsters: [Dumpster]
+    /// Every quote; the open ones are what update_quote looks among.
+    let quotes: [Quote]
     /// Called after a save with the confirmation ("Job saved."), or with an
     /// empty string when nothing was saved (Done on the contact screen).
     var onFinish: (String) -> Void
@@ -33,6 +35,8 @@ struct AssistantStepView: View {
         case .dumpsterSwap: swapDumpsters
         case .updateRental: updateRental
         case .dumpsterNote: dumpsterNote
+        case .newQuote: newQuote
+        case .updateQuote: updateQuote
         }
     }
 
@@ -41,18 +45,21 @@ struct AssistantStepView: View {
     /// A job reference, while that job is still on the books.
     private var refJob: Job? { refs.job(action.ref, among: jobs) }
 
-    /// The customer a reference means: the customer, the job's customer, or
-    /// the customer a dumpster is out with.
-    private var refCustomer: Customer? { refs.customerMeant(by: action.ref, jobs: jobs) }
+    /// The customer a reference means: the customer, the job's customer, the
+    /// quote's customer, or the customer a dumpster is out with.
+    private var refCustomer: Customer? { refs.customerMeant(by: action.ref, jobs: jobs, quotes: quotes) }
 
     private var refDumpster: Dumpster? { refs.dumpster(action.ref) }
+
+    /// A quote reference, while that quote is still stored.
+    private var refQuote: Quote? { refs.quote(action.ref, among: quotes) }
 
     /// A reference that points at nothing: a job deleted by an earlier step,
     /// or one that was never in the records. The note meant that record, so
     /// no other job is offered in its place.
     private var refMissing: Bool {
         !action.ref.trimmingCharacters(in: .whitespaces).isEmpty
-            && refJob == nil && refCustomer == nil && refDumpster == nil
+            && refJob == nil && refCustomer == nil && refDumpster == nil && refQuote == nil
     }
 
     /// The action in the form the older screens take. A dumpster reference
@@ -254,5 +261,38 @@ struct AssistantStepView: View {
             onFinish: onFinish,
             onStartOver: onStartOver
         )
+    }
+
+    // MARK: Quotes
+
+    private var newQuote: some View {
+        NewQuoteView(
+            action: action,
+            issues: issues,
+            customers: customers,
+            knownCustomer: refCustomer,
+            onFinish: onFinish,
+            onStartOver: onStartOver
+        )
+    }
+
+    private var updateQuote: some View {
+        UpdateQuoteView(
+            action: action,
+            issues: issues,
+            candidates: quoteCandidates,
+            jobs: jobs,
+            subject: subject,
+            onFinish: onFinish,
+            onSkip: onSkip,
+            onStartOver: onStartOver
+        )
+    }
+
+    /// A quote reference wins; otherwise the open quotes of the customer
+    /// referenced or named (see `findOpenQuotes`).
+    private var quoteCandidates: [Quote] {
+        let quote = refQuote
+        return findOpenQuotes(draft, refQuote: quote, refCustomer: quote == nil ? refCustomer : nil, quotes: quotes)
     }
 }

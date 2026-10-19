@@ -297,6 +297,7 @@ struct MacTodayList: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Job.scheduledAt) private var jobs: [Job]
     @Query(sort: \Dumpster.number) private var dumpsters: [Dumpster]
+    @Query(sort: \Quote.quotedOn) private var quotes: [Quote]
     @Binding var selection: MacMainView.TodayItem?
 
     private var calendar: Calendar { .current }
@@ -309,8 +310,24 @@ struct MacTodayList: View {
     private var tomorrowsJobs: [Job] { jobs.filter { calendar.isDateInTomorrow($0.scheduledAt) && !$0.isDone } }
     private var slippedJobs: [Job] { jobs.filter { !$0.isDone && $0.scheduledAt < Dates.startOfToday() } }
 
+    /// Open quotes whose call-back day is today or earlier.
+    private var quotesToFollowUp: Int { quotes.filter { $0.isFollowUpDue() }.count }
+
+    /// "2 jobs today · $750 · 2 quotes to follow up". The money is left off
+    /// when no job today has a price, the quotes when none are due.
+    private var figuresLine: String {
+        var text = Plural.text(todaysJobs.count, "job") + " today"
+        let total = todaysJobs.priceTotal
+        if total > 0 { text += " · " + Money.text(total) }
+        if quotesToFollowUp > 0 { text += " · " + Plural.text(quotesToFollowUp, "quote") + " to follow up" }
+        return text
+    }
+
     var body: some View {
         List(selection: $selection) {
+            Section {
+                Text(figuresLine)
+            }
             Section("Dumpsters") {
                 if attentionDumpsters.isEmpty {
                     Text(dumpsters.isEmpty ? "No dumpsters set up yet." : "Nothing due back today.")

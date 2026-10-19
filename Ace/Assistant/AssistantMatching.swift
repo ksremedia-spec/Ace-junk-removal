@@ -148,6 +148,34 @@ func bookedJob(_ type: JobType, for customer: Customer?, in jobs: [Job], today: 
         .max { $0.scheduledAt < $1.scheduledAt }
 }
 
+// MARK: Quotes
+
+/// Open quotes an action is about, oldest first. A quote reference wins; a
+/// customer reference (or a job's or dumpster's customer) narrows the list
+/// to that customer's open quotes. Otherwise the customers with open quotes
+/// are matched by phone, then name, then address. A name, phone or address
+/// that matches nobody finds nothing; only when nobody was named are all
+/// the open quotes offered.
+func findOpenQuotes(_ draft: JobDraft, refQuote: Quote?, refCustomer: Customer?, quotes: [Quote]) -> [Quote] {
+    if let refQuote { return [refQuote] }
+    let open = QuoteList.shown(quotes, status: .open)
+    if let refCustomer {
+        return open.filter { $0.customer?.persistentModelID == refCustomer.persistentModelID }
+    }
+    guard namesSomeone(draft) else { return open }
+    var quoted: [Customer] = []
+    for quote in open {
+        if let customer = quote.customer, !quoted.contains(where: { $0 === customer }) {
+            quoted.append(customer)
+        }
+    }
+    let ids = Set(matchCustomers(draft, in: quoted).map(\.persistentModelID))
+    return open.filter { quote in
+        guard let customer = quote.customer else { return false }
+        return ids.contains(customer.persistentModelID)
+    }
+}
+
 // MARK: Dumpsters
 
 /// Dumpsters the note could mean. `wantOut` true is a pickup: the numbered

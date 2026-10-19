@@ -20,6 +20,8 @@ struct MainView: View {
     @State private var engine = WhisperKitEngine()
     @State private var showingAssistant = false
     @State private var todayPath = NavigationPath()
+    @State private var quotesPath = NavigationPath()
+    @State private var quotesFilter: QuoteStatus = .open
     @State private var handledLaunchArguments = false
 
     private var selectedTab: Binding<AppTab> {
@@ -33,7 +35,7 @@ struct MainView: View {
         TabView(selection: selectedTab) {
             Tab("Today", systemImage: "sun.max", value: AppTab.today) {
                 NavigationStack(path: $todayPath) {
-                    TodayView()
+                    TodayView(onShowQuotes: { showOpenQuotes() })
                         .toolbar { toolbarItems(showSettings: true) }
                         .navigationDestination(for: Screen.self, destination: screen)
                 }
@@ -45,8 +47,8 @@ struct MainView: View {
                 }
             }
             Tab("Quotes", systemImage: "doc.text", value: AppTab.quotes) {
-                NavigationStack {
-                    QuotesView()
+                NavigationStack(path: $quotesPath) {
+                    QuotesView(filter: $quotesFilter)
                         .toolbar { toolbarItems(showSettings: false) }
                 }
             }
@@ -86,6 +88,14 @@ struct MainView: View {
                     .labelStyle(.titleAndIcon)
             }
         }
+    }
+
+    /// The Today screen's "Quotes to follow up" row: the Quotes tab, back at
+    /// its list, on Open.
+    private func showOpenQuotes() {
+        quotesFilter = .open
+        quotesPath = NavigationPath()
+        lastTabRaw = AppTab.quotes.rawValue
     }
 
     @ViewBuilder
