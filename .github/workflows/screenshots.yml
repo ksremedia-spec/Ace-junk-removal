@@ -1,7 +1,6 @@
 # Runs the app in the iPhone Simulator on a GitHub-hosted Mac and saves a
-# screenshot of each screen (light and dark, plus the largest text size) into
-# docs/screenshots/. Started by hand only; it costs about 5 Mac minutes
-# (50 of the monthly allowance). It shows how screens look; it cannot run the
+# screenshot of each screen (light mode) into docs/screenshots/. Started by
+# hand only; it costs about 4 Mac minutes (40 of the monthly allowance). It shows how screens look; it cannot run the
 # speech model properly or call Claude (no API key on the cloud Mac).
 name: Screenshots
 
@@ -63,21 +62,13 @@ jobs:
 
           TRANSCRIPT="Mrs. Johnson on Elm Street in Taunton, junk removal Friday morning, three hundred cash, she said she'd pay when we get there, number is 508 555 0147"
 
+          # Light mode only (Kyle's preference, 2026-10-18). Dark mode and the
+          # text-size pass happen on the real phone in step 9.
           xcrun simctl ui "$DEVICE" content_size medium || true
-          shot "1-home-light" light
-          shot "1-home-dark" dark
-          shot "2-api-key-light" light -open apikey
-          shot "2-api-key-dark" dark -open apikey
-          shot "3-speech-test-light" light -open speech
-          shot "3-speech-test-dark" dark -open speech
-          shot "4-claude-test-light" light -open claude -debug.transcript "$TRANSCRIPT"
-          shot "4-claude-test-dark" dark -open claude -debug.transcript "$TRANSCRIPT"
-
-          xcrun simctl ui "$DEVICE" content_size accessibility-extra-extra-extra-large || true
-          shot "5-home-largest-text" light
-          shot "5-claude-test-largest-text" light -open claude -debug.transcript "$TRANSCRIPT"
-          xcrun simctl ui "$DEVICE" content_size extra-small || true
-          shot "6-claude-test-smallest-text" light -open claude -debug.transcript "$TRANSCRIPT"
+          shot "1-home" light
+          shot "2-api-key" light -open apikey
+          shot "3-speech-test" light -open speech
+          shot "4-claude-test" light -open claude -debug.transcript "$TRANSCRIPT"
           ls -la docs/screenshots
 
       - name: Save the screenshots into the repository
