@@ -112,7 +112,10 @@ struct MacMainView: View {
         .onReceive(NotificationCenter.default.publisher(for: .aceNewCustomer)) { _ in showingNewCustomer = true }
         .onReceive(NotificationCenter.default.publisher(for: .aceAssistant)) { _ in showingAssistant = true }
         .onReceive(NotificationCenter.default.publisher(for: .aceFind)) { _ in searchFocused = true }
-        .onAppear(perform: handleLaunchArguments)
+        .onAppear {
+            handleLaunchArguments()
+            WindowSnapshot.captureIfRequested()
+        }
     }
 
     @ViewBuilder

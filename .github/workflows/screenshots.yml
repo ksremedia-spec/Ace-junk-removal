@@ -91,17 +91,20 @@ jobs:
 
           macshot() {
             name="$1"; shift
-            # Open through macOS (LaunchServices) so it gets a real window and
-            # comes to the front, as a user double-clicking it would.
-            open -n -W "$APP" --args -sampledata "$@" > "mac-launch-$name.log" 2>&1 &
-            sleep 12
-            osascript -e 'tell application "Ace" to activate' 2>/dev/null || true
+            OUT="$PWD/docs/screenshots/$name.png"
+            rm -f "$OUT"
+            # The app draws its own windows into the file (see WindowSnapshot.swift)
+            # and quits; the cloud Mac allows no screen recording, so a normal
+            # screenshot would come out black.
+            open -n "$APP" --args -sampledata "$@" -screenshot "$OUT" > "mac-launch-$name.log" 2>&1 || true
+            for i in $(seq 1 30); do
+              [ -s "$OUT" ] && break
+              sleep 1
+            done
+            sleep 1
+            pkill -x Ace 2>/dev/null || true
             sleep 2
-            screencapture -x "docs/screenshots/$name.png" || true
-            osascript -e 'tell application "Ace" to quit' 2>/dev/null || pkill -x Ace || true
-            sleep 3
-            echo "---- launch log ($name) ----"; cat "mac-launch-$name.log" || true
-            log show --last 40s --predicate 'process == "Ace"' --style compact 2>/dev/null | tail -20 || true
+            if [ -s "$OUT" ]; then echo "captured $name"; else echo "NO IMAGE for $name"; cat "mac-launch-$name.log" || true; fi
           }
           macshot "mac-1-today" -open today
           macshot "mac-2-jobs" -open jobs
