@@ -1,6 +1,6 @@
 # Where things stand
 
-Updated 2026-10-19, early morning UTC (late evening 2026-10-18 US Eastern). Read this first in a new
+Updated 2026-10-19, about 04:50 UTC (about 00:50 US Eastern). Read this first in a new
 session; then `CLAUDE.md` for the rules and `decisions.md` for the why.
 
 ## Done (written and compiling; not yet run on a device)
@@ -69,17 +69,28 @@ session; then `CLAUDE.md` for the rules and `decisions.md` for the why.
   right-click menu. Sample data now has about 600 generated customers,
   1,000 past jobs and 20 past rentals (`SampleData.swift`, seeded, the same
   every load).
-- **The Assistant understands six kinds of note** in the app and the demo:
-  new job, question, update to an existing job (done, paid and how, moved,
-  price, note), dumpster pickup with the weight, dumpster drop-off, and
-  "other" (a plain answer saying what was understood and what the app can
-  do instead). Matching is done in code (`Ace/Assistant/AssistantMatching.swift`);
-  the confirmation screens are `JobUpdateView`, `DumpsterPickupView`,
-  `DumpsterDropoffView`. `-debug.speechready` makes the speech engine report
-  ready without downloading, for screenshot runs only.
+- **The Assistant answers with a list of actions** (build check #16
+  passed; not run on a device). The contract is `docs/assistant-actions.md`,
+  shared by the app and the demo: Claude returns a reply, actions and
+  questions; 11 action types (new job, update job, cancel job, new
+  customer, update customer, contact customer, dumpster drop-off, pickup,
+  swap, update rental, dumpster note). The records sent with each note
+  carry references (C4, J12, D3) that win over name matching. One
+  confirmation screen per action ("1 of 3", Skip); nothing is saved without
+  a tap. New job types Dumpster swap and Estimate; a dumpster note stays on
+  the dumpster. Files: `Ace/Assistant/AssistantPlan.swift`,
+  `AssistantRecords.swift`, `AssistantStepView.swift` and the
+  `Assistant*Views.swift` screens. Not done: on the Mac the changed record
+  is not selected after saving. Assumed: SwiftData adds the new dumpster
+  note field to existing installs by itself.
 - **Demolition** is a job type, and the Assistant works out the job type
   from the work described instead of asking whenever "junk removal" was not
   said (see `decisions.md`).
+
+- **Client slideshow** (claude.ai Slides artifact, private until Kyle
+  shares it: https://claude.ai/artifact/J8UKoRfm4Zg8qpaw8t1GLR): 14 slides,
+  the iPhone and Mac screenshots from run #9, what the Assistant can be
+  told, and speaker notes. Source: the session scratchpad `ace-deck/`.
 
 ## Not done
 
