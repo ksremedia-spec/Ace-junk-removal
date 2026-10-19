@@ -14,9 +14,9 @@ having to train it? What if something comes up we haven't trained it."
 1. Someone says something. It is written down on the device.
 2. The app sends Claude the words, the list of things the app can do (below),
    and the records that matter: dumpsters, jobs from a week ago to two weeks
-   ahead, any customer whose name, phone or street was said, and a few totals.
-   Every record carries a short reference such as C4 (customer), J12 (job) or
-   D3 (dumpster 3).
+   ahead, the open quotes, any customer whose name, phone or street was said,
+   and a few totals. Every record carries a short reference such as C4
+   (customer), J12 (job), Q2 (quote) or D3 (dumpster 3).
 3. Claude works out what is wanted and answers with a list of actions, a
    reply, or both. It points at records by their reference, so the app does
    not have to guess. When the person names someone not in the list, Claude
@@ -43,7 +43,7 @@ for it.
 | "Pereira needs a dumpster Friday, 7 Bay Road, 450" | new_job (Dumpster drop-off) | New job form |
 | "Swap at Keane's Thursday" | new_job (Dumpster swap) | New job form |
 | "Go look at the Silva basement Tuesday at 10 for a price" | new_job (Estimate) | New job form |
-| "Call back Mrs. Silva Thursday about the quote" | new_job (Other, note "Call back about the quote") | New job form; shows on Today that day |
+| "Call back Mrs. Smith Thursday about the second dumpster" | new_job (Other, note "Call back about the second dumpster") | New job form; shows on Today that day |
 | "Add Dave Macomber, 774 555 0171, 88 Plymouth St" | new_customer | New customer |
 | "Linda Johnson's new number is 508 555 0199" | update_customer | Customer changes |
 | "Johnson moved to 50 Oak St, Raynham" | update_customer | Customer changes |
@@ -52,6 +52,22 @@ for it.
 | "Johnson's price is 350 now" | update_job (price) | Job changes |
 | "Cancel the Johnson job" | cancel_job | Delete job, asked first |
 | "Call Johnson" / "Text Johnson we're 15 minutes out" / "Directions to the next job" | contact_customer | Call, Message or Directions buttons |
+
+### Quotes (added 2026-10-19, see `quotes.md`)
+
+| Said | Action | Screen |
+| --- | --- | --- |
+| "Quote for 66 Johnson Street, garage cleanout, 800" | new_quote | New quote form, filled in; call-back day three days out unless one was said |
+| "Gave Silva a price of 1,200 for the shed, call her back Monday" | new_quote (followUp) | New quote form |
+| "The quote for 66 Johnson Street, 800, customer approved" | update_quote (approved) | Book Job: the job filled in from the quote; saving books it and marks the quote booked |
+| "Silva approved, do it Friday morning" | update_quote (approved, date, time) | Book Job, with Friday morning filled in |
+| "Silva went with someone else" | update_quote (declined) | Mark Lost |
+| "Call Silva back Thursday about the quote" | update_quote (followUp) | Quote changes |
+| "Silva's quote is 1,100 now" | update_quote (price) | Quote changes |
+| "Which quotes need a call back?" | question | Plain answer from the open quotes |
+
+When a price is given and accepted in the same note and no open quote
+matches, it is a new_job, not a quote.
 
 ### Field: finishing work and dumpsters
 
@@ -74,7 +90,8 @@ for it.
 
 "Which dumpsters are due back Friday", "what do we have tomorrow", "how much
 does Pereira owe", "what's Johnson's address", "who has dumpster 3", "is a
-dumpster free Friday", "how much is owed", "what did we do this week".
+dumpster free Friday", "how much is owed", "what did we do this week",
+"which quotes need a call back", "what's out for quotes".
 
 ### Several things at once
 
@@ -103,8 +120,8 @@ allow other properties.
       "items": {
         "type": "object",
         "properties": {
-          "type": { "type": "string", "enum": ["new_job", "update_job", "cancel_job", "new_customer", "update_customer", "contact_customer", "dumpster_dropoff", "dumpster_pickup", "dumpster_swap", "update_rental", "dumpster_note"] },
-          "ref": { "type": "string", "description": "Reference of the record this action is about, from the records list (C4, J12, D3), or empty." },
+          "type": { "type": "string", "enum": ["new_job", "update_job", "cancel_job", "new_customer", "update_customer", "contact_customer", "dumpster_dropoff", "dumpster_pickup", "dumpster_swap", "update_rental", "dumpster_note", "new_quote", "update_quote"] },
+          "ref": { "type": "string", "description": "Reference of the record this action is about, from the records list (C4, J12, Q2, D3), or empty." },
           "customerName": { "type": "string" },
           "phone": { "type": "string", "description": "Digits with dashes, like 508-555-0123, or empty." },
           "address": { "type": "string", "description": "Street address with house number, town and state, or empty." },
@@ -122,6 +139,8 @@ allow other properties.
           "actualTons": { "type": "string", "description": "Weight at pickup in tons as digits, like 2.8, or empty." },
           "agreedTons": { "type": "string", "description": "Agreed weight in tons as digits, or empty." },
           "dueBack": { "type": "string", "description": "YYYY-MM-DD, or empty." },
+          "followUp": { "type": "string", "description": "YYYY-MM-DD: the day to call back about a quote, or empty." },
+          "quoteStatus": { "type": "string", "enum": ["approved", "declined", ""], "description": "For update_quote: approved when the customer said yes, declined when they said no." },
           "note": { "type": "string", "description": "Anything to write down, in one short sentence, or empty." },
           "newName": { "type": "string" },
           "newPhone": { "type": "string" },
@@ -129,7 +148,7 @@ allow other properties.
           "contact": { "type": "string", "enum": ["call", "text", "directions", ""] },
           "message": { "type": "string", "description": "For a text: the message to send." }
         },
-        "required": ["type", "ref", "customerName", "phone", "address", "jobType", "date", "time", "price", "paymentType", "paid", "done", "newDate", "newTime", "dumpsterNumber", "otherDumpsterNumber", "actualTons", "agreedTons", "dueBack", "note", "newName", "newPhone", "newAddress", "contact", "message"],
+        "required": ["type", "ref", "customerName", "phone", "address", "jobType", "date", "time", "price", "paymentType", "paid", "done", "newDate", "newTime", "dumpsterNumber", "otherDumpsterNumber", "actualTons", "agreedTons", "dueBack", "followUp", "quoteStatus", "note", "newName", "newPhone", "newAddress", "contact", "message"],
         "additionalProperties": false
       }
     },
@@ -139,7 +158,7 @@ allow other properties.
         "type": "object",
         "properties": {
           "action": { "type": "integer", "description": "Position of the action in the list, 0 for the first." },
-          "field": { "type": "string", "enum": ["customerName", "phone", "address", "jobType", "date", "time", "price", "paymentType", "paid", "done", "newDate", "newTime", "dumpsterNumber", "otherDumpsterNumber", "actualTons", "agreedTons", "dueBack", "note", "newName", "newPhone", "newAddress", "ref"] },
+          "field": { "type": "string", "enum": ["customerName", "phone", "address", "jobType", "date", "time", "price", "paymentType", "paid", "done", "newDate", "newTime", "dumpsterNumber", "otherDumpsterNumber", "actualTons", "agreedTons", "dueBack", "followUp", "note", "newName", "newPhone", "newAddress", "ref"] },
           "question": { "type": "string", "description": "One short plain yes/no question." }
         },
         "required": ["action", "field", "question"],
@@ -173,7 +192,7 @@ Today is {today} ({zone}). The time is {now}.
 
 The person speaking is Ashley in the office (booking work, answering the phone, keeping the books) or Alex and the crew in the field (finishing jobs, collecting payment, dropping off and picking up dumpsters). Work out what they want done and return it as a list of actions. One note can hold several actions: "Johnson's done, paid cash, and she wants a dumpster next Friday" is an update to her job and a new job.
 
-The records sent with the note list dumpsters, jobs and customers, each with a reference like D3, J12 or C4. When an action is about a record in the list, put its reference in "ref". When the note names someone or something not in the list, leave "ref" empty and fill in the name, phone, address or dumpster number as said; the app looks it up.
+The records sent with the note list dumpsters, jobs, open quotes and customers, each with a reference like D3, J12, Q2 or C4. When an action is about a record in the list, put its reference in "ref". When the note names someone or something not in the list, leave "ref" empty and fill in the name, phone, address or dumpster number as said; the app looks it up.
 
 Actions:
 - new_job: book new work. Fill customerName, phone and address as said, jobType, date, time, price, paymentType, paid and note. A dumpster delivery, pickup or swap booked for later is a new_job with that jobType. An on-site quote visit is jobType "Estimate". A call-back or reminder is jobType "Other" on that day, with the reason in note.
@@ -187,8 +206,10 @@ Actions:
 - dumpster_swap: a full dumpster was taken away and an empty one left in its place: dumpsterNumber is the one taken away, actualTons its weight, otherDumpsterNumber the one left, and dueBack, price and agreedTons for the new rental when said.
 - update_rental: change a dumpster that is out: dueBack (kept longer or picked up sooner), price, agreedTons, newAddress (moved on the property or to another place), note.
 - dumpster_note: something about a dumpster itself, such as damage or that it should not go out: dumpsterNumber and note.
+- new_quote: a price was given that the customer has not accepted yet: customerName, phone and address as said, jobType, price, note (what was quoted, in a few words) and followUp (the day to call them back, when said).
+- update_quote: an open quote changed. quoteStatus "approved" when the customer said yes or approved it, with date and time for the work when a day was said; "declined" when they said no or went elsewhere. price when it changed. followUp when a call-back day was said. note for anything to write down. A call-back about an open quote is an update_quote with followUp, not a new_job. When a price is given and accepted in the same note and no open quote matches, book a new_job instead.
 
-When the note asks a question, for example "which dumpsters are due back Friday", "what do we have tomorrow", "how much does Pereira owe", "what's Johnson's address" or "is a dumpster free Friday", answer it in "reply" from the records in one or two plain sentences, and return actions only if something should also be done. If the records do not hold the answer, say so.
+When the note asks a question, for example "which dumpsters are due back Friday", "what do we have tomorrow", "how much does Pereira owe", "what's Johnson's address", "is a dumpster free Friday" or "which quotes need a call back", answer it in "reply" from the records in one or two plain sentences, and return actions only if something should also be done. If the records do not hold the answer, say so.
 
 When the note asks for something none of the actions can do, such as sending an invoice, changing a setting, undoing a change or deleting a customer, say in "reply" what was understood and the nearest thing that can be done, and return no actions.
 
@@ -201,7 +222,7 @@ Rules for fields:
 - jobType from the work described; nobody says "junk removal" out loud. Junk removal: clearing, emptying or cleaning out a garage, basement, attic, shed, house, estate or office, or hauling away furniture, appliances, debris or a hot tub. Demolition: tearing down or taking out a shed, deck, pool, fence, wall, kitchen, bathroom or flooring, or any mention of "demo". Dumpster drop-off, Dumpster pickup and Dumpster swap: booking those for a later day. Estimate: going to look and give a price. Other: anything else. Leave it empty only when nothing says what the work is.
 - paymentType is cash, check or card. "PD cash 300" means paid, cash, 300.
 
-Issues: list what the person should confirm before saving, each tied to an action by its position in the list (0 for the first), naming the field and asking one short yes/no question. For a new job: no date, no price, no phone number for someone not in the records, unclear kind of work, a date in the past, an address with no house number, a name or address that sounds misheard, two values said for one field. For any other action: only when it is unclear which record is meant or what should change, and for a pickup or swap when no weight was said.
+Issues: list what the person should confirm before saving, each tied to an action by its position in the list (0 for the first), naming the field and asking one short yes/no question. For a new job: no date, no price, no phone number for someone not in the records, unclear kind of work, a date in the past, an address with no house number, a name or address that sounds misheard, two values said for one field. For a new quote: no price, no phone number for someone not in the records, an address with no house number. For any other action: only when it is unclear which record is meant or what should change, and for a pickup or swap when no weight was said.
 
 Plain business language. No exclamation points.
 ```
@@ -218,6 +239,8 @@ Dumpsters:
 - D3 Dumpster 3 (15 yard): in the yard. Note: cracked door
 Jobs from Mon, Oct 12 to Mon, Nov 2:
 - J1 Mon, Oct 19 9:00 AM · C1 Linda Johnson · Junk removal · $300 cash · not paid · not done · 42 Elm St, Taunton, MA
+Open quotes:
+- Q1 C2 Dave Macomber · 88 Plymouth St, Middleborough, MA · Junk removal · Garage cleanout, about two loads · $450 · quoted Tue, Oct 13 · follow up Sat, Oct 17 (overdue)
 Customers:
 - C1 Linda Johnson · 508-555-0147 · 42 Elm St, Taunton, MA · Side gate code 4412 · 4 jobs, $1,180, owes $0, last job Mon, Oct 19
   - J1 ... (that customer's last 8 jobs, each with a reference)
@@ -236,6 +259,11 @@ Totals: owed $19,550 from 31 jobs; done this week $2,140 from 6 jobs; booked tod
   possessive are ignored on both sides ("O'Brien's" matches O'Brien). Ties
   keep the list order. Each mentioned customer also gets their last 8 jobs,
   so questions about them can be answered.
+- Open quotes: every open quote, oldest first, each with its customer's
+  reference and address, the type, what was quoted, the price ("no price"
+  when none), the day quoted, and the call-back day marked "(overdue)" or
+  "(today)" when due. "- none" when there are none. Booked and lost quotes
+  are not sent. Customers on open quotes are listed under Customers.
 - A job line ends with the job's notes when it has any, joined into one
   line ("· Call back about a second dumpster"). Without them a call-back
   booked as "Other" would carry no reason.
@@ -271,5 +299,23 @@ Totals: owed $19,550 from 31 jobs; done this week $2,140 from 6 jobs; booked tod
 - After the last screen: one short confirmation ("Job saved.", "3 changes
   saved."), and on the Mac the changed record is selected.
 - cancel_job removes the job after a confirmation alert.
+- new_quote: the New Quote form, filled in. A reference wins; otherwise the
+  customer is matched by phone, then name, then address, like a new job. When
+  nobody matches, saving adds a customer with the name, phone and address
+  said. Quoted is today. The call-back day is the one said, else three days
+  out (shown, not flagged). Confirmation "Quote saved."
+- update_quote: finds the quote by its reference; otherwise among open
+  quotes by the customer's phone, name or address ("Which quote?" for
+  several, "No open quote found for …" for none, with Skip). Then:
+  - approved: a Book Job screen with the quote at the top and the job's
+    date, time, price and payment below. The price starts at the quote's
+    unless a new one was said; the date is the one said, else today, flagged
+    "No day was said for the work." Saving adds the job (customer, type and
+    what was quoted as its notes) and marks the quote booked and linked.
+    Confirmation "Job saved."
+  - declined: the quote with Mark Lost. Confirmation "Quote marked lost."
+  - otherwise: the quote with its price, call-back day and a note to add,
+    and Save. Confirmation "Quote saved."
+- A step that saved nothing (Skip) adds nothing to the confirmation.
 - dumpster_note is kept on the dumpster until changed and shown on its row and
   screen.

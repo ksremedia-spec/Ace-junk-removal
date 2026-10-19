@@ -76,10 +76,20 @@ Book Job, Mark Lost or Reopen, Delete.
 "Quote saved." "Quote marked lost." "Quote reopened." Booking ends with the
 New Job form's own "Job saved." No exclamation points.
 
-## Not in this change
+## Today line (added 2026-10-19, Kyle: "let's do it as a line on the screen")
 
-- The Assistant does not create or update quotes yet ("quote Johnson 450 for
-  the garage" would need a new action type in `assistant-actions.md`).
-- The Today screen does not show quotes to follow up yet.
+- **iPhone Today:** one more row in the figures card at the top, under Owed:
+  **Quotes to follow up** with the number of open quotes whose call-back day
+  is today or earlier, in the warning color when more than zero. Shown only
+  when there is at least one open quote. Tapping it opens the Quotes tab on
+  Open.
+- **Mac Today:** the figures line at the top of the list ends with
+  " · 2 quotes to follow up" when there are any.
 
-Both are natural next steps; ask Kyle before adding either.
+## The Assistant and quotes (added 2026-10-19)
+
+Kyle: "The assistant should answer things like get a quote for 66 Johnson
+Street $800 customer approved and then it goes in and marks that quote".
+The Assistant now has two quote actions, **new_quote** and **update_quote**
+(approved books it, declined marks it lost, or a new price or call-back
+day). The contract, prompt and screens are in `assistant-actions.md`.
