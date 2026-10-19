@@ -92,15 +92,8 @@ struct MacMainView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(selection: sidebarSelection) {
-                sidebarRow(.today)
-                sidebarRow(.jobs)
-                sidebarRow(.unpaid, indented: true)
-                sidebarRow(.done, indented: true)
-                sidebarRow(.customers)
-                sidebarRow(.dumpsters)
-            }
-            .navigationSplitViewColumnWidth(min: 160, ideal: 190, max: 260)
+            sidebarList
+                .navigationSplitViewColumnWidth(min: 160, ideal: 190, max: 260)
         } content: {
             contentColumn
                 .navigationSplitViewColumnWidth(min: 280, ideal: 340)
@@ -149,6 +142,33 @@ struct MacMainView: View {
         .onAppear {
             handleLaunchArguments()
             WindowSnapshot.captureIfRequested()
+        }
+    }
+
+    /// The screenshot workflow draws the window from inside the app, where the
+    /// sidebar's glass highlight comes out as a black block. For that run only,
+    /// the sidebar uses a plain highlight and hides its collapse button.
+    private var screenshotMode: Bool { ProcessInfo.processInfo.arguments.contains("-screenshot") }
+
+    private var sidebarRows: some View {
+        List(selection: sidebarSelection) {
+            sidebarRow(.today)
+            sidebarRow(.jobs)
+            sidebarRow(.unpaid, indented: true)
+            sidebarRow(.done, indented: true)
+            sidebarRow(.customers)
+            sidebarRow(.dumpsters)
+        }
+    }
+
+    @ViewBuilder
+    private var sidebarList: some View {
+        if screenshotMode {
+            sidebarRows
+                .listStyle(.plain)
+                .toolbar(removing: .sidebarToggle)
+        } else {
+            sidebarRows
         }
     }
 
