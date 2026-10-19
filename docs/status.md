@@ -69,6 +69,14 @@ session; then `CLAUDE.md` for the rules and `decisions.md` for the why.
   right-click menu. Sample data now has about 600 generated customers,
   1,000 past jobs and 20 past rentals (`SampleData.swift`, seeded, the same
   every load).
+- **The Assistant understands six kinds of note** in the app and the demo:
+  new job, question, update to an existing job (done, paid and how, moved,
+  price, note), dumpster pickup with the weight, dumpster drop-off, and
+  "other" (a plain answer saying what was understood and what the app can
+  do instead). Matching is done in code (`Ace/Assistant/AssistantMatching.swift`);
+  the confirmation screens are `JobUpdateView`, `DumpsterPickupView`,
+  `DumpsterDropoffView`. `-debug.speechready` makes the speech engine report
+  ready without downloading, for screenshot runs only.
 - **Demolition** is a job type, and the Assistant works out the job type
   from the work described instead of asking whenever "junk removal" was not
   said (see `decisions.md`).
