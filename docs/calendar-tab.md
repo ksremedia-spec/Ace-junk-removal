@@ -132,6 +132,12 @@ built.
   Assistant, Book Job, swipe actions, right-click), Ace writes or updates
   its event, if a Calendar for Jobs is chosen and access is on.
 - When a job is deleted on this device, Ace deletes its event.
+- When a customer's name, phone or address is saved on this device (the
+  customer form or the Assistant), Ace rewrites the events of that
+  customer's jobs it has written, from 60 days back onward.
+- When a customer is deleted, their jobs stay without a customer, and Ace
+  rewrites those jobs' events: the title becomes just the job type, with no
+  address and no phone line.
 - Ace only writes events for changes made on this device ("one writer per
   change", `calendar.md` section 3). When Ace's own sync is built (step 5),
   jobs that arrive through sync are not written again.

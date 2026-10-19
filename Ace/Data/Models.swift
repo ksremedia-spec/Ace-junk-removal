@@ -361,10 +361,22 @@ extension Customer {
 
     /// Deletes the customer and saves. Their jobs, quotes, dumpsters and
     /// rental records stay and lose the customer (the `.nullify` rules above).
-    /// Every delete path calls this so they all behave the same.
+    /// The events of their jobs in the Calendar for Jobs are rewritten
+    /// without the name, address and phone. Every delete path calls this so
+    /// they all behave the same.
+    @MainActor
     func remove(from context: ModelContext) {
+        let rewrite = CalendarStore.shared.jobsWritten(for: self)
+        // Cleared here rather than left to the delete rule, so nothing reads
+        // the deleted customer while the events are rewritten.
+        for job in rewrite {
+            job.customer = nil
+        }
         context.delete(self)
         try? context.save()
+        for job in rewrite {
+            CalendarStore.shared.jobSaved(job)
+        }
     }
 }
 

@@ -73,6 +73,7 @@ struct CustomerEditView: View {
         }
         form.apply(to: target)
         try? context.save()
+        CalendarStore.shared.customerSaved(target)
         saved.toggle()
         onSave?(target)
         dismiss()

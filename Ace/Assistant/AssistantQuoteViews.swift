@@ -190,6 +190,8 @@ struct NewQuoteView: View {
         data.customer = customer
         data.apply(to: quote)
         try? context.save()
+        // A phone or address filled in above goes onto their jobs' events.
+        CalendarStore.shared.customerSaved(customer)
         saved.toggle()
         onFinish("Quote saved.")
     }

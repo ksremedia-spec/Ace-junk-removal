@@ -388,6 +388,8 @@ struct JobReviewView: View {
         job.endsAt = endDate
         try? context.save()
         CalendarStore.shared.jobSaved(job)
+        // A phone or address filled in above goes onto their other jobs' events.
+        CalendarStore.shared.customerSaved(customer)
         saved.toggle()
         onSaved()
     }

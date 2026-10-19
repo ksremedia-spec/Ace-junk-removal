@@ -42,10 +42,10 @@ struct CustomersView: View {
                 }
             }
             .onDelete { offsets in
-                for index in offsets {
-                    context.delete(filtered[index])
+                let doomed = offsets.map { filtered[$0] }
+                for customer in doomed {
+                    customer.remove(from: context)
                 }
-                try? context.save()
             }
         }
         .navigationTitle("Customers")

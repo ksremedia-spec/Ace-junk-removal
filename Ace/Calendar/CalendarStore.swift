@@ -276,6 +276,41 @@ final class CalendarStore {
         }
     }
 
+    /// Rewrites the events of the customer's jobs after their name, phone
+    /// or address was saved (the customer form, the Assistant). Only jobs
+    /// this device has written, from 60 days back onward; an event that is
+    /// already up to date is left alone.
+    func customerSaved(_ customer: Customer) {
+        for job in jobsWritten(for: customer) {
+            if let jobID = job.jobID,
+               let event = rememberedEvent(of: job, jobID: jobID),
+               event.calendar?.calendarIdentifier == jobsCalendarID,
+               isUpToDate(event, with: job, jobID: jobID) {
+                continue
+            }
+            jobSaved(job)
+        }
+    }
+
+    /// The customer's jobs whose events carry the customer's name, phone
+    /// and address: written on this device, from 60 days back onward. Empty
+    /// when nothing can be written. `Customer.remove(from:)` uses it to
+    /// rewrite those events without the customer.
+    func jobsWritten(for customer: Customer) -> [Job] {
+        guard !Self.writesBlocked, access == .full, jobsCalendar != nil else { return [] }
+        let today = Dates.startOfToday()
+        let cutoff = Calendar.current.date(byAdding: .day, value: -60, to: today) ?? today
+        return customer.jobs.filter {
+            $0.jobID != nil && $0.calendarWrittenAt != nil && $0.scheduledAt >= cutoff
+        }
+    }
+
+    private func isUpToDate(_ event: EKEvent, with job: Job, jobID: UUID) -> Bool {
+        (event.title ?? "") == Self.title(for: job)
+            && (event.location ?? "") == Self.location(for: job)
+            && (event.notes ?? "") == Self.notes(for: job, jobID: jobID)
+    }
+
     /// The event remembered on the job, if it is still there and its marker
     /// line names this job.
     private func rememberedEvent(of job: Job, jobID: UUID) -> EKEvent? {
@@ -323,9 +358,8 @@ final class CalendarStore {
 
     /// Puts the job into the event: title, address, times, notes, no alerts.
     private func fill(_ event: EKEvent, from job: Job, jobID: UUID) {
-        let name = job.customer?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        event.title = name.isEmpty ? job.jobType.rawValue : name + " · " + job.jobType.rawValue
-        let address = job.customer?.address.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        event.title = Self.title(for: job)
+        let address = Self.location(for: job)
         event.location = address.isEmpty ? nil : address
 
         if job.hasTime {
@@ -349,6 +383,17 @@ final class CalendarStore {
         for alarm in event.alarms ?? [] {
             event.removeAlarm(alarm)
         }
+    }
+
+    /// "Linda Johnson · Junk removal", or "Junk removal" with no customer.
+    private static func title(for job: Job) -> String {
+        let name = job.customer?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return name.isEmpty ? job.jobType.rawValue : name + " · " + job.jobType.rawValue
+    }
+
+    /// The customer's address; empty with no customer or no address.
+    private static func location(for job: Job) -> String {
+        job.customer?.address.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 
     /// The phone number; "$450 · Cash · Unpaid" (or "Paid", or "Done ·

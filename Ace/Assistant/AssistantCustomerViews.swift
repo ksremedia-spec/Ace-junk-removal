@@ -272,6 +272,7 @@ private struct UpdateCustomerForm: View {
         }
         customer.updatedAt = Date()
         try? context.save()
+        CalendarStore.shared.customerSaved(customer)
         saved.toggle()
         onFinish("Customer saved.")
     }

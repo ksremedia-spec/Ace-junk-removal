@@ -256,6 +256,8 @@ struct DumpsterDropoffView: View {
         if let linked {
             CalendarStore.shared.jobSaved(linked)
         }
+        // A phone or address filled in above goes onto their jobs' events.
+        CalendarStore.shared.customerSaved(who)
         saved.toggle()
         onSaved("Dumpster \(dumpster.number) dropped off.")
     }
