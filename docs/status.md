@@ -55,13 +55,16 @@ session; then `CLAUDE.md` for the rules and `decisions.md` for the why.
   demo's request with the key as a server secret, so the client can use the
   Assistant from the link with nothing to type. Kyle sets it up; the demo is
   republished with its address (`RELAY_URL` in the demo source).
-- **Client screenshot page** (https://claude.ai/artifact/8wvbCffQ4deC7uh8ThqXsC):
-  the five iPhone screens and the five Mac screens, all from screenshot run
-  #8 with the 600-customer sample data (the app draws its own windows with
-  `-screenshot`, see `Ace/Mac/WindowSnapshot.swift`; with `-screenshot` the
-  sidebar uses a plain highlight because the glass one draws black
-  offscreen). The Mac Assistant picture shows the one-time speech-model
-  download, because the cloud Mac has no model cached.
+- **Client preview page** (https://claude.ai/artifact/8wvbCffQ4deC7uh8ThqXsC,
+  version 6): Kyle's preferred client page. The iPhone and Mac screens with
+  the slideshow's explanations: what it covers, a lead line and points under
+  every screen, an Assistant section (office, field, several things at once,
+  eight things you can say, "Nothing is saved until you tap"), and the Mac
+  screens with their keyboard shortcuts. On a phone each set of screens is a
+  sideways swipe and a tap enlarges a picture. Pictures are small WebP
+  copies of screenshot run #9. Source: the session scratchpad
+  `ace-preview/`. A stray copy published by mistake at
+  https://claude.ai/artifact/KSMW87Xj4mE3o7LZtNkDxD can be deleted.
 - **App screens show the business:** Today figures and Owed; Jobs with
   Upcoming / Unpaid / Done and per-day totals; "Unpaid" marker; customer
   summary (since, jobs, total, owed), Call and Directions, dumpster rentals;
