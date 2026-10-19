@@ -101,3 +101,21 @@ own repository with its own rules file (`CLAUDE.md`).
   in front of the client costs more than the extra pennies. The phone app keeps
   Haiku as the default with Sonnet as the switch, pending the step-1 comparison
   on Kyle's iPhone. Kyle allowed Sonnet ("use sonnet if you have to").
+
+## How the browser demo reaches Claude for the client (2026-10-19)
+
+- Kyle wants the client to open the demo link and have the Assistant work with
+  nothing to type, billed to Kyle's key ("using my api key is fine").
+- The key is never written into the page. The cloud session's safety check
+  refused to build a "write the key into the page" button, and a key in a page
+  anyone with the link can read is the wrong shape anyway. Instead the demo can
+  send its request through a small relay on Cloudflare Workers
+  (`docs/demo-relay/`) that holds the key as a server secret, forces the model
+  and answer size, and only answers the demo page's own web addresses. Kyle
+  sets it up once; the demo is republished with the relay's address.
+- Settings in the demo shows a "Connection" row: whether the page can reach
+  Anthropic (or the relay) from inside claude.ai. That answers the one open
+  question nobody can settle from the cloud session.
+- Fallbacks if claude.ai blocks the connection: the viewer signs in to
+  claude.ai (Claude through their own account, no key), or the demo is hosted
+  as a plain web page outside claude.ai.
