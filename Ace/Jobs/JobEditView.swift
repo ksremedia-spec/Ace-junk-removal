@@ -22,15 +22,11 @@ struct JobEditView: View {
     var body: some View {
         Form {
             Section("Customer") {
-                Button {
-                    showingCustomerPicker = true
-                } label: {
-                    LabeledContent("Customer") {
-                        Text(form.customer?.name ?? "Choose")
-                            .foregroundStyle(form.customer == nil ? .secondary : .primary)
+                LabeledContent("Customer") {
+                    Button(form.customer?.name ?? "Choose") {
+                        showingCustomerPicker = true
                     }
                 }
-                .buttonStyle(.plain)
                 if let customer = form.customer {
                     if !customer.phone.isEmpty {
                         LabeledContent("Phone", value: customer.phone)
@@ -103,6 +99,17 @@ struct JobEditView: View {
             Button("Delete", role: .destructive) { delete() }
         }
         .sensoryFeedback(.success, trigger: saved)
+        // On the Mac the list's right-click menu can change these while this
+        // form is open; keep the form in step so Save does not undo them.
+        .onChange(of: job?.isDone) { _, newValue in
+            if let newValue { form.isDone = newValue }
+        }
+        .onChange(of: job?.isPaid) { _, newValue in
+            if let newValue { form.isPaid = newValue }
+        }
+        #if os(macOS)
+        .frame(minWidth: 480, minHeight: 560)
+        #endif
     }
 
     private func save() {

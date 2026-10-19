@@ -23,20 +23,26 @@ enum SampleData {
         ]
         customers.forEach { context.insert($0) }
 
-        let jobs: [Job] = [
-            Job(customer: customers[0], jobType: .junkRemoval, scheduledAt: day(0, hour: 9), hasTime: true, price: 300, paymentType: .cash, isPaid: false, notes: "Basement, old couch and boxes"),
-            Job(customer: customers[1], jobType: .dumpsterDropOff, scheduledAt: day(0, hour: 13), hasTime: true, price: 450, paymentType: .card, isPaid: true),
-            Job(customer: customers[2], jobType: .junkRemoval, scheduledAt: day(1, hour: 8), hasTime: true, price: 525, paymentType: .check, isPaid: false),
-            Job(customer: customers[3], jobType: .dumpsterPickup, scheduledAt: day(1), hasTime: false, price: nil, paymentType: .unknown, isPaid: false, notes: "Call office before pickup"),
-            Job(customer: customers[4], jobType: .junkRemoval, scheduledAt: day(2, hour: 10), hasTime: true, price: 200, paymentType: .cash, isPaid: false),
-            Job(customer: customers[5], jobType: .dumpsterDropOff, scheduledAt: day(3, hour: 7), hasTime: true, price: 475, paymentType: .card, isPaid: false),
-            Job(customer: customers[0], jobType: .junkRemoval, scheduledAt: day(-3, hour: 14), hasTime: true, price: 180, paymentType: .cash, isPaid: true),
+        // Jobs are inserted first and connected to their customer after, so
+        // relationships are only ever set on stored records.
+        let jobSpecs: [(customer: Int, job: Job)] = [
+            (0, Job(customer: nil, jobType: .junkRemoval, scheduledAt: day(0, hour: 9), hasTime: true, price: 300, paymentType: .cash, isPaid: false, notes: "Basement, old couch and boxes")),
+            (1, Job(customer: nil, jobType: .dumpsterDropOff, scheduledAt: day(0, hour: 13), hasTime: true, price: 450, paymentType: .card, isPaid: true)),
+            (2, Job(customer: nil, jobType: .junkRemoval, scheduledAt: day(1, hour: 8), hasTime: true, price: 525, paymentType: .check, isPaid: false)),
+            (3, Job(customer: nil, jobType: .dumpsterPickup, scheduledAt: day(1), hasTime: false, price: nil, paymentType: .unknown, isPaid: false, notes: "Call office before pickup")),
+            (4, Job(customer: nil, jobType: .junkRemoval, scheduledAt: day(2, hour: 10), hasTime: true, price: 200, paymentType: .cash, isPaid: false)),
+            (5, Job(customer: nil, jobType: .dumpsterDropOff, scheduledAt: day(3, hour: 7), hasTime: true, price: 475, paymentType: .card, isPaid: false)),
+            (0, Job(customer: nil, jobType: .junkRemoval, scheduledAt: day(-3, hour: 14), hasTime: true, price: 180, paymentType: .cash, isPaid: true)),
         ]
-        jobs[6].isDone = true
-        jobs.forEach { context.insert($0) }
+        for spec in jobSpecs {
+            context.insert(spec.job)
+            spec.job.customer = customers[spec.customer]
+        }
+        jobSpecs[6].job.isDone = true
 
         for number in 1...6 {
             let dumpster = Dumpster(number: number, label: number <= 3 ? "15 yard" : "20 yard")
+            context.insert(dumpster)
             switch number {
             case 1:
                 dumpster.isOut = true
@@ -65,7 +71,6 @@ enum SampleData {
             default:
                 break
             }
-            context.insert(dumpster)
         }
 
         try? context.save()

@@ -25,6 +25,18 @@ struct JobReviewView: View {
     @State private var isPaid: Bool
     @State private var notes: String
 
+    /// What Claude filled in, parsed once, so we can tell what Ashley changed.
+    private let original: Original
+
+    struct Original {
+        var jobType: JobType
+        var date: Date
+        var hasTime: Bool
+        var price: Double?
+        var paymentType: PaymentType
+        var isPaid: Bool
+    }
+
     struct Question: Identifiable, Equatable {
         let id = UUID()
         let field: String
@@ -35,25 +47,35 @@ struct JobReviewView: View {
     @State private var current: Question?
     @State private var showingQuestion = false
     @State private var saved = false
-
-    private var claudeQuestions: [String: String] {
-        Dictionary(draft.issues.map { ($0.field, $0.question) }, uniquingKeysWith: { first, _ in first })
-    }
+    @State private var flagged = 0
 
     init(draft: JobDraft, onSaved: @escaping () -> Void, onStartOver: @escaping () -> Void) {
         self.draft = draft
         self.onSaved = onSaved
         self.onStartOver = onStartOver
+
+        let parsedDate = Self.parse(date: draft.date, time: draft.time)
+        let parsedType = JobType.allCases.first { $0.rawValue.caseInsensitiveCompare(draft.jobType) == .orderedSame } ?? .junkRemoval
+        let parsedPayment = Self.payment(from: draft.paymentType)
+        let parsedPaid = draft.paid.lowercased() == "paid"
+        original = Original(
+            jobType: parsedType,
+            date: parsedDate.date,
+            hasTime: parsedDate.hasTime,
+            price: Parse.money(draft.price),
+            paymentType: parsedPayment,
+            isPaid: parsedPaid
+        )
+
         _name = State(initialValue: draft.customerName)
         _phone = State(initialValue: PhoneFormat.formatted(draft.phone))
         _address = State(initialValue: draft.address)
-        _jobType = State(initialValue: JobType(rawValue: draft.jobType) ?? .junkRemoval)
-        let parsed = Self.parse(date: draft.date, time: draft.time)
-        _date = State(initialValue: parsed.date)
-        _hasTime = State(initialValue: parsed.hasTime)
+        _jobType = State(initialValue: parsedType)
+        _date = State(initialValue: parsedDate.date)
+        _hasTime = State(initialValue: parsedDate.hasTime)
         _priceText = State(initialValue: draft.price)
-        _paymentType = State(initialValue: Self.payment(from: draft.paymentType))
-        _isPaid = State(initialValue: draft.paid == "paid")
+        _paymentType = State(initialValue: parsedPayment)
+        _isPaid = State(initialValue: parsedPaid)
         _notes = State(initialValue: draft.notes)
     }
 
@@ -95,7 +117,7 @@ struct JobReviewView: View {
                     field("time") {
                         DatePicker("Time", selection: $date, displayedComponents: .hourAndMinute)
                     }
-                } else if let question = claudeQuestions["time"] {
+                } else if let question = questions[Self.key("time")] {
                     Text(question)
                         .font(.footnote)
                         .foregroundStyle(.orange)
@@ -127,23 +149,48 @@ struct JobReviewView: View {
             }
 
             Section {
-                Button("Save job") { beginSave() }
                 Button("Start over") { onStartOver() }
             }
         }
         .formStyle(.grouped)
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Save") { beginSave() }
+            }
+        }
         .alert(current?.text ?? "", isPresented: $showingQuestion) {
             Button("Yes") { answeredYes() }
             Button("No", role: .cancel) { answeredNo() }
         }
         .sensoryFeedback(.success, trigger: saved)
+        .sensoryFeedback(.warning, trigger: flagged)
     }
 
-    /// Wraps a field; when Claude flagged it, the label turns the warning
-    /// color and its question appears underneath.
+    // MARK: Flags on the form
+
+    /// Field names as Claude may spell them ("customerName", "customer_name",
+    /// "CustomerName") reduced to one form.
+    private static func key(_ text: String) -> String {
+        text.lowercased().filter { $0 != "_" && $0 != " " }
+    }
+
+    /// Claude's questions plus the gaps the app itself can see.
+    private var questions: [String: String] {
+        var map = Dictionary(draft.issues.map { (Self.key($0.field), $0.question) }, uniquingKeysWith: { first, _ in first })
+        if draft.date.isEmpty, map[Self.key("date")] == nil {
+            map[Self.key("date")] = "No date was given. Save for today?"
+        }
+        if draft.jobType.isEmpty, map[Self.key("jobType")] == nil {
+            map[Self.key("jobType")] = "No job type was given. Is \(original.jobType.rawValue) right?"
+        }
+        return map
+    }
+
+    /// Wraps a field; when it was flagged, the label turns the warning color
+    /// and the question appears underneath.
     @ViewBuilder
-    private func field<Content: View>(_ key: String, @ViewBuilder content: () -> Content) -> some View {
-        if let question = claudeQuestions[key] {
+    private func field<Content: View>(_ name: String, @ViewBuilder content: () -> Content) -> some View {
+        if let question = questions[Self.key(name)] {
             content()
                 .foregroundStyle(Color.orange)
             Text(question)
@@ -170,48 +217,72 @@ struct JobReviewView: View {
     // MARK: Questions, one at a time
 
     private func beginSave() {
-        var questions: [Question] = []
+        var list: [Question] = []
         var covered = Set<String>()
 
+        func ask(_ field: String, _ text: String) {
+            list.append(Question(field: field, text: text))
+            covered.insert(Self.key(field))
+        }
+
         if name.trimmingCharacters(in: .whitespaces).isEmpty {
-            questions.append(Question(field: "customerName", text: "No name was given. Save as \"Unknown customer\"?"))
-            covered.insert("customerName")
+            ask("customerName", "No name was given. Save as \"Unknown customer\"?")
         }
         if phoneDigits.isEmpty && matchingCustomer == nil {
-            questions.append(Question(field: "phone", text: "No phone number. Save without one?"))
-            covered.insert("phone")
+            ask("phone", "No phone number. Save without one?")
         }
         if Parse.money(priceText) == nil {
-            questions.append(Question(field: "price", text: "No price. Save without one?"))
-            covered.insert("price")
+            ask("price", "No price. Save without one?")
         }
         let scheduled = hasTime ? date : Calendar.current.startOfDay(for: date)
         if scheduled < Dates.startOfToday() {
-            questions.append(Question(field: "date", text: "The date is in the past (\(Dates.shortDay(date))). Save anyway?"))
-            covered.insert("date")
+            ask("date", "The date is in the past (\(Dates.shortDay(date))). Save anyway?")
+        } else if draft.date.isEmpty && !resolved("date") {
+            ask("date", "No date was given. Save for today (\(Dates.shortDay(date)))?")
+        }
+        if draft.jobType.isEmpty && !resolved("jobType") {
+            ask("jobType", "No job type was given. Save as \(jobType.rawValue)?")
         }
         if let clash = doubleBooking(at: scheduled) {
-            questions.append(Question(field: "time", text: "Another job is already booked \(clash.whenText): \(clash.customer?.name ?? "no customer"), \(clash.jobType.rawValue). Book this one too?"))
-            covered.insert("time")
+            ask("time", "Another job is already booked \(clash.whenText): \(clash.customer?.name ?? "no customer"), \(clash.jobType.rawValue). Book this one too?")
         }
         // Claude's own questions, except the ones the code just asked or that
-        // Ashley has since fixed.
-        for issue in draft.issues where !covered.contains(issue.field) && !resolved(issue.field) {
-            questions.append(Question(field: issue.field, text: issue.question))
+        // Ashley has since changed.
+        for issue in draft.issues where !covered.contains(Self.key(issue.field)) && !resolved(issue.field) {
+            list.append(Question(field: issue.field, text: issue.question))
         }
 
-        pending = questions
+        pending = list
+        if !list.isEmpty { flagged += 1 }
         advance()
     }
 
+    /// True when Ashley changed the field away from what Claude filled in.
     private func resolved(_ field: String) -> Bool {
-        switch field {
-        case "customerName": return !name.trimmingCharacters(in: .whitespaces).isEmpty
-        case "phone": return !phoneDigits.isEmpty
-        case "address": return address.trimmingCharacters(in: .whitespaces).contains(where: \.isNumber)
-        case "price": return Parse.money(priceText) != nil
-        case "time": return hasTime
-        default: return false
+        switch Self.key(field) {
+        case "customername":
+            return name.trimmingCharacters(in: .whitespaces) != draft.customerName.trimmingCharacters(in: .whitespaces)
+                && !name.trimmingCharacters(in: .whitespaces).isEmpty
+        case "phone":
+            return phoneDigits != draft.phone.filter(\.isNumber) && !phoneDigits.isEmpty
+        case "address":
+            return address != draft.address && address.contains(where: \.isNumber)
+        case "jobtype":
+            return jobType != original.jobType
+        case "date":
+            return !Calendar.current.isDate(date, inSameDayAs: original.date)
+        case "time":
+            return hasTime && (!original.hasTime || date != original.date)
+        case "price":
+            return Parse.money(priceText) != original.price && Parse.money(priceText) != nil
+        case "paymenttype":
+            return paymentType != original.paymentType
+        case "paid":
+            return isPaid != original.isPaid
+        case "notes":
+            return notes != draft.notes
+        default:
+            return false
         }
     }
 

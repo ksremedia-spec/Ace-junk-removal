@@ -61,6 +61,7 @@ struct TodayView: View {
                 } label: {
                     Label("New job", systemImage: "plus")
                 }
+                .buttonStyle(.borderless)
             }
 
             if !slippedJobs.isEmpty {

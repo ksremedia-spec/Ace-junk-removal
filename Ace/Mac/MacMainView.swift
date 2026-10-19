@@ -156,7 +156,7 @@ struct MacMainView: View {
             }
         case .customers:
             if let customer = selectedCustomer {
-                CustomerDetailView(customer: customer)
+                CustomerDetailView(customer: customer, onDeleted: { selectedCustomer = nil })
                     .id(customer.persistentModelID)
             } else {
                 placeholder("Select a customer.")

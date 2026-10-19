@@ -20,6 +20,14 @@ final class Customer {
     @Relationship(deleteRule: .nullify, inverse: \Job.customer)
     var jobs: [Job] = []
 
+    // Declared so that deleting a customer clears these references instead of
+    // leaving a dumpster or a past rental pointing at a deleted record.
+    @Relationship(deleteRule: .nullify, inverse: \Dumpster.customer)
+    var dumpsters: [Dumpster] = []
+
+    @Relationship(deleteRule: .nullify, inverse: \RentalRecord.customer)
+    var rentals: [RentalRecord] = []
+
     init(name: String, phone: String = "", address: String = "", notes: String = "") {
         self.name = name
         self.phone = phone
@@ -170,8 +178,8 @@ final class Dumpster {
     /// Clears the current rental and files it in the history.
     func markPickedUp(actualWeightTons: Double?, ratePerTon: Double, on date: Date = Date()) {
         let record = RentalRecord(
-            dumpster: self,
-            customer: customer,
+            dumpster: nil,
+            customer: nil,
             location: location,
             droppedOffAt: droppedOffAt ?? date,
             pickedUpAt: date,
@@ -180,6 +188,9 @@ final class Dumpster {
             actualWeightTons: actualWeightTons,
             ratePerTon: ratePerTon
         )
+        // Insert first, then connect, so relationships are set on a stored record.
+        modelContext?.insert(record)
+        record.customer = customer
         history.append(record)
         isOut = false
         customer = nil

@@ -10,11 +10,11 @@ struct SettingsView: View {
     @AppStorage(AppSettings.speechModelKey) private var speechModel = AppSettings.defaultSpeechModel
     @AppStorage(AppSettings.overweightRateKey) private var ratePerTon = AppSettings.defaultOverweightRate
 
+    @State private var hasKey = Keychain.read(Keychain.anthropicAPIKey) != nil
+    @State private var rateText = ""
     @State private var confirmSample = false
     @State private var confirmClear = false
     @State private var done = 0
-
-    private var hasKey: Bool { Keychain.read(Keychain.anthropicAPIKey) != nil }
 
     private var version: String {
         let short = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
@@ -50,8 +50,18 @@ struct SettingsView: View {
             }
 
             Section {
-                TextField("Rate per ton over", value: $ratePerTon, format: .currency(code: "USD"))
-                    .decimalKeyboard()
+                LabeledContent("Rate per ton over") {
+                    TextField("Dollars", text: $rateText, prompt: Text("Dollars"))
+                        .multilineTextAlignment(.trailing)
+                        .decimalKeyboard()
+                        .onChange(of: rateText) { _, newValue in
+                            // Saved on every keystroke that reads as a number,
+                            // so nothing depends on a Return key.
+                            if let value = Parse.money(newValue), value > 0 {
+                                ratePerTon = value
+                            }
+                        }
+                }
             } header: {
                 Text("Dumpsters")
             } footer: {
@@ -75,6 +85,13 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .navigationTitle("Settings")
+        .onAppear {
+            // Refreshes after coming back from the API key screen.
+            hasKey = Keychain.read(Keychain.anthropicAPIKey) != nil
+            if rateText.isEmpty {
+                rateText = Parse.moneyText(ratePerTon)
+            }
+        }
         .confirmationDialog("Replace all data with sample data?", isPresented: $confirmSample, titleVisibility: .visible) {
             Button("Replace with sample data", role: .destructive) {
                 SampleData.clear(context: context)

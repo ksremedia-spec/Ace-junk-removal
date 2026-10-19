@@ -74,7 +74,7 @@ struct JobDraft: Codable, Equatable {
                 "items": [
                     "type": "object",
                     "properties": [
-                        "field": ["type": "string", "description": "One of: customerName, phone, address, jobType, date, time, price, paymentType, paid, notes."],
+                        "field": ["type": "string", "enum": ["customerName", "phone", "address", "jobType", "date", "time", "price", "paymentType", "paid", "notes"]],
                         "question": ["type": "string", "description": "A short plain-English yes/no question, e.g. 'No price was given. Save without one?'"],
                     ],
                     "required": ["field", "question"],
@@ -114,7 +114,7 @@ struct JobDraft: Codable, Equatable {
         - Times in 24-hour HH:MM. "Morning" with no time stays empty and gets an issue.
         - Price: digits only, no dollar sign. "Three hundred" is 300.
         - Payment type: cash, check, card, or unknown. Paid: paid, unpaid, or unknown. "PD cash 300" means paid, cash, 300.
-        - Raise an issue when: no price, no phone number, the date is in the past, the address has no house number, the name or address sounds unclear, or two different values were said for one field. \
+        - Raise an issue when: no date, no price, no phone number, the job type is not said, the date is in the past, the address has no house number, the name or address sounds unclear, or two different values were said for one field. \
         Each issue names the field and asks one short yes/no question Ashley can answer.
         - Plain business language. No exclamation points.
         """

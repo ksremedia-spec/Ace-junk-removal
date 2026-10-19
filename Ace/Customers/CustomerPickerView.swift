@@ -29,6 +29,7 @@ struct CustomerPickerView: View {
                 } label: {
                     Label("New customer", systemImage: "plus")
                 }
+                .buttonStyle(.borderless)
             }
             Section {
                 if filtered.isEmpty {
@@ -57,7 +58,9 @@ struct CustomerPickerView: View {
                                     .foregroundStyle(.tint)
                             }
                         }
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(.borderless)
                 }
             }
         }
@@ -76,5 +79,8 @@ struct CustomerPickerView: View {
                 }
             }
         }
+        #if os(macOS)
+        .frame(minWidth: 480, minHeight: 420)
+        #endif
     }
 }

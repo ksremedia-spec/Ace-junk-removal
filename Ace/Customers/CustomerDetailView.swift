@@ -3,10 +3,15 @@ import SwiftUI
 
 /// One customer: contact details and their jobs.
 struct CustomerDetailView: View {
+    @Environment(\.dismiss) private var dismiss
+
     let customer: Customer
+    /// On the Mac the parent clears its selection; on iPhone this screen pops.
+    var onDeleted: (() -> Void)? = nil
 
     @State private var showingEdit = false
     @State private var showingNewJob = false
+    @State private var deleted = false
 
     private var jobsNewestFirst: [Job] {
         customer.jobs.sorted { $0.scheduledAt > $1.scheduledAt }
@@ -55,6 +60,7 @@ struct CustomerDetailView: View {
                 } label: {
                     Label("New job for \(customer.name)", systemImage: "plus")
                 }
+                .buttonStyle(.borderless)
             }
         }
         .navigationTitle(customer.name)
@@ -63,9 +69,12 @@ struct CustomerDetailView: View {
                 Button("Edit") { showingEdit = true }
             }
         }
-        .sheet(isPresented: $showingEdit) {
+        .sheet(isPresented: $showingEdit, onDismiss: {
+            guard deleted else { return }
+            if let onDeleted { onDeleted() } else { dismiss() }
+        }) {
             NavigationStack {
-                CustomerEditView(customer: customer)
+                CustomerEditView(customer: customer, onDelete: { deleted = true })
             }
         }
         .sheet(isPresented: $showingNewJob) {

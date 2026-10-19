@@ -90,6 +90,9 @@ final class WhisperKitEngine {
             whisperKit = kit
             loadedModel = model
             state = .ready
+        } catch is CancellationError {
+            // The screen that started the load was closed; try again next time.
+            state = .notLoaded
         } catch {
             state = .failed(error.localizedDescription)
         }

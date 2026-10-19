@@ -54,11 +54,16 @@ struct AssistantView: View {
                 }
             }
         }
-        .task {
-            if engine.state == .notLoaded {
-                await engine.load(model: AppSettings.speechModel)
-            } else if case .failed = engine.state {
-                await engine.load(model: AppSettings.speechModel)
+        .onAppear {
+            // A plain Task, not .task, so closing the sheet does not cancel a
+            // model download that is halfway through.
+            switch engine.state {
+            case .notLoaded, .failed:
+                Task { await engine.load(model: AppSettings.speechModel) }
+            case .ready where engine.loadedModel != AppSettings.speechModel:
+                Task { await engine.load(model: AppSettings.speechModel) }
+            default:
+                break
             }
         }
         .sensoryFeedback(.warning, trigger: flagged)

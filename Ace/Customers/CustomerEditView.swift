@@ -9,14 +9,17 @@ struct CustomerEditView: View {
     let customer: Customer?
     /// Called with the saved customer, so a picker can select it.
     var onSave: ((Customer) -> Void)? = nil
+    /// Called when the customer was deleted, so the screen behind can close.
+    var onDelete: (() -> Void)? = nil
 
     @State private var form: CustomerFormData
     @State private var confirmDelete = false
     @State private var saved = false
 
-    init(customer: Customer?, onSave: ((Customer) -> Void)? = nil) {
+    init(customer: Customer?, onSave: ((Customer) -> Void)? = nil, onDelete: (() -> Void)? = nil) {
         self.customer = customer
         self.onSave = onSave
+        self.onDelete = onDelete
         _form = State(initialValue: CustomerFormData(customer: customer))
     }
 
@@ -55,6 +58,9 @@ struct CustomerEditView: View {
             Button("Delete", role: .destructive) { delete() }
         }
         .sensoryFeedback(.success, trigger: saved)
+        #if os(macOS)
+        .frame(minWidth: 480, minHeight: 420)
+        #endif
     }
 
     private func save() {
@@ -76,6 +82,7 @@ struct CustomerEditView: View {
         if let customer {
             context.delete(customer)
             try? context.save()
+            onDelete?()
         }
         dismiss()
     }
