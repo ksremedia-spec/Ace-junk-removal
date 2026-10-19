@@ -24,11 +24,18 @@ enum WindowSnapshot {
         note("arguments: \(args.joined(separator: " "))")
         DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
             NSApp.activate(ignoringOtherApps: true)
+            if NSApp.windows.isEmpty {
+                // No window was made at launch. Ask for one the way a click on
+                // the Dock icon does; SwiftUI answers by opening the main window.
+                note("no windows after 4 s; asking the app to reopen")
+                let reopened = NSApp.delegate?.applicationShouldHandleReopen?(NSApp, hasVisibleWindows: false)
+                note("reopen handled: \(reopened.map { String($0) } ?? "no delegate method")")
+            }
             for window in NSApp.windows where !window.isVisible && window.frame.width > 50 && window.frame.height > 50 {
                 note("ordering front: \(describe(window))")
                 window.makeKeyAndOrderFront(nil)
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
                 capture(to: url)
                 writeLog(next: url)
                 NSApp.terminate(nil)

@@ -56,7 +56,7 @@ jobs:
           shot() {
             name="$1"; shift
             xcrun simctl terminate "$DEVICE" "$BUNDLE" 2>/dev/null || true
-            xcrun simctl launch "$DEVICE" "$BUNDLE" -sampledata "$@"
+            xcrun simctl launch "$DEVICE" "$BUNDLE" -sampledata YES "$@"
             sleep 6
             xcrun simctl io "$DEVICE" screenshot "docs/screenshots/$name.png"
           }
@@ -96,7 +96,10 @@ jobs:
             # The app draws its own windows into the file (see WindowSnapshot.swift)
             # and quits; the cloud Mac allows no screen recording, so a normal
             # screenshot would come out black.
-            open -n "$APP" --args -sampledata "$@" -screenshot "$OUT" > "mac-launch-$name.log" 2>&1 || true
+            # Every flag gets a value. A bare word (a flag without one would leave
+            # "today" on its own) is taken by macOS as a file to open, and SwiftUI
+            # then skips creating the normal window.
+            open -n "$APP" --args -sampledata YES "$@" -screenshot "$OUT" > "mac-launch-$name.log" 2>&1 || true
             for i in $(seq 1 30); do
               [ -s "$OUT" ] && break
               sleep 1
