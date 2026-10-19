@@ -9,6 +9,10 @@ company in Massachusetts (about 5 trucks, 6 dumpsters, 600–700 customers a yea
 - This repository is separate from the construction app (`resio-clone`). Never
   touch that project from here.
 
+## Start of every session
+
+Kyle works in the Claude desktop app (Code tab, local session, with computer use), not in Terminal. Run commands yourself; don't hand him Terminal steps unless there's no other way. Read HANDOFF.md at the start of every session and keep it current.
+
 ## How to work with Kyle
 
 - Explain everything in plain English, no jargon. Describe what a screen does,
@@ -124,6 +128,8 @@ October 31, 2026.
 ## Repository layout
 
 - `CLAUDE.md` — this file: who the app is for and the rules above.
+- `HANDOFF.md` — where things stand, what is verified or not, open questions,
+  next steps and a first-look checklist. Read it first; keep it current.
 - `docs/` — research results, decisions and the plain-English guide for
   running the app (`run-on-your-mac.md`). Read `docs/decisions.md` before
   changing direction on anything listed there.

@@ -1,0 +1,273 @@
+# Handoff: start here
+
+Last updated 2026-10-19, about 20:45 UTC (4:45 PM Eastern), by the cloud
+session that wrote everything so far. Kyle is moving to a Local session in
+the Claude desktop app on his Mac (Code tab, computer use on). The chat
+history does not come along, so this file is the handoff. Keep it current:
+update it whenever something is built, tested, decided or asked.
+
+Labels used below: **Verified** (checked, with how), **Assumed** (believed,
+not checked), **Unknown** (with how to find out).
+
+---
+
+## 1. What this is
+
+- A native iPhone and Mac app for **Ace Junk Removal**, a small junk removal
+  and dumpster rental company in Massachusetts. Users: **Ashley** (office,
+  phones and paperwork; iPhone and MacBook) and **Alex** (owner; drops off
+  and picks up dumpsters; iPhone).
+- **Kyle** builds it with Claude. He is a photographer, not a programmer:
+  explain in plain English, do the technical steps yourself, ask one
+  question at a time.
+- One SwiftUI project for iPhone and Mac. Records are stored on the device
+  (works offline). Shared sync through Cloudflare comes later (not built).
+- The **Assistant**: speak a note ("Mrs. Johnson, 42 Elm, garage cleanout
+  Friday at 9, $300 cash"), the phone turns speech into text on the device
+  (WhisperKit), Claude fills in the form, Ashley checks it and taps Save.
+- Deadline: version 1 on Ashley's and Alex's phones by about **October 31,
+  2026**.
+- Repository: https://github.com/ksremedia-spec/Ace-junk-removal (public),
+  branch `main`. It is separate from Kyle's construction app (`resio-clone`):
+  never touch that one from here.
+- The rules (design, copy, how to work with Kyle) are in `CLAUDE.md`.
+
+## 2. Where things stand
+
+- **The app is written and compiles, but has never run on a real iPhone or
+  Mac.**
+  - Verified: GitHub's build check compiles it for iPhone and Mac with
+    Xcode 26 and Xcode 27.1 on every push, and it passes. The last run
+    that compiled app code was #24 (commit `a0a9cb9`).
+  - Older versions did run in the iPhone Simulator and as a Mac app on
+    GitHub's Macs, to take the screenshots in `docs/screenshots/`. The last
+    screenshot run was the morning of Oct 19. Quotes, end times and the
+    Calendar tab came after it and have never been seen running anywhere.
+- **The clickable browser demo is up to date** (version 21, with the
+  Calendar tab). It is what the client has been shown. Verified: 203
+  automatic checks pass in a test browser (not on a phone).
+
+## 3. What the app has today
+
+- **iPhone tabs:** Calendar, Jobs, Quotes, Customers, Dumpsters. Every tab
+  has the Assistant button (top right); Settings is the gear on Calendar.
+  - **Calendar** (replaced Today on Oct 19): a month with a dot under days
+    that have jobs. Today shows the day's figures, money owed, dumpsters due
+    back or overdue, today's jobs, jobs not marked done, quotes to call
+    back, other calendars' events, and tomorrow. Tap another day to see
+    that day. A Today button goes back.
+  - **Jobs:** Upcoming, Unpaid, Done; add and edit by hand; optional end
+    time; a warning when two jobs overlap; swipe to mark done or delete.
+  - **Quotes:** prices given that are waiting on a yes; Follow up, Waiting,
+    Booked, Lost; Book Job turns a quote into a job.
+  - **Customers:** search by name, phone or address; history; Call and
+    Directions.
+  - **Dumpsters:** six dumpsters; drop-off; due back and overdue; weight at
+    pickup with the overweight charge (rate in Settings).
+- **Mac:** sidebar, list, detail, like Mail. ⌘N new job, ⇧⌘N new customer,
+  ⌥⌘N new window, ⌘F search, ⇧⌘A Assistant, ⌘T go to today, right-click
+  menus, Settings with ⌘,. File › Import from Excel is a disabled
+  placeholder.
+- **Settings:** API key (typed once per device, kept in the Keychain, never
+  in the code), Claude model (Haiku; Sonnet for testing), speech model,
+  overweight rate, Calendar (access, which calendar jobs go into, which
+  other calendars show), Debug (Speech test, Claude test, Load sample data,
+  Clear all data).
+- **Google Calendar:** once a calendar is picked in Settings › Calendar,
+  every job saved in Ace is also written to it (for example a Google
+  calendar "Ace Jobs" added through the device's Settings). Ace is the
+  master copy: changes made in Google don't come back into Ace.
+
+## 4. What changed recently and why (all on Oct 19)
+
+| Change | Why | Spec |
+|---|---|---|
+| Quotes tab, plus "Quotes to follow up" on the first screen | Ashley wanted outstanding quotes kept straight | `docs/quotes.md` |
+| The Assistant creates and updates quotes ("quote for 66 Johnson St, $800, customer approved") | Kyle asked | `docs/assistant-actions.md` |
+| End times on jobs, and a warning when jobs overlap | Kyle asked how overlaps are kept apart; chose "warn on any overlap", then "no defaults, end time will be selected or spoken" | `docs/job-length.md` |
+| Calendar tab replaces Today; jobs written to Google Calendar | Kyle: "fully functional calendar tab ... integrate with google cal on mac and iphone"; chose "Calendar replaces Today" | `docs/calendar-tab.md`, research in `docs/calendar.md` |
+| Changing or deleting a customer updates their jobs' calendar events | Closing a gap in the calendar work | `docs/calendar-tab.md` |
+| Screenshots of typing a job in by hand (`docs/screenshots/9-new-job.png`, `mac-6-new-job.png`) | Ashley asked whether she can type instead of speaking in public: yes | |
+| Demo pages and their checks saved in `demo/` | They had lived only on the cloud machine | `demo/README.md` |
+
+Older decisions, with reasons, are in `docs/decisions.md`. A longer history
+is in `docs/status.md`.
+
+## 5. Verified, assumed, unknown
+
+**Verified**
+- The app compiles for iPhone and Mac (GitHub build check, see section 2).
+- The Assistant's instructions to Claude in the app match the spec in
+  `docs/assistant-actions.md` word for word (`demo/checks/check-contract.py`).
+- The demo passes its 203 automatic checks in a test browser.
+- Research facts listed with their sources: `docs/platform-facts.md`,
+  `docs/calendar.md`, `docs/whisperkit-api.md`.
+- Kyle's setup (he confirmed on Oct 18): iPhone 16 Pro Max on iOS 27.1,
+  Xcode 27.1, paid Apple Developer Program. Install straight from Xcode,
+  not the App Store or TestFlight.
+
+**Assumed (not checked)**
+- That the app runs at all on a real device. It has only been compiled.
+- One business Google account on every device (Kyle: "im assuming yes but
+  TBD").
+- Events Ace writes reach calendar.google.com within minutes, and are kept
+  and sent later when there is no signal.
+- Google keeps an event with no length (a job with a start time but no end
+  time is written that way, following Kyle's "no defaults").
+- The dots under calendar days update as soon as a job changes.
+- Phones that already have an older Ace build keep their records when
+  updated. This only matters if Kyle installed an earlier build.
+- ⌘T doesn't clash with another Mac menu item.
+
+**Unknown, and how to find out**
+- How fast and accurate speech-to-text is on the iPhone 16 Pro Max: Settings
+  › Debug › Speech test.
+- Haiku versus Sonnet on real recordings: Settings › Debug › Claude test.
+- The exact menu path for adding a Google account on iOS 27.1: follow
+  `docs/calendar.md` section 5 on Kyle's phone.
+- The six Google Calendar device tests at the end of `docs/calendar.md`.
+- Whether a demo viewer who isn't signed in to claude.ai can reach Claude:
+  the "Connection" row in the demo's Settings.
+
+## 6. Never built, or never seen running
+
+- **Never run on a real iPhone or Mac:** all of it.
+- **Never seen running anywhere (only compiled):** the Quotes tab, the
+  Assistant's quote actions, end times and overlap warnings, the Calendar
+  tab, Settings › Calendar, writing jobs to Google Calendar.
+- **Not written yet:**
+  - The Apple SpeechTranscriber half of the step 1 speech comparison. The
+    Speech test has WhisperKit only; Apple's engine is a placeholder row.
+  - Apple Maps address completion in the Assistant.
+  - Step 5, Cloudflare sync between devices. Until then each device has its
+    own records.
+  - Step 7, Excel import on the Mac (waiting on Ashley's column headings).
+  - Step 8, the Lock Screen, Control Center and Action button shortcut.
+  - Step 9, the check of every screen at the smallest and largest text
+    sizes, light and dark.
+  - On the Mac, the record the Assistant just saved isn't selected
+    afterwards.
+- **Demo pages behind the app:** the client Preview page and the phone
+  slideshow still show the old Today tab, with no Quotes, end times or
+  Calendar. The clickable demo is current.
+- **Demo relay** (`docs/demo-relay/`): lets someone without a claude.ai
+  login use the demo's Assistant. It waits on Kyle setting up a Cloudflare
+  Worker.
+
+## 7. Open questions waiting on Kyle (ask one at a time)
+
+1. Is there one business Google account (Gmail or Google Workspace), and do
+   Ashley and Alex already have it on their phones and Ashley's Mac?
+   Currently assumed yes.
+2. Ashley's spreadsheet column headings, for the Excel import.
+3. The Cloudflare account details, for sync and the demo relay. Free or
+   paid Workers plan?
+4. Ashley's and Alex's iPhone models (does either have an Action button?),
+   and Ashley's Mac model and macOS version.
+5. Should the client Preview page and phone slideshow be brought up to date
+   (Quotes, end times, Calendar)?
+6. Delete the stray duplicate Preview page
+   (https://claude.ai/artifact/KSMW87Xj4mE3o7LZtNkDxD)? Only on Kyle's word.
+7. Keep or remove, before handing the app to Ashley and Alex: the Effort
+   picker, the Debug section (Load sample data, Clear all data), the GitHub
+   build and screenshot checks.
+8. Leave the downloaded speech models (up to 630 MB) out of iCloud backup?
+
+## 8. Next steps, in order
+
+1. **Get it running on Kyle's Mac and iPhone.** Open `Ace.xcodeproj`, let
+   Xcode fetch WhisperKit, set the signing team (Kyle's paid account),
+   build, install on his iPhone, and run the Mac app. Fix whatever fails.
+   `docs/run-on-your-mac.md` has the steps written for Kyle; on his Mac a
+   Claude session can do most of them itself.
+2. **Walk Kyle through the checklist below,** one item at a time. Note what
+   works and what doesn't in this file.
+3. **Step 1 speech test:** Kyle's recordings (fast speech, truck and TV
+   noise, odd names, missing house numbers, double bookings) through the
+   Speech test and Claude test. Add Apple's SpeechTranscriber to the
+   comparison. Pick the engine and the model.
+4. **Google Calendar on Kyle's devices:** the setup in `docs/calendar.md`
+   section 5, then its six device tests. Use a test calendar first, not
+   the business one.
+5. **The remaining build order:** step 5 Cloudflare sync, step 7 Excel
+   import, step 8 one-tap entry, step 9 text sizes and dark mode, Apple
+   Maps address completion.
+6. **The client pages,** if Kyle wants them updated.
+7. **Install on Ashley's and Alex's phones and Ashley's Mac** before
+   October 31.
+
+## 9. Checklist: what to look at first (with Kyle, one at a time)
+
+1. The project opens in Xcode, and WhisperKit downloads ("Resolving
+   packages" at the bottom finishes).
+2. It builds for the iPhone with Kyle's team, installs, and opens. The phone
+   may need Developer Mode on, and the developer trusted, the first time.
+3. It opens on the **Calendar** tab. Load the example records: gear ›
+   Settings › Debug › Load sample data.
+4. **Calendar:** dots under days, tap another day, the Today button, New
+   job on another day.
+5. **Jobs:** add a job by hand with an end time. Today's example records
+   clash on purpose (Linda Johnson 9:00 to 12:00 and Mark Pereira at
+   11:00): the overlap warning should show.
+6. **Quotes:** follow up, Book Job, Mark Lost.
+7. **Customers:** search, open one, Call and Directions.
+8. **Dumpsters:** drop one off; pick one up with a weight over the agreed
+   amount and check the overweight charge.
+9. **API key:** Settings › API key, paste Kyle's key once.
+10. **Assistant:** tap Assistant, say a new job, check the filled-in form
+    and the one-at-a-time questions. Then say an update ("the Johnson job is
+    done, paid cash").
+11. **Debug screens:** Speech test (load `base.en`, record, transcribe) and
+    Claude test (Haiku and Sonnet side by side).
+12. **Settings › Calendar:** Allow Calendar Access, pick a test calendar,
+    save a job, look for it in Apple's Calendar app.
+13. **The Mac app:** the same screens in the sidebar, ⌘N, ⌘F, ⌘T,
+    right-click on a job.
+14. **A glance in dark mode and at the largest text size.**
+
+## 10. Where things are
+
+- `CLAUDE.md`: the rules. `HANDOFF.md`: this file.
+- `Ace.xcodeproj` and `Ace/`: the app. New Swift files under `Ace/` join the
+  app automatically.
+- `docs/`:
+  - `status.md`: detailed history.
+  - `decisions.md`: decisions and their reasons.
+  - Feature specs: `assistant-actions.md`, `quotes.md`, `job-length.md`,
+    `calendar-tab.md`.
+  - Research: `calendar.md`, `platform-facts.md`, `whisperkit-api.md`.
+  - `run-on-your-mac.md`: Kyle's guide to building and running the app.
+  - `screenshots/`: Simulator pictures, morning of Oct 19.
+  - `demo-relay/`: the Cloudflare Worker for the demo.
+- `demo/`: the demo pages and their automatic checks. See `demo/README.md`.
+  - Clickable demo (shared with the client):
+    https://claude.ai/artifact/Mv1yKwDUgPyxR2jaj8qQ3j
+  - Client Preview page: https://claude.ai/artifact/8wvbCffQ4deC7uh8ThqXsC
+  - Phone slideshow: https://claude.ai/artifact/MikLi52xrfdmSewj4KyLHb
+  - Slide deck: https://claude.ai/artifact/J8UKoRfm4Zg8qpaw8t1GLR
+- `.github/workflows/`:
+  - `build.yml`: compiles on every push.
+  - `screenshots.yml`: started by hand; uses about 50 minutes of Kyle's
+    monthly GitHub Mac allowance.
+
+## 11. Notes for the next Claude session
+
+- **Work in Kyle's place, and tell him what you did:**
+  - Kyle works in the Claude desktop app (Code tab, Local session, computer
+    use on), not in Terminal. Run commands and click through Xcode
+    yourself; don't hand him Terminal steps.
+  - He needs to do anything that involves his phone in his hand (plugging
+    it in, Developer Mode, trusting the developer, speaking a test).
+- **Building:** this Mac can build, unlike the cloud session.
+  - Build before saying anything works.
+  - Say "tested" or "working" only after it ran on a real device.
+  - Say "Simulator" when that is all it was.
+- **Changing what the Assistant tells Claude:** change the spec first
+  (`docs/assistant-actions.md`), then the app
+  (`Ace/Assistant/AssistantPlan.swift`), then run
+  `demo/checks/sync-assistant-prompt.py` for the demo and
+  `demo/checks/check-contract.py` to confirm the app matches.
+- **Publishing the demo pages:** this needs the Artifact tool. If the Local
+  session doesn't have it, say so instead of working around it.
+- **Commits:** commit and push to `main`, then check that GitHub's build
+  check is green.

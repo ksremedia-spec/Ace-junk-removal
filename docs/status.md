@@ -1,8 +1,9 @@
 # Where things stand
 
 Updated 2026-10-19, about 20:30 UTC (about 16:30 US Eastern), as Kyle moves
-from the cloud session to his Mac. Read this first in a new
-session; then `CLAUDE.md` for the rules and `decisions.md` for the why.
+from the cloud session to his Mac. `HANDOFF.md` at the repository
+root is the starting point; this file is the detailed history. Rules are in
+`CLAUDE.md`, reasons in `decisions.md`.
 
 ## Done (written and compiling; not yet run on a device)
 
@@ -41,8 +42,8 @@ session; then `CLAUDE.md` for the rules and `decisions.md` for the why.
 
 - **Browser demo for the client** (claude.ai artifact, private until Kyle
   shares it: https://claude.ai/artifact/Mv1yKwDUgPyxR2jaj8qQ3j). Source:
-  the session scratchpad `ace-demo/index.html`; a standalone copy
-  `ace-demo-standalone/Ace-demo.html` opens in any browser. iPhone view and
+  `demo/app-demo/index.html`; `demo/checks/build-standalone.sh` makes a
+  copy that opens in any browser. iPhone view and
   a Mac view (sidebar, list, detail, menu bar, search, sort, right-click
   menus). Opens with about 620 customers and 1,000 jobs already in, the way
   the app looks after the Excel import; File › Import shows the preview
@@ -52,7 +53,7 @@ session; then `CLAUDE.md` for the rules and `decisions.md` for the why.
   that browser), the viewer's claude.ai login, or the relay below. Settings
   shows a "Connection" row that says whether claude.ai lets the page reach
   Anthropic; that was still unknown when this was written. Verified in
-  headless Chrome by a Playwright script (`ace-demo-tools/`, 108 checks as of demo version 14).
+  headless Chrome by a Playwright script (`demo/checks/`, 108 checks as of demo version 14).
   Version 15 (fill the screen on phones, no drawn frame) looked worse on
   Kyle's phone browser and was reverted; version 16 is the same as version 14.
   Kyle has shared it as "Anyone with the link". A viewer who is not signed in
@@ -69,8 +70,7 @@ session; then `CLAUDE.md` for the rules and `decisions.md` for the why.
   eight things you can say, "Nothing is saved until you tap"), and the Mac
   screens with their keyboard shortcuts. On a phone each set of screens is a
   sideways swipe and a tap enlarges a picture. Pictures are small WebP
-  copies of screenshot run #9. Source: the session scratchpad
-  `ace-preview/`. A stray copy published by mistake at
+  copies of screenshot run #9. Source: `demo/preview/`. A stray copy published by mistake at
   https://claude.ai/artifact/KSMW87Xj4mE3o7LZtNkDxD can be deleted.
 - **App screens show the business:** Today figures and Owed; Jobs with
   Upcoming / Unpaid / Done and per-day totals; "Unpaid" marker; customer
@@ -100,15 +100,14 @@ session; then `CLAUDE.md` for the rules and `decisions.md` for the why.
 - **Client slideshow** (claude.ai Slides artifact, private until Kyle
   shares it: https://claude.ai/artifact/J8UKoRfm4Zg8qpaw8t1GLR): 14 slides,
   the iPhone and Mac screenshots from run #9, what the Assistant can be
-  told, and speaker notes. Source: the session scratchpad `ace-deck/`.
+  told, and speaker notes. Source: `demo/deck/`.
 
 - **Phone slideshow** (private until Kyle shares it:
   https://claude.ai/artifact/MikLi52xrfdmSewj4KyLHb): the same 14 slides as
   the deck, one per screen, swiped sideways, for a client looking on a
   phone. The Slides deck shrinks a widescreen slide onto an upright phone,
   so its text is unreadable there. The Mac slides add a close-up of the
-  window's list on phones; tapping any picture enlarges it. Source: the
-  session scratchpad `ace-phone-show/`. Checked once in headless Chromium
+  window's list on phones; tapping any picture enlarges it. Source: `demo/phone-slideshow/`. Checked once in headless Chromium
   at phone, sideways-phone and laptop sizes; not opened on a real phone.
 - **Demo review fixes** (demo version 14): a review found 13 problems in the
   demo's Assistant. All are fixed and each was re-checked in headless
