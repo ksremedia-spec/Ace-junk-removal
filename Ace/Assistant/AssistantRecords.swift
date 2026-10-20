@@ -47,17 +47,32 @@ struct RecordRefs {
     }
 }
 
-/// Builds the "Records" part of the message to Claude, in the format of
-/// docs/assistant-actions.md: the dumpsters, the jobs from a week ago to two
-/// weeks ahead, the open quotes, the customers on them plus up to six the
-/// note seems to name (each of those with their last 8 jobs), and a line of
-/// totals.
+/// Builds what Claude is sent with each note, in the format of
+/// docs/assistant-actions.md, "The records sent with the note":
+///
+/// - `directory`: every customer on file with phone and address, in name
+///   order with fixed references, so "who lives at 63 Locust Street" can
+///   always be answered. It changes only when customers do, so it is sent
+///   as its own block that the API can cache between notes.
+/// - `text`: the dumpsters, the jobs from two weeks ago to two months
+///   ahead, the open quotes, fuller lines for the customers the note seems
+///   to name (each with their last 8 jobs) and those on the listed records,
+///   and a line of totals.
+///
+/// Until Oct 20 2026 only up to six customers the note named were sent, so
+/// Claude could not find anyone else (Kyle: "it can't reconcile" an address).
 enum AssistantRecords {
-    static func build(note: String, customers: [Customer], jobs: [Job], dumpsters: [Dumpster], quotes: [Quote], now: Date) -> (text: String, refs: RecordRefs) {
+    struct Result {
+        let directory: String
+        let text: String
+        let refs: RecordRefs
+    }
+
+    static func build(note: String, customers: [Customer], jobs: [Job], dumpsters: [Dumpster], quotes: [Quote], now: Date) -> Result {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: now)
-        let windowStart = calendar.date(byAdding: .day, value: -7, to: today) ?? today
-        let lastDay = calendar.date(byAdding: .day, value: 14, to: today) ?? today
+        let windowStart = calendar.date(byAdding: .day, value: -14, to: today) ?? today
+        let lastDay = calendar.date(byAdding: .day, value: 60, to: today) ?? today
         let windowEnd = calendar.date(byAdding: .day, value: 1, to: lastDay) ?? lastDay
 
         let windowJobs = jobs
@@ -68,12 +83,11 @@ enum AssistantRecords {
         // Every open quote, oldest first. Booked and lost ones are not sent.
         let openQuotes = QuoteList.shown(quotes, status: .open)
 
-        // References first, so every line can use them.
+        // Every customer gets a reference first, in name order, so the
+        // directory reads the same for every note and can be cached.
         var builder = Builder()
-        for customer in mentioned { builder.add(customer) }
-        for job in windowJobs { if let customer = job.customer { builder.add(customer) } }
-        for dumpster in sortedDumpsters { if let customer = dumpster.customer { builder.add(customer) } }
-        for quote in openQuotes { if let customer = quote.customer { builder.add(customer) } }
+        let byName = customers.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        for customer in byName { builder.add(customer) }
         for job in windowJobs { builder.add(job) }
         for quote in openQuotes { builder.add(quote) }
         var history: [ObjectIdentifier: [Job]] = [:]
@@ -85,6 +99,25 @@ enum AssistantRecords {
         for dumpster in sortedDumpsters {
             builder.refs.dumpsters["D\(dumpster.number)"] = dumpster
         }
+
+        var directory = ["Customer directory (every customer on file):"]
+        if byName.isEmpty { directory.append("- none") }
+        for customer in byName {
+            directory.append("- " + builder.directoryLine(customer))
+        }
+
+        // Fuller lines: the customers the note names first, then everyone on
+        // the listed jobs, dumpsters and quotes.
+        var detailed: [Customer] = []
+        var seen = Set<ObjectIdentifier>()
+        func detail(_ customer: Customer?) {
+            guard let customer, seen.insert(ObjectIdentifier(customer)).inserted else { return }
+            detailed.append(customer)
+        }
+        mentioned.forEach(detail)
+        windowJobs.forEach { detail($0.customer) }
+        sortedDumpsters.forEach { detail($0.customer) }
+        openQuotes.forEach { detail($0.customer) }
 
         var lines: [String] = []
         lines.append("Dumpsters:")
@@ -105,9 +138,9 @@ enum AssistantRecords {
             lines.append("- " + builder.quoteLine(quote, today: today))
         }
 
-        lines.append("Customers:")
-        if builder.customerOrder.isEmpty { lines.append("- none") }
-        for customer in builder.customerOrder {
+        lines.append("Customers named in the note or on these records:")
+        if detailed.isEmpty { lines.append("- none") }
+        for customer in detailed {
             lines.append("- " + builder.customerLine(customer))
             for job in history[ObjectIdentifier(customer)] ?? [] {
                 lines.append("  - " + builder.jobLine(job, withCustomer: false))
@@ -115,7 +148,7 @@ enum AssistantRecords {
         }
 
         lines.append(totalsLine(jobs: jobs, today: today, calendar: calendar))
-        return (lines.joined(separator: "\n"), builder.refs)
+        return Result(directory: directory.joined(separator: "\n"), text: lines.joined(separator: "\n"), refs: builder.refs)
     }
 
     // MARK: Lines
@@ -241,6 +274,14 @@ enum AssistantRecords {
             return parts.joined(separator: " · ")
         }
 
+        /// "C12 Linda Johnson · 508-555-0147 · 42 Elm St, Taunton, MA"
+        func directoryLine(_ customer: Customer) -> String {
+            var parts = [named(customer)]
+            if !customer.phone.isEmpty { parts.append(customer.phone) }
+            if !customer.address.isEmpty { parts.append(Format.oneLine(customer.address)) }
+            return parts.joined(separator: " · ")
+        }
+
         /// "C1 Linda Johnson · 508-555-0147 · 42 Elm St, Taunton, MA · Side gate code 4412 ·
         /// 4 jobs, $1,180, owes $0, last job Mon, Oct 19"
         func customerLine(_ customer: Customer) -> String {
@@ -304,7 +345,7 @@ enum AssistantRecords {
     /// letters or more, counts a little (0.5), and only when three customers or
     /// fewer share it, so a common first name does not fill the list. Ties keep
     /// the order of `customers`.
-    static func mentionedCustomers(in note: String, customers: [Customer], limit: Int = 6) -> [Customer] {
+    static func mentionedCustomers(in note: String, customers: [Customer], limit: Int = 10) -> [Customer] {
         var score: [ObjectIdentifier: Double] = [:]
         func add(_ customer: Customer, _ points: Double) {
             score[ObjectIdentifier(customer), default: 0] += points
@@ -350,6 +391,21 @@ enum AssistantRecords {
             for customer in byStreet[word + " " + next] ?? [] { add(customer, 3) }
         }
 
+        // A street said with a different or misheard house number ("63 Locust
+        // St" for 350 Locust St) still brings up who lives on that street,
+        // when few enough do for it to mean something.
+        var onStreet: [String: [Customer]] = [:]
+        for customer in customers {
+            if let street = SpokenAddress(customer.address).streetWord, street.count >= 4 {
+                onStreet[street, default: []].append(customer)
+            }
+        }
+        for word in Set(addressWords) where word.count >= 4 && !commonWords.contains(word) {
+            if let list = onStreet[word], list.count <= 12 {
+                for customer in list { add(customer, 1.5) }
+            }
+        }
+
         let ranked: [(customer: Customer, points: Double, position: Int)] = customers.enumerated().compactMap { position, customer in
             guard let points = score[ObjectIdentifier(customer)] else { return nil }
             return (customer, points, position)
@@ -386,11 +442,12 @@ enum AssistantRecords {
         private static let dayFormatter: DateFormatter = {
             let formatter = DateFormatter()
             formatter.locale = Locale(identifier: "en_US")
-            formatter.dateFormat = "EEE, MMM d"
+            formatter.dateFormat = "EEE, MMM d, yyyy"
             return formatter
         }()
 
-        /// "Mon, Oct 19"
+        /// "Mon, Oct 19, 2026". The year is always there: history goes back
+        /// years, and "Sun, Nov 8" alone could be any of them.
         static func day(_ date: Date) -> String { dayFormatter.string(from: date) }
 
         /// Line breaks turned into "; " so one record stays on one line.

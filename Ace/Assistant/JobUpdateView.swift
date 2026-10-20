@@ -204,8 +204,8 @@ private struct JobUpdateForm: View {
             }
         }
         .alert(overlapQuestion, isPresented: $askingOverlap) {
-            Button("Yes") { save() }
-            Button("No", role: .cancel) {}
+            Button("Save anyway") { save() }
+            Button("Change the time", role: .cancel) {}
         }
         .onAppear {
             if !flags.isEmpty || !overlapping.isEmpty { flagged += 1 }

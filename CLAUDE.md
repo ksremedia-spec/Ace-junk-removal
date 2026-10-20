@@ -77,10 +77,19 @@ Kyle works in the Claude desktop app (Code tab, local session, with computer use
 Not in version 1: QuickBooks sync, card processing, customer-facing anything,
 call recording, extra-day charges (notes field only).
 
-## Design rules — this must look like Apple built it
+## Design rules — slick and polished, never "AI"
 
-- Standard SwiftUI controls only: List, Form, sheets, navigation, swipe
-  actions, context menus. No custom-drawn controls.
+- Kyle, 2026-10-19: "disregard standard control rules. make app look slick -
+  i was only trying to avoid an 'AI' look." Custom views are allowed when
+  they look better than the stock control (the Mac month grid was the
+  first). Keep the familiar Apple structure (List, Form, sheets, navigation,
+  swipe actions, context menus) where it already works.
+- The shared look lives in `Ace/Support/Design.swift`: the spacing scale
+  (`Space`), what each colour means (`Tint`: paid green, owed orange, overdue
+  red, done blue), job-type badges, status pills, number tiles, initials
+  circles, action buttons and the detail-page header card. Build new screens
+  from these instead of one-off styling. The accent colour (a deep teal) is
+  the `AccentColor` asset, one place to change.
 - System font and system semantic colors. Dark mode and Dynamic Type must work
   on every screen.
 - SF Symbols for every icon. No custom illustrations.

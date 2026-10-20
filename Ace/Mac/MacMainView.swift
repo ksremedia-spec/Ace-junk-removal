@@ -64,6 +64,9 @@ struct MacMainView: View {
 
     @Environment(\.modelContext) private var context
     @Environment(\.scenePhase) private var scenePhase
+    @Query(sort: \Job.scheduledAt) private var allJobs: [Job]
+    @Query(sort: \Quote.quotedOn) private var allQuotes: [Quote]
+    @Query(sort: \Dumpster.number) private var allDumpsters: [Dumpster]
     /// A stored "today" (from before Calendar replaced Today) opens Calendar.
     @AppStorage(AppSettings.lastTabKey) private var sidebarRaw = SidebarItem.calendar.rawValue
 
@@ -76,6 +79,9 @@ struct MacMainView: View {
     /// The day chosen in the Calendar list. Not remembered: the app always
     /// opens on today.
     @State private var calendarDay = Dates.startOfToday()
+    /// The day the app last thought was today, so a stale "today" can be
+    /// moved on after midnight without moving a day Ashley picked.
+    @State private var knownToday = Dates.startOfToday()
     @State private var showingAssistant = false
     @State private var showingNewJob = false
     @State private var showingNewCustomer = false
@@ -108,7 +114,7 @@ struct MacMainView: View {
                 .navigationSplitViewColumnWidth(min: 160, ideal: 190, max: 260)
         } content: {
             contentColumn
-                .navigationSplitViewColumnWidth(min: 280, ideal: 340)
+                .navigationSplitViewColumnWidth(min: 320, ideal: 380)
         } detail: {
             NavigationStack {
                 detailColumn
@@ -118,17 +124,30 @@ struct MacMainView: View {
         .searchFocused($searchFocused)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
-                Button {
-                    showingNewJob = true
+                // Click for a new job; hold or use the arrow for a quote or a
+                // customer (Oct 20 audit: + only ever made jobs).
+                Menu {
+                    Button("New Job") { showingNewJob = true }
+                    Button("New Quote") { showingNewQuote = true }
+                    Button("New Customer") { showingNewCustomer = true }
                 } label: {
-                    Label("New Job", systemImage: "plus")
+                    Label("New", systemImage: "plus")
+                } primaryAction: {
+                    showingNewJob = true
                 }
+                .help("New job (⌘N). Click and hold for a quote or customer.")
                 Button {
                     showingAssistant = true
                 } label: {
                     Label("Assistant", systemImage: "apple.intelligence")
                         .labelStyle(.titleAndIcon)
                 }
+                .help("Assistant (⇧⌘A)")
+                // Kyle could not find Settings: it lived only in the app menu.
+                SettingsLink {
+                    Label("Settings", systemImage: "gearshape")
+                }
+                .help("Settings (⌘,)")
             }
         }
         .sheet(isPresented: $showingAssistant) {
@@ -165,8 +184,16 @@ struct MacMainView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             // Calendar access may have been changed in System Settings.
-            if phase == .active { CalendarStore.shared.refresh() }
+            if phase == .active {
+                CalendarStore.shared.refresh()
+                rollOverToday()
+            }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
+            rollOverToday()
+        }
+        // A search typed for one list should not silently filter the next.
+        .onChange(of: sidebarRaw) { _, _ in searchText = "" }
         .onAppear {
             handleLaunchArguments()
             WindowSnapshot.captureIfRequested()
@@ -204,7 +231,23 @@ struct MacMainView: View {
     private func sidebarRow(_ item: SidebarItem, indented: Bool = false) -> some View {
         Label(item.title, systemImage: item.symbol)
             .padding(.leading, indented ? 20 : 0)
+            .badge(badgeCount(item))
             .tag(item)
+    }
+
+    /// The number beside a sidebar item: jobs owed, open quotes, dumpsters
+    /// due back today or overdue. Zero shows nothing.
+    private func badgeCount(_ item: SidebarItem) -> Int {
+        switch item {
+        case .unpaid:
+            return JobsFilter.unpaid.apply(to: allJobs).count
+        case .quotes:
+            return allQuotes.filter { $0.status == .open }.count
+        case .dumpsters:
+            return allDumpsters.filter { [.dueToday, .overdue].contains($0.status()) }.count
+        default:
+            return 0
+        }
     }
 
     @ViewBuilder
@@ -246,43 +289,51 @@ struct MacMainView: View {
                 CalendarEventPage(event: item.event)
                     .id(item.id)
             case .none:
-                placeholder("Select a job, dumpster, quote or event.")
+                EmptyDetail(title: "Nothing selected", symbol: "calendar",
+                            message: "Choose a job, dumpster, quote or event on the left.")
             }
         case .jobs, .unpaid, .done:
             if let job = selectedJob {
                 JobEditView(job: job)
                     .id(job.persistentModelID)
             } else {
-                placeholder("Select a job, or press ⌘N for a new one.")
+                EmptyDetail(title: "No job selected", symbol: "truck.box",
+                            message: "Choose a job on the left, or press ⌘N for a new one.")
             }
         case .quotes:
             if let quote = selectedQuote {
                 QuoteEditView(quote: quote, onDeleted: { selectedQuote = nil })
                     .id(quote.persistentModelID)
             } else {
-                placeholder("Select a quote.")
+                EmptyDetail(title: "No quote selected", symbol: "doc.text",
+                            message: "Choose a quote on the left.")
             }
         case .customers:
             if let customer = selectedCustomer {
                 CustomerDetailView(customer: customer, onDeleted: { selectedCustomer = nil })
                     .id(customer.persistentModelID)
             } else {
-                placeholder("Select a customer.")
+                EmptyDetail(title: "No customer selected", symbol: "person.2",
+                            message: "Choose a customer on the left, or press ⇧⌘N for a new one.")
             }
         case .dumpsters:
             if let dumpster = selectedDumpster {
                 DumpsterDetailView(dumpster: dumpster)
                     .id(dumpster.persistentModelID)
             } else {
-                placeholder("Select a dumpster.")
+                EmptyDetail(title: "No dumpster selected", symbol: "shippingbox",
+                            message: "Choose a dumpster on the left to drop it off, pick it up or see its rentals.")
             }
         }
     }
 
-    private func placeholder(_ text: String) -> some View {
-        Text(text)
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+    /// After midnight (or waking the Mac the next day) a Calendar left on
+    /// today moves to the new today; a day Ashley chose stays put.
+    private func rollOverToday() {
+        let now = Dates.startOfToday()
+        guard now != knownToday else { return }
+        if calendarDay == knownToday { calendarDay = now }
+        knownToday = now
     }
 
     /// View › Go to Today (⌘T): the Calendar, on today.
@@ -332,6 +383,7 @@ struct MacJobsList: View {
     @Binding var selection: Job?
     @Binding var filter: JobsFilter
     var searchText: String
+    @State private var jobToDelete: Job?
 
     private var filtered: [Job] { JobSearch.filter(jobs, searchText) }
     private var shown: [Job] { filter.apply(to: filtered) }
@@ -358,6 +410,13 @@ struct MacJobsList: View {
                 flatSection(header: doneHeader, empty: searchText.isEmpty ? "No done jobs yet." : "No matching jobs.")
             }
         }
+        .confirmJobDelete($jobToDelete) { deleted in
+            if selection == deleted { selection = nil }
+        }
+        // The page beside the list must be one of the jobs in it.
+        .onChange(of: filter) { _, _ in
+            selection = nil
+        }
     }
 
     @ViewBuilder
@@ -378,7 +437,7 @@ struct MacJobsList: View {
         ForEach(days) { day in
             Section(day.title) {
                 ForEach(day.jobs) { job in
-                    row(job)
+                    row(job, showDate: false)
                 }
             }
         }
@@ -404,10 +463,10 @@ struct MacJobsList: View {
         shown.isEmpty ? "Done" : "Done · \(shown.count)"
     }
 
-    private func row(_ job: Job) -> some View {
-        JobRow(job: job)
+    private func row(_ job: Job, showDate: Bool = true) -> some View {
+        JobRow(job: job, showDate: showDate, context: filter)
             .tag(job)
-            .contextMenu { JobContextMenu(job: job) }
+            .contextMenu { JobContextMenu(job: job, onDelete: { jobToDelete = $0 }) }
     }
 }
 
@@ -422,6 +481,8 @@ struct MacQuotesList: View {
 
     @State private var filter: QuoteStatus = .open
     @State private var quoteToBook: Quote?
+    @State private var quoteToLose: Quote?
+    @State private var quoteToDelete: Quote?
     /// "Quote marked lost." and the like, shown under the switch for a moment.
     @State private var notice: String?
     @State private var changed = 0
@@ -435,7 +496,7 @@ struct MacQuotesList: View {
         List(selection: $selection) {
             Section {
                 Picker("Show", selection: $filter) {
-                    ForEach(QuoteStatus.allCases) { status in
+                    ForEach(QuoteStatus.listed) { status in
                         Text(status.rawValue).tag(status)
                     }
                 }
@@ -461,9 +522,13 @@ struct MacQuotesList: View {
                     }
                 }
                 if !waiting.isEmpty {
-                    Section("Waiting") {
+                    Section {
                         ForEach(waiting) { quote in
                             row(quote)
+                        }
+                    } header: {
+                        if QuoteFeatures.followUps {
+                            Text("Waiting")
                         }
                     }
                 }
@@ -483,6 +548,29 @@ struct MacQuotesList: View {
                         .foregroundStyle(.secondary)
                 }
             }
+
+            // Lost quotes have no list of their own any more; a search still
+            // finds them, so one marked lost by mistake can be reopened.
+            if !searchText.isEmpty, !lostMatches.isEmpty {
+                Section("Lost") {
+                    ForEach(lostMatches) { quote in
+                        row(quote, showStatus: true)
+                    }
+                }
+            }
+        }
+        .onChange(of: filter) { _, _ in selection = nil }
+        .confirmationDialog("Mark this quote lost?", isPresented: Binding(
+            get: { quoteToLose != nil }, set: { if !$0 { quoteToLose = nil } }
+        ), titleVisibility: .visible) {
+            Button("Mark lost") { if let quoteToLose { markLost(quoteToLose) } }
+        } message: {
+            Text("It leaves the Quotes list. Search still finds it, and Reopen brings it back.")
+        }
+        .confirmationDialog(deleteQuestion, isPresented: Binding(
+            get: { quoteToDelete != nil }, set: { if !$0 { quoteToDelete = nil } }
+        ), titleVisibility: .visible) {
+            Button("Delete Quote", role: .destructive) { if let quoteToDelete { delete(quoteToDelete) } }
         }
         .sheet(item: $quoteToBook) { quote in
             NavigationStack {
@@ -499,8 +587,15 @@ struct MacQuotesList: View {
         searchText.isEmpty ? "No \(filter.rawValue.lowercased()) quotes." : "No matching quotes."
     }
 
-    private func row(_ quote: Quote) -> some View {
-        QuoteRow(quote: quote)
+    private var lostMatches: [Quote] { QuoteList.shown(filtered, status: .lost) }
+
+    private var deleteQuestion: String {
+        "Delete the quote for \(quoteToDelete?.customer?.name ?? "this customer")?"
+    }
+
+    /// In the Booked list every row is booked, so the pill is left off there.
+    private func row(_ quote: Quote, showStatus: Bool = false) -> some View {
+        QuoteRow(quote: quote, showStatus: showStatus)
             .tag(quote)
             .contextMenu { contextMenu(for: quote) }
     }
@@ -511,8 +606,8 @@ struct MacQuotesList: View {
             Button("Book Job") {
                 quoteToBook = quote
             }
-            Button("Mark Lost") {
-                markLost(quote)
+            Button("Mark Lost…") {
+                quoteToLose = quote
             }
         } else {
             Button("Reopen") {
@@ -520,8 +615,8 @@ struct MacQuotesList: View {
             }
         }
         Divider()
-        Button("Delete Quote", role: .destructive) {
-            delete(quote)
+        Button("Delete Quote…", role: .destructive) {
+            quoteToDelete = quote
         }
     }
 
@@ -622,15 +717,7 @@ struct MacCustomersList: View {
                         .foregroundStyle(.secondary)
                 }
                 ForEach(filtered) { customer in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(customer.name)
-                        if !customer.phone.isEmpty || !customer.address.isEmpty {
-                            Text([customer.phone, customer.address].filter { !$0.isEmpty }.joined(separator: " · "))
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                        }
-                    }
+                    CustomerRow(customer: customer)
                     .tag(customer)
                     .contextMenu { contextMenu(for: customer) }
                 }
@@ -707,10 +794,12 @@ struct MacDumpstersList: View {
     }
 }
 
-/// Right-click menu for a job row.
+/// Right-click menu for a job row. Delete asks first (`confirmJobDelete`).
 struct JobContextMenu: View {
     @Environment(\.modelContext) private var context
     let job: Job
+    /// Called by Delete Job; the list shows the confirmation.
+    var onDelete: (Job) -> Void
 
     var body: some View {
         Button(job.isDone ? "Mark Not Done" : "Mark Done") {
@@ -726,8 +815,8 @@ struct JobContextMenu: View {
             CalendarStore.shared.jobSaved(job)
         }
         Divider()
-        Button("Delete Job", role: .destructive) {
-            job.remove(from: context)
+        Button("Delete Job…", role: .destructive) {
+            onDelete(job)
         }
     }
 }
@@ -756,6 +845,41 @@ struct MacSettingsWindow: View {
                 }
         }
         .frame(minWidth: 520, minHeight: 560)
+    }
+}
+/// "Delete Linda Johnson's job on Mon, Oct 19?" before a right-click
+/// delete, the same as every other delete in the app.
+struct ConfirmJobDelete: ViewModifier {
+    @Environment(\.modelContext) private var context
+    @Binding var job: Job?
+    /// Clears the selection when it was the deleted job.
+    var onDeleted: (Job) -> Void
+
+    func body(content: Content) -> some View {
+        content.confirmationDialog(question, isPresented: Binding(
+            get: { job != nil },
+            set: { if !$0 { job = nil } }
+        ), titleVisibility: .visible) {
+            Button("Delete Job", role: .destructive) {
+                if let job {
+                    onDeleted(job)
+                    job.remove(from: context)
+                }
+                job = nil
+            }
+        }
+    }
+
+    private var question: String {
+        guard let job else { return "Delete this job?" }
+        let who = job.customer.map { $0.name + "'s" } ?? "this"
+        return "Delete \(who) \(job.jobType.rawValue.lowercased()) on \(Dates.shortDay(job.scheduledAt))?"
+    }
+}
+
+extension View {
+    func confirmJobDelete(_ job: Binding<Job?>, onDeleted: @escaping (Job) -> Void) -> some View {
+        modifier(ConfirmJobDelete(job: job, onDeleted: onDeleted))
     }
 }
 #endif

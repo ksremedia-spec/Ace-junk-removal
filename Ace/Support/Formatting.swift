@@ -36,10 +36,10 @@ enum PhoneFormat {
 
 enum Parse {
     /// "$300", "300.00", "1,250" → 300, 300, 1250. Empty or junk → nil.
+    /// Only the first number counts, so "300-350" is 300, not 300350.
     static func money(_ text: String) -> Double? {
-        let cleaned = text.filter { $0.isNumber || $0 == "." }
-        guard !cleaned.isEmpty else { return nil }
-        return Double(cleaned)
+        guard let match = text.firstMatch(of: /[0-9][0-9,]*(\.[0-9]+)?|\.[0-9]+/) else { return nil }
+        return Double(match.output.0.replacingOccurrences(of: ",", with: ""))
     }
 
     static func tons(_ text: String) -> Double? {
@@ -66,13 +66,23 @@ enum Dates {
         calendar.nextDate(after: Date(), matching: DateComponents(minute: 0, second: 0), matchingPolicy: .nextTime) ?? Date()
     }
 
+    /// "Tue, Oct 20", with the year added when it is not this year
+    /// ("Sun, Nov 8, 2024"), so two years of history are never confused.
     static func shortDay(_ date: Date) -> String {
-        date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
+        date.formatted(isThisYear(date)
+            ? .dateTime.weekday(.abbreviated).month(.abbreviated).day()
+            : .dateTime.weekday(.abbreviated).month(.abbreviated).day().year())
     }
 
-    /// "Friday, October 24"
+    static func isThisYear(_ date: Date, _ calendar: Calendar = .current) -> Bool {
+        calendar.isDate(date, equalTo: Date(), toGranularity: .year)
+    }
+
+    /// "Friday, October 24", with the year when it is not this year.
     static func longDay(_ date: Date) -> String {
-        date.formatted(.dateTime.weekday(.wide).month(.wide).day())
+        date.formatted(isThisYear(date)
+            ? .dateTime.weekday(.wide).month(.wide).day()
+            : .dateTime.weekday(.wide).month(.wide).day().year())
     }
 
     /// "October 2026"

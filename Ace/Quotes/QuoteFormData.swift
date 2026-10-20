@@ -3,7 +3,7 @@ import Foundation
 /// What the quote form edits. Copied out of a Quote for editing and written
 /// back on Save, so a cancelled edit changes nothing. The status is not part
 /// of it: Book Job, Mark Lost and Reopen change the quote directly.
-struct QuoteFormData {
+struct QuoteFormData: Equatable {
     var customer: Customer?
     var jobType: JobType = .junkRemoval
     var details = ""

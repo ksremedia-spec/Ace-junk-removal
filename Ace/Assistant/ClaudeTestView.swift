@@ -34,6 +34,7 @@ struct ClaudeTestView: View {
         Form {
             Section {
                 TextEditor(text: $transcript)
+                    .scrollContentBackground(.hidden)
                     .frame(minHeight: 120)
             } header: {
                 Text("Transcript")
@@ -98,12 +99,14 @@ struct ClaudeTestView: View {
     private func runBoth() {
         let text = transcript
         let effort = ClaudeEffort(rawValue: effortRaw) ?? .medium
-        let records = AssistantRecords.build(note: text, customers: customers, jobs: jobs, dumpsters: dumpsters, quotes: quotes, now: Date()).text
+        let built = AssistantRecords.build(note: text, customers: customers, jobs: jobs, dumpsters: dumpsters, quotes: quotes, now: Date())
+        let records = built.text
+        let directory = built.directory
         running = true
         outcomes = [:]
         Task { @MainActor in
-            async let haiku = run(model: .haiku, text: text, records: records, effort: effort)
-            async let sonnet = run(model: .sonnet, text: text, records: records, effort: effort)
+            async let haiku = run(model: .haiku, text: text, directory: directory, records: records, effort: effort)
+            async let sonnet = run(model: .sonnet, text: text, directory: directory, records: records, effort: effort)
             let results = await [ClaudeModel.haiku: haiku, ClaudeModel.sonnet: sonnet]
             outcomes = results
             running = false
@@ -115,9 +118,9 @@ struct ClaudeTestView: View {
         }
     }
 
-    private func run(model: ClaudeModel, text: String, records: String, effort: ClaudeEffort) async -> Outcome {
+    private func run(model: ClaudeModel, text: String, directory: String, records: String, effort: ClaudeEffort) async -> Outcome {
         do {
-            let answer = try await ClaudeClient.plan(note: text, records: records, model: model, effort: effort)
+            let answer = try await ClaudeClient.plan(note: text, directory: directory, records: records, model: model, effort: effort)
             return .result(Run(
                 plan: answer.plan,
                 seconds: answer.seconds,

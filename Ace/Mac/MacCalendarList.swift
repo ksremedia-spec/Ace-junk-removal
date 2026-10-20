@@ -2,8 +2,8 @@
 import SwiftData
 import SwiftUI
 
-/// The Mac's Calendar list (middle column): Apple's month picker, a Today
-/// button above it while another day is chosen, then the same sections as
+/// The Mac's Calendar list (middle column): the full-width month pinned at
+/// the top (Today sits in its header), then the same sections as
 /// the iPhone Calendar screen for the chosen day. The selected job,
 /// dumpster, quote or event shows in the detail column. The spec is
 /// docs/calendar-tab.md.
@@ -16,6 +16,7 @@ struct MacCalendarList: View {
     @Binding var day: Date
 
     @State private var showingNewJob = false
+    @State private var jobToDelete: Job?
 
     private var calendar: Calendar { .current }
     private var isToday: Bool { calendar.isDateInToday(day) }
@@ -39,22 +40,23 @@ struct MacCalendarList: View {
     var body: some View {
         let daySchedule = self.schedule
         let events = self.otherEvents
-        List(selection: $selection) {
-            Section {
-                if !isToday {
-                    Button("Today") {
-                        day = Dates.startOfToday()
-                    }
+        // The month stays put above the list: it never scrolls away, and the
+        // Calendar always reopens with it in view (Oct 20 audit).
+        VStack(spacing: 0) {
+            MacMonthGrid(selectedDay: dayBinding, dottedDays: DaySchedule.daysWithOpenJobs(jobs))
+                .padding(.horizontal, Space.m)
+                .padding(.top, Space.xs)
+            Divider()
+            List(selection: $selection) {
+                if isToday {
+                    todaySections(daySchedule, otherEvents: events)
+                } else {
+                    daySections(daySchedule, otherEvents: events)
                 }
-                DatePicker("Day", selection: dayBinding, displayedComponents: .date)
-                    .datePickerStyle(.graphical)
-                    .labelsHidden()
             }
-            if isToday {
-                todaySections(daySchedule, otherEvents: events)
-            } else {
-                daySections(daySchedule, otherEvents: events)
-            }
+        }
+        .confirmJobDelete($jobToDelete) { deleted in
+            if selection == .job(deleted) { selection = nil }
         }
         .sheet(isPresented: $showingNewJob) {
             NavigationStack {
@@ -70,36 +72,15 @@ struct MacCalendarList: View {
         dumpsters.filter { [.dueToday, .overdue].contains($0.status()) }
     }
 
-    private var todaysOpenJobs: [Job] { jobs.filter { calendar.isDateInToday($0.scheduledAt) && !$0.isDone } }
     private var tomorrowsJobs: [Job] { jobs.filter { calendar.isDateInTomorrow($0.scheduledAt) && !$0.isDone } }
     private var slippedJobs: [Job] { jobs.filter { !$0.isDone && $0.scheduledAt < Dates.startOfToday() } }
-
-    /// Done jobs that have not been paid.
-    private var owedJobs: [Job] { jobs.filter { $0.owedAmount > 0 } }
-    private var owedTotal: Double { owedJobs.reduce(0) { $0 + $1.owedAmount } }
-
-    /// Open quotes whose call-back day is today or earlier.
-    private var quotesToFollowUp: Int { quotes.filter { $0.isFollowUpDue() }.count }
-
-    /// "2 jobs today · $750 · 2 quotes to follow up". The money is left off
-    /// when no job today has a price, the quotes when none are due.
-    private var figuresLine: String {
-        var text = Plural.text(todaysOpenJobs.count, "job") + " today"
-        let total = todaysOpenJobs.priceTotal
-        if total > 0 { text += " · " + Money.text(total) }
-        if quotesToFollowUp > 0 { text += " · " + Plural.text(quotesToFollowUp, "quote") + " to follow up" }
-        return text
-    }
 
     @ViewBuilder
     private func todaySections(_ schedule: DaySchedule, otherEvents: [OtherEvent]) -> some View {
         Section {
-            Text(figuresLine)
-        }
-        if owedTotal > 0 {
-            Section("Owed") {
-                Text(Money.text(owedTotal) + " from " + Plural.text(owedJobs.count, "job"))
-            }
+            TodayFigures(jobs: jobs, dumpsters: dumpsters, quotes: quotes)
+                .bareRow()
+                .padding(.vertical, Space.xs)
         }
         Section("Dumpsters") {
             if attentionDumpsters.isEmpty {
@@ -194,7 +175,7 @@ struct MacCalendarList: View {
     private func jobRow(_ job: Job, showDate: Bool) -> some View {
         JobRow(job: job, showDate: showDate)
             .tag(MacMainView.CalendarItem.job(job))
-            .contextMenu { JobContextMenu(job: job) }
+            .contextMenu { JobContextMenu(job: job, onDelete: { jobToDelete = $0 }) }
     }
 }
 #endif

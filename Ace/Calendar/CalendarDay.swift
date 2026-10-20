@@ -61,7 +61,9 @@ struct DaySchedule {
             ($0.dumpster.number, $0.kind.rawValue) < ($1.dumpster.number, $1.kind.rawValue)
         }
 
-        if calendar.isDateInToday(start) {
+        if !QuoteFeatures.followUps {
+            self.callBacks = []
+        } else if calendar.isDateInToday(start) {
             self.callBacks = QuoteList.followUp(quotes)
         } else {
             self.callBacks = quotes.filter { quote in

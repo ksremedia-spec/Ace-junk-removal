@@ -71,11 +71,6 @@ struct CalendarView: View {
         dumpsters.filter { [.dueToday, .overdue].contains($0.status()) }
     }
 
-    /// Today's jobs not yet done, for the figures.
-    private var todaysOpenJobs: [Job] {
-        jobs.filter { calendar.isDateInToday($0.scheduledAt) && !$0.isDone }
-    }
-
     private var tomorrowsJobs: [Job] {
         jobs.filter { calendar.isDateInTomorrow($0.scheduledAt) && !$0.isDone }
     }
@@ -85,32 +80,11 @@ struct CalendarView: View {
         return jobs.filter { !$0.isDone && $0.scheduledAt < today }
     }
 
-    /// Done jobs that have not been paid.
-    private var owedJobs: [Job] {
-        jobs.filter { $0.owedAmount > 0 }
-    }
-
-    private var owedTotal: Double {
-        owedJobs.reduce(0) { $0 + $1.owedAmount }
-    }
-
-    private var openQuotes: [Quote] {
-        quotes.filter { $0.status == .open }
-    }
-
-    /// Open quotes whose call-back day is today or earlier.
-    private var quotesToFollowUp: Int {
-        openQuotes.filter { $0.isFollowUpDue() }.count
-    }
-
     @ViewBuilder
     private func todaySections(_ schedule: DaySchedule, otherEvents: [OtherEvent]) -> some View {
-        numbersSection
-
-        if owedTotal > 0 {
-            Section("Owed") {
-                Text(Money.text(owedTotal) + " from " + Plural.text(owedJobs.count, "job"))
-            }
+        Section {
+            TodayFigures(jobs: jobs, dumpsters: dumpsters, quotes: quotes, onShowQuotes: onShowQuotes)
+                .bareRow()
         }
 
         Section("Dumpsters") {
@@ -149,37 +123,6 @@ struct CalendarView: View {
                 jobRow(job, showDate: false)
             }
         }
-    }
-
-    /// "2 jobs today · $750", when any "1 dumpster due back or overdue",
-    /// and, while any quote is open, "Quotes to follow up" with the count.
-    private var numbersSection: some View {
-        Section {
-            Text(todayLine)
-            if !attentionDumpsters.isEmpty {
-                Text(Plural.text(attentionDumpsters.count, "dumpster") + " due back or overdue")
-            }
-            if !openQuotes.isEmpty {
-                Button {
-                    onShowQuotes?()
-                } label: {
-                    LabeledContent("Quotes to follow up") {
-                        Text("\(quotesToFollowUp)")
-                            .monospacedDigit()
-                            .foregroundStyle(quotesToFollowUp > 0 ? Color.orange : Color.secondary)
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            }
-        }
-    }
-
-    private var todayLine: String {
-        var text = Plural.text(todaysOpenJobs.count, "job") + " today"
-        let total = todaysOpenJobs.priceTotal
-        if total > 0 { text += " · " + Money.text(total) }
-        return text
     }
 
     // MARK: Another day

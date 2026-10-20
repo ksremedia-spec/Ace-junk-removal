@@ -2,11 +2,14 @@ import Foundation
 
 /// What the job form edits. Copied out of a Job for editing and written back
 /// on Save, so a cancelled edit changes nothing.
-struct JobFormData {
+struct JobFormData: Equatable {
     var customer: Customer?
     var jobType: JobType = .junkRemoval
     var date: Date = Dates.nextFullHour()
-    var hasTime = true
+    /// Off for a new job until a time is chosen: a blank form used to open
+    /// already warning "Overlaps" against whatever was booked at the next
+    /// full hour (Oct 20 audit). Turning it on starts at the next full hour.
+    var hasTime = false
     /// "Set an end time". Off by default: nothing is assumed.
     var hasEnd = false
     /// The Ends picker. Only its clock time is used, on the job's own day.

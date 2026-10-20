@@ -3,6 +3,43 @@
 Short log of decisions and why, newest first. Written in plain English so it
 can be read later without the conversation.
 
+## 2026-10-20 · Assistant: whole directory, thinking on, quote visits, live words
+
+- Claude is sent every customer (cached), so lookups by address or street
+  work; until now it saw at most six named customers.
+- `thinking: {type: "adaptive"}` is sent explicitly: Sonnet 5.5 without it
+  returned empty forms on notes Haiku filled correctly. An empty action is
+  asked again once on Haiku.
+- "Estimate" is "Quote visit" everywhere (Kyle: they say quotes, never
+  estimates). A quote booked for a day is a Quote visit job; a price given
+  and not yet accepted is still a quote on the Quotes tab.
+- Unpaid means done, priced and not paid, the same as Owed, so the numbers
+  agree. Past jobs never marked done belong under "Not marked done".
+- Live transcription uses WhisperKit's streaming transcriber (Kyle: "It
+  should be using the WhisperKit"), with a full pass at the end for accuracy.
+
+## 2026-10-19 (evening) · Slick over stock; a full-size month on the Mac
+
+- Kyle, at the first look at the Mac app: "calander is too small", then
+  chose a full-size month with dots over enlarging Apple's picker, then:
+  "disregard standard control rules. make app look slick - i was only trying
+  to avoid an 'AI' look."
+- So the "standard controls only, no custom-drawn controls" rule is gone.
+  Custom views are fine where they look better. What stays: nothing that
+  reads as AI (no gradients, glow, sparkles, chat bubbles, typing
+  indicators, emoji), system font and colours, dark mode, plain copy.
+- First use: the Mac Calendar's month (`MacMonthGrid`) replaces Apple's
+  small graphical date picker, with dots under days that have open jobs.
+- Then Kyle: "think, and drastically change the look and design of the app,
+  work rebuild and test as needed." Done the same evening, see HANDOFF
+  "Design pass": a teal accent, job-type badges, status pills instead of
+  struck-through names, header cards on every detail page with one-click
+  actions, number tiles on Calendar and customer pages, initials circles,
+  numbered dumpster badges, sidebar counts, proper empty pages. Choices made
+  without Kyle (his to overrule): the teal, the badge colours per job type,
+  Done and Paid on the job page saving straight away like the right-click
+  menu, and the Mac detail pages kept to 720 points wide.
+
 ## 2026-10-18 (evening) · Build the real app now, iPhone and Mac together
 
 Kyle needs something to show the client, so steps 2, 3, 4 and the voice

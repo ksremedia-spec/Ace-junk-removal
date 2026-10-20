@@ -1,5 +1,16 @@
 # Quotes
 
+> **Changed 2026-10-19 (Kyle, first look at the Mac app):** "lose the lost
+> quotes tab" and "get rid of quotes follow up for now". The list's choices
+> are Open and Booked; Mark Lost still takes a quote off Open, and lost
+> quotes are no longer listed. Follow-ups are switched off
+> (`QuoteFeatures.followUps = false` in `Ace/Data/Quote.swift`): no Follow up
+> rows on the forms, no Follow up / Waiting sections, no "Quotes to follow
+> up" or Call back on Calendar. Stored follow-up days are kept, so switching
+> it back on restores everything below. The Assistant's instructions to
+> Claude are unchanged for now (it may still hear a call-back day; the app
+> ignores it).
+
 Asked for by Ashley through Kyle, 2026-10-19: "a quotes tab for things
 outstanding to keep them straight."
 

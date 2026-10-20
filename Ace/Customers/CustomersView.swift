@@ -30,15 +30,7 @@ struct CustomersView: View {
                 NavigationLink {
                     CustomerDetailView(customer: customer)
                 } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(customer.name)
-                        if !customer.phone.isEmpty || !customer.address.isEmpty {
-                            Text([customer.phone, customer.address].filter { !$0.isEmpty }.joined(separator: " · "))
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                        }
-                    }
+                    CustomerRow(customer: customer)
                 }
             }
             .onDelete { offsets in

@@ -54,7 +54,7 @@ struct NewQuoteView: View {
         quote.jobType = saidType ?? .junkRemoval
         quote.details = action.note.trimmingCharacters(in: .whitespacesAndNewlines)
         quote.priceText = action.price
-        quote.hasFollowUp = true
+        quote.hasFollowUp = QuoteFeatures.followUps
         if let day = JobDraft.day(from: action.followUp) {
             quote.followUpOn = day
         }
@@ -137,10 +137,12 @@ struct NewQuoteView: View {
                         .decimalKeyboard()
                 }
                 DatePicker("Quoted", selection: $form.quotedOn, displayedComponents: .date)
-                Toggle("Follow up", isOn: $form.hasFollowUp)
-                if form.hasFollowUp {
-                    FlaggedRow(flags["followUp"]) {
-                        DatePicker("Follow up on", selection: $form.followUpOn, displayedComponents: .date)
+                if QuoteFeatures.followUps {
+                    Toggle("Follow up", isOn: $form.hasFollowUp)
+                    if form.hasFollowUp {
+                        FlaggedRow(flags["followUp"]) {
+                            DatePicker("Follow up on", selection: $form.followUpOn, displayedComponents: .date)
+                        }
                     }
                 }
             }
@@ -326,7 +328,7 @@ struct QuoteDetailsSection: View {
             }
             LabeledContent("Price", value: quote.price.map { Money.text($0) } ?? "No price")
             LabeledContent("Quoted", value: Dates.shortDay(quote.quotedOn))
-            if let followUpOn = quote.followUpOn {
+            if QuoteFeatures.followUps, let followUpOn = quote.followUpOn {
                 LabeledContent("Follow up", value: Dates.shortDay(followUpOn))
             }
             if quote.status != .open {
@@ -471,8 +473,8 @@ private struct BookQuoteForm: View {
             }
         }
         .alert(overlapQuestion, isPresented: $askingOverlap) {
-            Button("Yes") { save() }
-            Button("No", role: .cancel) {}
+            Button("Save anyway") { save() }
+            Button("Change the time", role: .cancel) {}
         }
         .onAppear {
             if !flags.isEmpty || !overlapping.isEmpty { flagged += 1 }
@@ -616,10 +618,12 @@ private struct UpdateQuoteForm: View {
                     TextField("Price", text: $priceText, prompt: Text("Price in dollars"))
                         .decimalKeyboard()
                 }
-                Toggle("Follow up", isOn: $hasFollowUp)
-                if hasFollowUp {
-                    FlaggedRow(flags["followUp"]) {
-                        DatePicker("Follow up on", selection: $followUpOn, displayedComponents: .date)
+                if QuoteFeatures.followUps {
+                    Toggle("Follow up", isOn: $hasFollowUp)
+                    if hasFollowUp {
+                        FlaggedRow(flags["followUp"]) {
+                            DatePicker("Follow up on", selection: $followUpOn, displayedComponents: .date)
+                        }
                     }
                 }
             }
@@ -643,7 +647,9 @@ private struct UpdateQuoteForm: View {
 
     private func save() {
         quote.price = Parse.money(priceText)
-        quote.followUpOn = hasFollowUp ? Calendar.current.startOfDay(for: followUpOn) : nil
+        if QuoteFeatures.followUps {
+            quote.followUpOn = hasFollowUp ? Calendar.current.startOfDay(for: followUpOn) : nil
+        }
         quote.addNote(noteToAdd)
         quote.updatedAt = Date()
         try? context.save()

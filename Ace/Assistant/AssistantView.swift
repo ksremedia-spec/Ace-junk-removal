@@ -33,6 +33,15 @@ struct AssistantView: View {
     @State private var recordingURL: URL?
     @State private var transcript = ""
     @State private var answerText = ""
+    /// A note typed instead of spoken (Oct 20: at a desk, typing is faster
+    /// and nothing gets misheard).
+    @State private var typedNote = ""
+    /// Recording through WhisperKit's live mode, words shown as they come.
+    /// Off while the voice model is still loading; then it records to a
+    /// file and transcribes afterwards, as before.
+    @State private var listeningLive = false
+    @FocusState private var typing: Bool
+    private var hasKey: Bool { Keychain.read(Keychain.anthropicAPIKey) != nil }
 
     // The plan being stepped through.
     @State private var reply = ""
@@ -107,6 +116,10 @@ struct AssistantView: View {
         ToolbarItem(placement: .cancellationAction) {
             Button("Cancel") {
                 if recorder.isRecording { _ = recorder.stop() }
+                if listeningLive {
+                    listeningLive = false
+                    Task { _ = try? await engine.stopListening() }
+                }
                 dismiss()
             }
         }
@@ -255,22 +268,52 @@ struct AssistantView: View {
 
     private var recordView: some View {
         Form {
+            if !hasKey {
+                Section {
+                    Label("The Assistant needs your Anthropic API key first. Add it in Settings › API key.", systemImage: "key")
+                        .foregroundStyle(Tint.owed)
+                }
+            }
+
             Section {
                 switch phase {
                 case .idle:
-                    Button {
-                        startRecording()
-                    } label: {
-                        Label("Record", systemImage: "mic.fill")
+                    HStack(spacing: Space.m) {
+                        Button {
+                            startRecording()
+                        } label: {
+                            Label("Record", systemImage: "mic.fill")
+                        }
+                        .buttonStyle(.action(.accentColor, prominent: true))
+                        Text("or type it below")
+                            .foregroundStyle(.secondary)
                     }
                 case .recording:
-                    Button {
-                        stopRecording()
-                    } label: {
-                        Label("Stop", systemImage: "stop.fill")
+                    HStack(spacing: Space.m) {
+                        Button {
+                            stopRecording()
+                        } label: {
+                            Label("Stop", systemImage: "stop.fill")
+                        }
+                        .buttonStyle(.action(Tint.overdue, prominent: true))
+                        Text("Listening.")
+                            .foregroundStyle(.secondary)
                     }
-                    Text("Listening.")
-                        .foregroundStyle(.secondary)
+                    if listeningLive {
+                        // What WhisperKit has heard so far: settled words in
+                        // full colour, words still being worked out in grey.
+                        Text("\(engine.liveConfirmed)\(engine.liveConfirmed.isEmpty || engine.liveTentative.isEmpty ? "" : " ")\(Text(engine.liveTentative).foregroundStyle(.secondary))")
+                            .font(.title3)
+                            .frame(maxWidth: .infinity, minHeight: 60, alignment: .topLeading)
+                            .animation(.default, value: engine.liveConfirmed)
+                            .overlay(alignment: .topLeading) {
+                                if engine.liveConfirmed.isEmpty && engine.liveTentative.isEmpty {
+                                    Text("Start talking. The words show up here.")
+                                        .font(.title3)
+                                        .foregroundStyle(.tertiary)
+                                }
+                            }
+                    }
                 case .transcribing:
                     HStack {
                         ProgressView()
@@ -286,37 +329,71 @@ struct AssistantView: View {
                 case .failed(let message):
                     Label(message, systemImage: "exclamationmark.triangle")
                         .foregroundStyle(.secondary)
-                    Button("Try again") { reset() }
+                    HStack(spacing: Space.s) {
+                        // The note is kept: a network or Claude error no
+                        // longer means saying it all again.
+                        if !transcript.isEmpty {
+                            Button {
+                                Task { @MainActor in await ask(transcript) }
+                            } label: {
+                                Label("Send again", systemImage: "arrow.clockwise")
+                            }
+                            .buttonStyle(.action(.accentColor, prominent: true))
+                        }
+                        Button("Start over") { reset() }
+                            .buttonStyle(.action(.secondary))
+                    }
                 default:
                     EmptyView()
                 }
                 if case .denied = recorder.state {
-                    Text("Microphone access is off. Turn it on in Settings.")
+                    Text(microphoneOffText)
                         .foregroundStyle(.secondary)
                 }
             } footer: {
-                Text("Say it the way you would on the phone: a new job, a job done and paid, a job moved or cancelled, a dumpster dropped off, picked up or swapped, a customer's new number, a quote given or approved, or a call or text to a customer. Several things can go in one note. Or ask about the records, like which dumpsters are due back Friday.")
+                Text("Say or type it the way you would on the phone. A new job, a quote visit, a job done and paid, a dumpster dropped off or picked up, a customer's new number. Several things can go in one note. Or ask, like \"who lives at 63 Locust Street\" or \"which dumpsters are due back Friday\".")
+            }
+
+            Section {
+                TextField("Type a note", text: $typedNote, prompt: Text("Johnson, 42 Elm, garage cleanout tomorrow at 9, $300 cash"), axis: .vertical)
+                    .lineLimit(2...6)
+                    .focused($typing)
+                    .onSubmit(sendTyped)
+                    .disabled(phase == .recording || phase == .transcribing || phase == .asking)
+                HStack {
+                    Spacer()
+                    Button {
+                        sendTyped()
+                    } label: {
+                        Label("Send", systemImage: "arrow.up.circle.fill")
+                    }
+                    .buttonStyle(.action(.accentColor, prominent: true))
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .disabled(typedNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || phase == .asking)
+                }
+            } header: {
+                Text("Type it")
             }
 
             Section {
                 switch engine.state {
                 case .notLoaded:
-                    Text("Speech model not loaded.")
+                    Text("Voice not set up yet.")
                         .foregroundStyle(.secondary)
                 case .downloading(let fraction):
                     ProgressView(value: fraction) {
-                        Text("Downloading the speech model")
+                        Text("Downloading the voice model (first time only)")
                     } currentValueLabel: {
                         Text(fraction.formatted(.percent.precision(.fractionLength(0))))
                     }
                 case .loading:
                     HStack {
                         ProgressView()
-                        Text("Preparing the speech model. The first time can take a few minutes.")
+                        Text("Getting voice ready. The first time can take a few minutes; typing works now.")
                             .foregroundStyle(.secondary)
                     }
                 case .ready:
-                    Text("Speech model ready.")
+                    Label("Voice ready.", systemImage: "checkmark.circle")
                         .foregroundStyle(.secondary)
                 case .failed(let message):
                     Label(message, systemImage: "exclamationmark.triangle")
@@ -328,11 +405,42 @@ struct AssistantView: View {
             }
         }
         .formStyle(.grouped)
+        .onAppear {
+            #if os(macOS)
+            typing = true
+            #endif
+        }
+    }
+
+    private var microphoneOffText: String {
+        #if os(macOS)
+        return "Microphone access is off. Turn it on in System Settings › Privacy & Security › Microphone, or type the note."
+        #else
+        return "Microphone access is off. Turn it on in Settings › Privacy & Security › Microphone."
+        #endif
+    }
+
+    private func sendTyped() {
+        let note = typedNote.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !note.isEmpty, phase != .asking else { return }
+        transcript = note
+        Task { @MainActor in await ask(note) }
     }
 
     private func startRecording() {
         Task { @MainActor in
             guard await recorder.requestPermission() else { return }
+            if case .ready = engine.state {
+                do {
+                    try engine.startListening()
+                    listeningLive = true
+                    phase = .recording
+                    return
+                } catch {
+                    // Falls through to recording a file.
+                }
+            }
+            listeningLive = false
             let url = FileManager.default.temporaryDirectory
                 .appendingPathComponent("assistant-\(UUID().uuidString).wav")
             recordingURL = url
@@ -346,8 +454,25 @@ struct AssistantView: View {
     }
 
     private func stopRecording() {
-        _ = recorder.stop()
         phase = .transcribing
+        if listeningLive {
+            listeningLive = false
+            Task { @MainActor in
+                do {
+                    transcript = try await engine.stopListening().text
+                } catch {
+                    phase = .failed(error.localizedDescription)
+                    return
+                }
+                guard !transcript.isEmpty else {
+                    phase = .failed(nothingHeardText)
+                    return
+                }
+                await ask(transcript)
+            }
+            return
+        }
+        _ = recorder.stop()
         Task { @MainActor in
             await process()
         }
@@ -364,24 +489,54 @@ struct AssistantView: View {
             transcript = result.text
             try? FileManager.default.removeItem(at: recordingURL)
             guard !transcript.isEmpty else {
-                phase = .failed("Nothing was heard. Try again, a little closer to the phone.")
+                phase = .failed(nothingHeardText)
                 return
             }
+        } catch {
+            phase = .failed(error.localizedDescription)
+            return
+        }
+        await ask(transcript)
+    }
+
+    private var nothingHeardText: String {
+        #if os(macOS)
+        return "Nothing was heard. Try again a little closer to the microphone, or type the note."
+        #else
+        return "Nothing was heard. Try again, a little closer to the phone."
+        #endif
+    }
+
+    /// Sends a note, spoken or typed, to Claude with the records.
+    private func ask(_ note: String) async {
+        do {
             phase = .asking
             let records = AssistantRecords.build(
-                note: transcript,
+                note: note,
                 customers: customers,
                 jobs: jobs,
                 dumpsters: dumpsters,
                 quotes: quotes,
                 now: Date()
             )
-            let response = try await ClaudeClient.plan(
-                note: transcript,
+            var response = try await ClaudeClient.plan(
+                note: note,
+                directory: records.directory,
                 records: records.text,
                 model: AppSettings.claudeModel,
                 effort: AppSettings.effort
             )
+            // Safety net: an answer with an empty action is asked again once,
+            // on Haiku, which filled these notes correctly in every test.
+            if response.plan.actions.contains(where: \.isEmptyShell) {
+                response = try await ClaudeClient.plan(
+                    note: note,
+                    directory: records.directory,
+                    records: records.text,
+                    model: .haiku,
+                    effort: .medium
+                )
+            }
             refs = records.refs
             reply = response.plan.reply.trimmingCharacters(in: .whitespacesAndNewlines)
             issues = response.plan.issues
@@ -418,6 +573,7 @@ struct AssistantView: View {
     private func reset() {
         phase = .idle
         transcript = ""
+        typedNote = ""
         answerText = ""
         reply = ""
         steps = []

@@ -7,6 +7,7 @@ import SwiftUI
 struct QuoteEditView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
 
     let quote: Quote?
     /// Called with the quote after Save, before the form closes.
@@ -15,6 +16,9 @@ struct QuoteEditView: View {
     var onDeleted: (() -> Void)? = nil
 
     @State private var form: QuoteFormData
+    /// The form as opened or last saved, to tell whether anything changed.
+    @State private var original: QuoteFormData
+    @State private var confirmLost = false
     @State private var showingCustomerPicker = false
     @State private var showingBookJob = false
     @State private var confirmDelete = false
@@ -29,13 +33,19 @@ struct QuoteEditView: View {
         self.onSaved = onSaved
         self.onDeleted = onDeleted
         _form = State(initialValue: QuoteFormData(quote: quote))
+        _original = State(initialValue: QuoteFormData(quote: quote))
     }
 
     var body: some View {
         Form {
+            Section {
+                header
+                    .bareRow()
+            }
+
             Section("Customer") {
                 LabeledContent("Customer") {
-                    Button(form.customer?.name ?? "Choose") {
+                    Button(form.customer?.name ?? "Choose…") {
                         showingCustomerPicker = true
                     }
                 }
@@ -65,27 +75,35 @@ struct QuoteEditView: View {
                 TextField("Price", text: $form.priceText, prompt: Text("Price in dollars"))
                     .decimalKeyboard()
                 DatePicker("Quoted", selection: $form.quotedOn, displayedComponents: .date)
-                Toggle("Follow up", isOn: $form.hasFollowUp)
-                if form.hasFollowUp {
-                    DatePicker("Follow up on", selection: $form.followUpOn, displayedComponents: .date)
+                if QuoteFeatures.followUps {
+                    Toggle("Follow up", isOn: $form.hasFollowUp)
+                    if form.hasFollowUp {
+                        DatePicker("Follow up on", selection: $form.followUpOn, displayedComponents: .date)
+                    }
                 }
             }
 
             Section("Notes") {
                 TextEditor(text: $form.notes)
+                    .scrollContentBackground(.hidden)
                     .frame(minHeight: 80)
             }
 
             if let quote {
                 statusSection(quote)
                 Section {
-                    Button("Delete Quote", role: .destructive) {
+                    Button(role: .destructive) {
                         confirmDelete = true
+                    } label: {
+                        Label("Delete quote", systemImage: "trash")
+                            .foregroundStyle(.red)
                     }
+                    .buttonStyle(.borderless)
                 }
             }
         }
         .formStyle(.grouped)
+        .readableWidth()
         .navigationTitle(isNew ? "New quote" : "Quote")
         .toolbar {
             if isNew {
@@ -95,7 +113,8 @@ struct QuoteEditView: View {
             }
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save") { save() }
-                    .disabled(form.customer == nil)
+                    .keyboardShortcut("s", modifiers: .command)
+                    .disabled(form.customer == nil || (!isNew && !hasChanges))
             }
         }
         .sheet(isPresented: $showingCustomerPicker) {
@@ -113,39 +132,99 @@ struct QuoteEditView: View {
         .confirmationDialog("Delete this quote?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Delete", role: .destructive) { delete() }
         }
+        .confirmationDialog("Mark this quote lost?", isPresented: $confirmLost, titleVisibility: .visible) {
+            Button("Mark lost") { if let quote { markLost(quote) } }
+        } message: {
+            Text("It leaves the Quotes list. Search still finds it, and Reopen brings it back.")
+        }
+        // Clicking another quote kept nothing before; now changes are saved.
+        .onDisappear {
+            if let quote, hasChanges, form.customer != nil {
+                form.apply(to: quote)
+                try? context.save()
+            }
+        }
         .sensoryFeedback(.success, trigger: saved)
         #if os(macOS)
         .frame(minWidth: 480, minHeight: 560)
         #endif
     }
 
-    /// Where the quote stands and what can be done with it next.
+    // MARK: Header
+
+    /// Built from the form, so it follows changes before Save. Book job and
+    /// Mark lost, or Reopen, act straight away.
+    private var header: some View {
+        DetailHeader(
+            title: form.customer?.name ?? (isNew ? "New quote" : "No customer"),
+            subtitle: form.jobType.rawValue + " · quoted " + Dates.shortDay(form.quotedOn),
+            caption: form.details.isEmpty ? nil : form.details,
+            value: Parse.money(form.priceText).map(Money.text) ?? "No price",
+            valueTint: Parse.money(form.priceText) == nil ? .secondary : .primary,
+            hasActions: quote != nil
+        ) {
+            TypeBadge(type: form.jobType, size: 52, muted: (quote?.status ?? .open) != .open)
+        } pills: {
+            if let quote, quote.status != .open {
+                StatusPill(text: quote.status.rawValue, tint: quote.status.tint)
+            }
+        } actions: {
+            if let quote {
+                switch quote.status {
+                case .open:
+                    Button {
+                        showingBookJob = true
+                    } label: {
+                        Label("Book job", systemImage: "calendar.badge.plus")
+                    }
+                    .buttonStyle(.action(.accentColor, prominent: true))
+                    Button {
+                        confirmLost = true
+                    } label: {
+                        Label("Mark lost", systemImage: "xmark")
+                    }
+                    .buttonStyle(.action(.secondary))
+                case .booked, .lost:
+                    Button {
+                        reopen(quote)
+                    } label: {
+                        Label("Reopen", systemImage: "arrow.uturn.backward")
+                    }
+                    .buttonStyle(.action())
+                }
+            }
+            if let url = form.customer?.phoneURL {
+                Button {
+                    openURL(url)
+                } label: {
+                    Label("Call", systemImage: "phone.fill")
+                }
+                .buttonStyle(.action())
+            }
+            if let url = form.customer?.directionsURL {
+                Button {
+                    openURL(url)
+                } label: {
+                    Label("Directions", systemImage: "map.fill")
+                }
+                .buttonStyle(.action())
+            }
+        }
+    }
+
+    /// The job a booked quote became, and the last action's confirmation.
     private func statusSection(_ quote: Quote) -> some View {
         Section {
-            LabeledContent("Status", value: quote.status.rawValue)
-            switch quote.status {
-            case .open:
-                Button("Book Job") {
-                    showingBookJob = true
+            if quote.status == .booked, let job = quote.job {
+                NavigationLink {
+                    JobEditView(job: job)
+                } label: {
+                    JobRow(job: job)
                 }
-                Button("Mark Lost") {
-                    markLost(quote)
-                }
-            case .booked:
-                if let job = quote.job {
-                    NavigationLink {
-                        JobEditView(job: job)
-                    } label: {
-                        JobRow(job: job)
-                    }
-                }
-                Button("Reopen") {
-                    reopen(quote)
-                }
-            case .lost:
-                Button("Reopen") {
-                    reopen(quote)
-                }
+            }
+        } header: {
+            if quote.status == .booked, quote.job != nil {
+                Text("Booked job")
             }
         } footer: {
             if let confirmation {
@@ -167,11 +246,14 @@ struct QuoteEditView: View {
         // Set after the insert, so the customer link is made on a stored record.
         form.apply(to: target)
         try? context.save()
+        original = form
         saved += 1
         confirm("Quote saved.")
         onSaved?(target)
         dismiss()
     }
+
+    private var hasChanges: Bool { form != original }
 
     private func markLost(_ quote: Quote) {
         quote.markLost()

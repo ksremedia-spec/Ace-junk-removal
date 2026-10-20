@@ -64,7 +64,7 @@ struct JobReviewView: View {
         self.onStartOver = onStartOver
 
         let parsedDate = Self.parse(date: draft.date, time: draft.time)
-        let parsedType = JobType.allCases.first { $0.rawValue.caseInsensitiveCompare(draft.jobType) == .orderedSame } ?? .junkRemoval
+        let parsedType = draft.jobType.trimmingCharacters(in: .whitespaces).isEmpty ? .junkRemoval : JobType(stored: draft.jobType)
         let parsedPayment = Self.payment(from: draft.paymentType)
         let parsedPaid = draft.paid.lowercased() == "paid"
         // An end time only counts with a start time; nothing is assumed.
@@ -96,18 +96,24 @@ struct JobReviewView: View {
     var body: some View {
         Form {
             Section {
+                // Every field shows where to type, so a gap is one click and
+                // a few keys to fix (Kyle, Oct 19).
                 field("customerName") {
-                    TextField("Name", text: $name)
+                    TextField("Name", text: $name, prompt: Text("Customer name"))
                 }
                 field("phone") {
-                    TextField("Phone", text: $phone)
+                    TextField("Phone", text: $phone, prompt: Text("Add a phone number"))
                         .phoneKeyboard()
                 }
                 field("address") {
-                    TextField("Address", text: $address, axis: .vertical)
+                    TextField("Address", text: $address, prompt: Text("Street and town"), axis: .vertical)
                 }
                 if let match = matchingCustomer {
-                    Text("Matches existing customer \(match.name).")
+                    Text("Matches existing customer \(match.name), \(match.address.isEmpty ? "no address on file" : match.address).")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } else if !name.trimmingCharacters(in: .whitespaces).isEmpty {
+                    Text("New customer.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -175,9 +181,14 @@ struct JobReviewView: View {
                     .disabled(!endIsValid)
             }
         }
+        // "Save as is" / "Fix it", never Yes / No: Claude's own questions are
+        // worded either way ("Do you have a phone number?"), and Yes used to
+        // save without one (Oct 20 audit).
         .alert(current?.text ?? "", isPresented: $showingQuestion) {
-            Button("Yes") { answeredYes() }
-            Button("No", role: .cancel) { answeredNo() }
+            Button("Save as is") { answeredYes() }
+            Button("Fix it", role: .cancel) { answeredNo() }
+        } message: {
+            Text("Save the job as it is, or go back and fix it first?")
         }
         .onAppear {
             if !draft.issues.isEmpty { flagged += 1 }
@@ -200,9 +211,8 @@ struct JobReviewView: View {
         if draft.date.isEmpty, map[Self.key("date")] == nil {
             map[Self.key("date")] = "No date was given. Save for today?"
         }
-        if draft.jobType.isEmpty, map[Self.key("jobType")] == nil {
-            map[Self.key("jobType")] = "No job type was given. Is \(original.jobType.rawValue) right?"
-        }
+        // No job type said: the form shows its default quietly, without a
+        // question (Kyle: it kept asking for the job type).
         return map
     }
 
@@ -251,9 +261,18 @@ struct JobReviewView: View {
         if phoneDigits.count >= 7, let byPhone = customers.first(where: { $0.phoneDigits == phoneDigits }) {
             return byPhone
         }
+        // Kyle, Oct 19: same name and same address is the same customer;
+        // the same name somewhere else is a new one. With no address said,
+        // the name alone decides.
         let trimmed = name.trimmingCharacters(in: .whitespaces).lowercased()
         guard !trimmed.isEmpty else { return nil }
-        return customers.first { $0.name.lowercased() == trimmed }
+        let said = SpokenAddress(address)
+        return customers.first { customer in
+            guard customer.name.lowercased() == trimmed else { return false }
+            guard said.houseNumber != nil, !customer.address.isEmpty else { return true }
+            let onFile = SpokenAddress(customer.address)
+            return onFile.houseNumber == said.houseNumber && onFile.streetWord == said.streetWord
+        }
     }
 
     // MARK: Questions, one at a time
@@ -273,7 +292,8 @@ struct JobReviewView: View {
         if phoneDigits.isEmpty && matchingCustomer == nil {
             ask("phone", "No phone number. Save without one?")
         }
-        if Parse.money(priceText) == nil {
+        // A quote visit is booked to work out the price; there is none yet.
+        if Parse.money(priceText) == nil && jobType != .estimate {
             ask("price", "No price. Save without one?")
         }
         let scheduled = hasTime ? date : Calendar.current.startOfDay(for: date)
@@ -281,9 +301,6 @@ struct JobReviewView: View {
             ask("date", "The date is in the past (\(Dates.shortDay(date))). Save anyway?")
         } else if draft.date.isEmpty && !resolved("date") {
             ask("date", "No date was given. Save for today (\(Dates.shortDay(date)))?")
-        }
-        if draft.jobType.isEmpty && !resolved("jobType") {
-            ask("jobType", "No job type was given. Save as \(jobType.rawValue)?")
         }
         if let question = JobOverlap.question(overlapping) {
             ask("time", question)

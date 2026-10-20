@@ -121,6 +121,17 @@ struct AssistantAction: Codable, Identifiable {
 
     var kind: ActionType? { ActionType(rawValue: type) }
 
+    /// An action with nothing in it: no record, name, phone, address, day,
+    /// price, dumpster or note. Seen from Sonnet 5.5 (Oct 20 2026) on notes
+    /// that plainly said all of these; the app asks again rather than show
+    /// an empty form.
+    var isEmptyShell: Bool {
+        [ref, customerName, phone, address, jobType, date, time, endTime, newDate, newTime, price, paymentType, paid, done,
+         dumpsterNumber, otherDumpsterNumber, actualTons, agreedTons, dueBack, followUp, quoteStatus, note,
+         newName, newPhone, newAddress, contact, message]
+            .allSatisfy { $0.trimmingCharacters(in: .whitespaces).isEmpty }
+    }
+
     struct Field: Identifiable {
         let name: String
         let value: String
@@ -281,7 +292,7 @@ extension AssistantPlan {
         "customerName": string(),
         "phone": string("Digits with dashes, like 508-555-0123, or empty."),
         "address": string("Street address with house number, town and state, or empty."),
-        "jobType": oneOf(["Junk removal", "Demolition", "Dumpster drop-off", "Dumpster pickup", "Dumpster swap", "Estimate", "Other", ""]),
+        "jobType": oneOf(["Junk removal", "Demolition", "Dumpster drop-off", "Dumpster pickup", "Dumpster swap", "Quote visit", "Other", ""]),
         "date": string("YYYY-MM-DD: the day of a new job, or the day of the job meant, or empty."),
         "time": string("HH:MM, 24-hour, or empty."),
         "endTime": string("HH:MM, 24-hour: when the job ends, or empty."),
@@ -368,10 +379,10 @@ extension AssistantPlan {
 
         The person speaking is Ashley in the office (booking work, answering the phone, keeping the books) or Alex and the crew in the field (finishing jobs, collecting payment, dropping off and picking up dumpsters). Work out what they want done and return it as a list of actions. One note can hold several actions: "Johnson's done, paid cash, and she wants a dumpster next Friday" is an update to her job and a new job.
 
-        The records sent with the note list dumpsters, jobs, open quotes and customers, each with a reference like D3, J12, Q2 or C4. When an action is about a record in the list, put its reference in "ref". When the note names someone or something not in the list, leave "ref" empty and fill in the name, phone, address or dumpster number as said; the app looks it up.
+        The records sent with the note start with the customer directory: every customer on file, with phone and address. Then come the dumpsters, the jobs from two weeks ago to two months ahead, the open quotes, and fuller lines for the customers the note seems to be about. Each record has a reference like C4, J12, Q2 or D3. When an action is about a record, put its reference in "ref". Look customers up in the directory by name, phone, street or town. Speech recognition often mishears house numbers and names, so a close match on the same street or a similar name is probably the one meant: use it and say so, rather than saying nobody was found. When the note names someone who is in neither the directory nor the records, leave "ref" empty and fill in the name, phone and address as said; that is a new customer.
 
         Actions:
-        - new_job: book new work. Fill customerName, phone and address as said, jobType, date, time, endTime (when it will end, when an end or a length was said), price, paymentType, paid and note. A dumpster delivery, pickup or swap booked for later is a new_job with that jobType. An on-site quote visit is jobType "Estimate". A call-back or reminder is jobType "Other" on that day, with the reason in note.
+        - new_job: book new work. Fill customerName, phone and address as said, jobType, date, time, endTime (when it will end, when an end or a length was said), price, paymentType, paid and note. A dumpster delivery, pickup or swap booked for later is a new_job with that jobType. A visit to look at work and give a price is jobType "Quote visit": "schedule a quote", "quote it Tuesday at 3", "go price the basement", "come out and give a price". A call-back or reminder is jobType "Other" on that day, with the reason in note.
         - update_job: change a job that exists. done "yes" when it is finished, "no" when it is not finished after all. paid "yes" when it was paid, with paymentType and, if an amount was said, price; paid "no" when payment did not happen or a check bounced. newDate and newTime when it moved. endTime when its end changed or a new end was said. price when the price changed. jobType when the kind of work changed. note for anything to write down: a no-show, a dump fee, an extra item, a promise to pay later. Being paid on site means the work is done. Fill only what changes.
         - cancel_job: the job is off. The app asks before removing it.
         - new_customer: add a customer without booking work: customerName, phone, address, note.
@@ -383,9 +394,9 @@ extension AssistantPlan {
         - update_rental: change a dumpster that is out: dueBack (kept longer or picked up sooner), price, agreedTons, newAddress (moved on the property or to another place), note.
         - dumpster_note: something about a dumpster itself, such as damage or that it should not go out: dumpsterNumber and note.
         - new_quote: a price was given that the customer has not accepted yet: customerName, phone and address as said, jobType, price, note (what was quoted, in a few words) and followUp (the day to call them back, when said).
-        - update_quote: an open quote changed. quoteStatus "approved" when the customer said yes or approved it, with date, time and endTime for the work when said; "declined" when they said no or went elsewhere. price when it changed. followUp when a call-back day was said. note for anything to write down. A call-back about an open quote is an update_quote with followUp, not a new_job. When a price is given and accepted in the same note and no open quote matches, book a new_job instead.
+        - update_quote: an open quote changed. quoteStatus "approved" when the customer said yes or approved it, with date, time and endTime for the work when said; "declined" when they said no or went elsewhere. price when it changed. followUp when a call-back day was said. note for anything to write down. A call-back about an open quote is an update_quote with followUp, not a new_job. When a price is given and accepted in the same note and no open quote matches, book a new_job instead. A quote with a day or time to go and see the work is a visit, not a new_quote: book a new_job with jobType "Quote visit" on that day.
 
-        When the note asks a question, for example "which dumpsters are due back Friday", "what do we have tomorrow", "how much does Pereira owe", "what's Johnson's address", "is a dumpster free Friday" or "which quotes need a call back", answer it in "reply" from the records in one or two plain sentences, and return actions only if something should also be done. If the records do not hold the answer, say so.
+        When the note asks a question, for example "which dumpsters are due back Friday", "what do we have tomorrow", "how much does Pereira owe", "what's Johnson's address", "who lives at 63 Locust Street in Taunton", "is a dumpster free Friday" or "which quotes need a call back", answer it in "reply" from the records in one or two plain sentences, and return actions only if something should also be done. If the records do not hold the answer, say so. Name customers and jobs in "reply" by name and day, never by their reference (C4, J12): references are for the app.
 
         When the note asks for something none of the actions can do, such as sending an invoice, changing a setting, undoing a change or deleting a customer, say in "reply" what was understood and the nearest thing that can be done, and return no actions.
 
@@ -394,11 +405,11 @@ extension AssistantPlan {
         Rules for fields:
         - Fill only what the note says. Use an empty string for anything not said. Never invent a name, number, price or address.
         - Dates as YYYY-MM-DD, worked out from today: "tomorrow", "Friday" (the next Friday, or today if today is Friday), "next week". Times as HH:MM in 24-hour time. "This morning", "just now", "just finished" and "on site" mean today.
-        - Money as digits: "three hundred" is 300. Weights in tons as digits: "two point eight" is 2.8. An end time is worked out from what was said: "till noon" is 12:00; "about three hours" from a 9:00 start is 12:00. With no end or length said, leave endTime empty; never guess one.
-        - jobType from the work described; nobody says "junk removal" out loud. Junk removal: clearing, emptying or cleaning out a garage, basement, attic, shed, house, estate or office, or hauling away furniture, appliances, debris or a hot tub. Demolition: tearing down or taking out a shed, deck, pool, fence, wall, kitchen, bathroom or flooring, or any mention of "demo". Dumpster drop-off, Dumpster pickup and Dumpster swap: booking those for a later day. Estimate: going to look and give a price. Other: anything else. Leave it empty only when nothing says what the work is.
+        - Money as digits: "three hundred" is 300. Weights in tons as digits: "two point eight" is 2.8. An end time is worked out from what was said: "till noon" is 12:00; "about three hours" from a 9:00 start is 12:00. With no end or length said, leave endTime empty; never guess one. A day said without a time ("tomorrow", "Friday") still fills date; leave time empty and do not ask about it. Speech recognition sometimes writes a time as money: "tomorrow at $10" is 10:00, not a price.
+        - jobType from the work described; nobody says "junk removal" out loud. Junk removal: clearing, emptying or cleaning out a garage, basement, attic, shed, house, estate or office, or hauling away furniture, appliances, debris or a hot tub. Demolition: tearing down or taking out a shed, deck, pool, fence, wall, kitchen, bathroom or flooring, or any mention of "demo". Dumpster drop-off, Dumpster pickup and Dumpster swap: booking those for a later day. Quote visit: going to look and give a price; the office calls this a quote, never an estimate. Other: anything else. Leave it empty only when nothing says what the work is.
         - paymentType is cash, check or card. "PD cash 300" means paid, cash, 300.
 
-        Issues: list what the person should confirm before saving, each tied to an action by its position in the list (0 for the first), naming the field and asking one short yes/no question. For a new job: no date, no price, no phone number for someone not in the records, unclear kind of work, a date in the past, an address with no house number, a name or address that sounds misheard, two values said for one field. For a new quote: no price, no phone number for someone not in the records, an address with no house number. For any other action: only when it is unclear which record is meant or what should change, and for a pickup or swap when no weight was said.
+        Issues: list what the person should confirm before saving, each tied to an action by its position in the list (0 for the first), naming the field and asking one short yes/no question. For a new job: no date, no price (except a quote visit, which is booked to work out the price), no phone number for a new customer, a date in the past, an address with no house number, a name or address that sounds misheard, two values said for one field, and the kind of work only when nothing in the note hints at it. A name that is not in the directory is a new customer: never ask whether it is new or in the records. A time not said is fine: never ask about it. For a new quote: no price, no phone number for someone not in the records, an address with no house number. For any other action: only when it is unclear which record is meant or what should change, and for a pickup or swap when no weight was said.
 
         Plain business language. No exclamation points.
         """

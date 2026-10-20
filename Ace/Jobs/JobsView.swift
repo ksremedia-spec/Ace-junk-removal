@@ -96,7 +96,7 @@ struct JobsView: View {
         ForEach(days) { day in
             Section(day.title) {
                 ForEach(day.jobs) { job in
-                    row(job)
+                    row(job, showDate: false)
                 }
             }
         }
@@ -122,11 +122,11 @@ struct JobsView: View {
         shown.isEmpty ? "Done" : "Done · \(shown.count)"
     }
 
-    private func row(_ job: Job) -> some View {
+    private func row(_ job: Job, showDate: Bool = true) -> some View {
         NavigationLink {
             JobEditView(job: job)
         } label: {
-            JobRow(job: job)
+            JobRow(job: job, showDate: showDate)
         }
         .jobSwipeActions(job)
     }

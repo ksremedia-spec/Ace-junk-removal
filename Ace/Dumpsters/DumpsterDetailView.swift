@@ -48,11 +48,13 @@ struct DumpsterDetailView: View {
     var body: some View {
         Form {
             Section {
-                LabeledContent("Status") {
-                    Text(dumpster.status().rawValue)
-                }
-                TextField("Size or nickname", text: $dumpster.label, prompt: Text("Size or nickname, e.g. 15 yard"))
-                TextField("Dumpster note", text: $dumpster.conditionNote, prompt: Text("Dumpster note, e.g. cracked door"), axis: .vertical)
+                header
+                    .bareRow()
+            }
+
+            Section {
+                TextField("Size or nickname", text: $dumpster.label, prompt: Text("e.g. 15 yard"))
+                TextField("Dumpster note", text: $dumpster.conditionNote, prompt: Text("e.g. cracked door, don't send out"), axis: .vertical)
             }
 
             if dumpster.isOut {
@@ -62,11 +64,6 @@ struct DumpsterDetailView: View {
                 dropOffSection
             }
 
-            if !thisMonth.isEmpty {
-                Section {
-                    LabeledContent("This month", value: Plural.text(thisMonth.count, "rental") + " · " + Money.text(thisMonthTotal))
-                }
-            }
 
             if !historyNewestFirst.isEmpty {
                 Section("Past rentals") {
@@ -86,6 +83,7 @@ struct DumpsterDetailView: View {
             }
         }
         .formStyle(.grouped)
+        .readableWidth()
         .navigationTitle("Dumpster \(dumpster.number)")
         .sheet(isPresented: $showingCustomerPicker) {
             NavigationStack {
@@ -102,6 +100,43 @@ struct DumpsterDetailView: View {
         }
         .sensoryFeedback(.success, trigger: saved)
         .sensoryFeedback(.warning, trigger: flagged)
+    }
+
+    // MARK: Header
+
+    private var header: some View {
+        DetailHeader(
+            title: dumpster.displayName,
+            subtitle: headerSubtitle,
+            caption: dumpster.isOut && !dumpster.location.isEmpty ? dumpster.location : nil,
+            value: dumpster.isOut ? dumpster.price.map(Money.text) : nil,
+            hasActions: false
+        ) {
+            DumpsterBadge(dumpster: dumpster, size: 52)
+        } pills: {
+            HStack(spacing: Space.xs) {
+                StatusPill(text: dumpster.status().rawValue, tint: dumpster.status().tint)
+                if !thisMonth.isEmpty {
+                    StatusPill(text: "This month " + Plural.text(thisMonth.count, "rental") + ", " + Money.text(thisMonthTotal),
+                               tint: .secondary)
+                }
+                if !dumpster.conditionNote.isEmpty {
+                    StatusPill(text: dumpster.conditionNote, tint: Tint.owed, symbol: "exclamationmark.triangle.fill")
+                }
+            }
+        } actions: {
+            EmptyView()
+        }
+    }
+
+    /// "Out with Harborview Realty · due back Sat, Oct 17" or "In the yard".
+    private var headerSubtitle: String {
+        guard dumpster.isOut else { return "In the yard, ready to go out" }
+        var text = "With " + (dumpster.customer?.name ?? "no customer")
+        if let dueBackAt = dumpster.dueBackAt {
+            text += " · due back " + Dates.shortDay(dueBackAt)
+        }
+        return text
     }
 
     // MARK: Out
@@ -130,7 +165,7 @@ struct DumpsterDetailView: View {
 
     private var pickupSection: some View {
         Section {
-            TextField("Actual weight in tons", text: $actualTonsText, prompt: Text("Actual weight in tons"))
+            TextField("Actual weight in tons", text: $actualTonsText, prompt: Text("e.g. 2.8"))
                 .decimalKeyboard()
             if let actualTons, let agreed = dumpster.agreedWeightTons {
                 if actualTons > agreed {
@@ -144,10 +179,13 @@ struct DumpsterDetailView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            Button("Mark picked up") {
+            Button {
                 if pickupCharge > 0 { flagged += 1 }
                 confirmPickup = true
+            } label: {
+                Label("Mark picked up", systemImage: "tray.and.arrow.up.fill")
             }
+            .buttonStyle(.action(.accentColor, prominent: true))
         } header: {
             Text("Pickup")
         } footer: {
@@ -176,27 +214,27 @@ struct DumpsterDetailView: View {
 
     private var dropOffSection: some View {
         Section {
-            Button {
-                showingCustomerPicker = true
-            } label: {
-                LabeledContent("Customer") {
-                    Text(dropOffCustomer?.name ?? "Choose")
-                        .foregroundStyle(dropOffCustomer == nil ? .secondary : .primary)
+            LabeledContent("Customer") {
+                Button(dropOffCustomer?.name ?? "Choose…") {
+                    showingCustomerPicker = true
                 }
             }
-            .buttonStyle(.plain)
-            TextField("Location", text: $dropOffLocation, axis: .vertical)
+            TextField("Location", text: $dropOffLocation, prompt: Text("Address, or where on the lot"), axis: .vertical)
             DatePicker("Drop-off", selection: $dropOffDate, displayedComponents: .date)
             DatePicker("Due back", selection: $dueBackDate, displayedComponents: .date)
             TextField("Price", text: $dropOffPriceText, prompt: Text("Price in dollars"))
                 .decimalKeyboard()
-            TextField("Agreed weight", text: $dropOffAgreedTonsText, prompt: Text("Agreed weight in tons"))
+            TextField("Agreed weight", text: $dropOffAgreedTonsText, prompt: Text("Tons, e.g. 2"))
                 .decimalKeyboard()
-            TextField("Notes", text: $dropOffNotes, axis: .vertical)
-            Button("Mark dropped off") {
+            TextField("Notes", text: $dropOffNotes, prompt: Text("Gate code, where to put it"), axis: .vertical)
+            Button {
                 markDroppedOff()
+            } label: {
+                Label("Mark dropped off", systemImage: "tray.and.arrow.down.fill")
             }
+            .buttonStyle(.action(.accentColor, prominent: true))
             .disabled(dropOffCustomer == nil)
+            .opacity(dropOffCustomer == nil ? 0.5 : 1)
         } header: {
             Text("Drop off")
         }

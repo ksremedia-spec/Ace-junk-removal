@@ -37,9 +37,11 @@ built.
   is selected. Tapping it goes back to today and its month.
 - **When today is selected**, under the month, in this order (the same as
   the old Today screen, plus two sections):
-  1. The figures: "2 jobs today · $750", dumpsters due back or overdue,
-     Quotes to follow up (tap for the Quotes tab).
-  2. Owed.
+  1. Four tiles (changed 2026-10-19, design pass): Today (open jobs and
+     what they are worth), Owed (in orange when anything is), Dumpsters
+     (leads with overdue or due today, else how many are out), Quotes
+     (open, and what they are worth; on iPhone a tap opens Quotes).
+  2. (Owed is now a tile.)
   3. Dumpsters (due back today or overdue).
   4. **Today's jobs**, headed with the date ("Monday, October 19"),
      including done ones (crossed out, as in the Jobs list), then **New
@@ -78,10 +80,16 @@ built.
 
 - **Sidebar:** Calendar replaces Today, first in the list (`calendar`
   symbol); Jobs changes to `list.bullet`.
-- **Middle column:** Apple's month picker at the top (the standard one; it
-  has no dots on the Mac), then the same sections as on iPhone for the
-  chosen day. A **Today** button above the month while another day is
-  chosen. Right-click a job for the same menu as in Jobs.
+- **Middle column:** a full-width month at the top (changed 2026-10-19,
+  Kyle: "calander is too small"; Apple's month picker was about 140 points
+  wide). Month and year with arrows for the previous and next month, the
+  weekday initials, and six weeks of days. The chosen day is a filled
+  circle in the accent colour; today's number is in the accent colour; days
+  of other months are dimmed and choosing one moves to its month. A dot
+  under a day means it has a job not done, as on iPhone. Then the same
+  sections as on iPhone for the chosen day. A **Today** button above the
+  month while another day is chosen. Right-click a job for the same menu as
+  in Jobs.
 - **Detail column:** the selected job, dumpster or quote, as elsewhere. An
   other-calendar event shows a simple read-only page: title, calendar,
   date and time, location and notes. To change it, use Apple's Calendar
@@ -185,7 +193,7 @@ built.
   wrapped in `UIViewRepresentable`, with `sizeThatFits` so it sits in a
   List row; dots through the delegate's `calendarView(_:decorationFor:)`
   returning `.default()`; call `reloadDecorations(forDateComponents:animated:)`
-  when jobs change. Mac month: `DatePicker` with `.graphical`.
+  when jobs change. Mac month: `MacMonthGrid` (`Ace/Mac/MacMonthGrid.swift`).
 - Tapping an other-calendar event on iPhone: `EKEventViewController` from
   EventKitUI, wrapped for SwiftUI, `allowsEditing = true` (EventKitUI is
   not available in a native Mac app, hence the read-only page there).

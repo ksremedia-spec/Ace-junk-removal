@@ -32,7 +32,7 @@ enum ClaudeError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missingKey:
-            return "No API key. Add it under Assistant › API key."
+            return "No API key. Add it in Settings › API key."
         case .badStatus(let code, let message):
             return "The Anthropic service answered with error \(code). \(message)"
         case .refused(let reason):
@@ -52,18 +52,33 @@ struct ClaudeClient {
     /// Sends the spoken note and the records, and gets back the plan: a
     /// reply, the actions to confirm and the questions to ask, as
     /// structured JSON in the shape of docs/assistant-actions.md.
-    static func plan(note: String, records: String, model: ClaudeModel, effort: ClaudeEffort) async throws -> (plan: AssistantPlan, seconds: Double, inputTokens: Int, outputTokens: Int) {
+    /// `directory` is the full customer list (AssistantRecords); it goes
+    /// first, in its own block marked for caching, so a second note within a
+    /// few minutes does not pay for 600 customers again.
+    static func plan(note: String, directory: String, records: String, model: ClaudeModel, effort: ClaudeEffort) async throws -> (plan: AssistantPlan, seconds: Double, inputTokens: Int, outputTokens: Int) {
         guard let apiKey = Keychain.read(Keychain.anthropicAPIKey), !apiKey.isEmpty else {
             throw ClaudeError.missingKey
         }
 
         let userText = "Spoken note:\n\(note)\n\nRecords:\n\(records)"
+        var userContent: [[String: Any]] = []
+        if !directory.isEmpty {
+            userContent.append([
+                "type": "text",
+                "text": directory,
+                "cache_control": ["type": "ephemeral"],
+            ])
+        }
+        userContent.append(["type": "text", "text": userText])
 
         let body: [String: Any] = [
             "model": model.rawValue,
             // Thinking tokens count toward this cap; leave plenty of room.
             "max_tokens": 16000,
             "system": AssistantPlan.systemPrompt(),
+            // Asked for explicitly: in Oct 2026 tests Sonnet 5.5 sometimes
+            // skipped thinking and returned every field empty.
+            "thinking": ["type": "adaptive"],
             "output_config": [
                 "effort": effort.rawValue,
                 "format": [
@@ -74,7 +89,7 @@ struct ClaudeClient {
             "messages": [
                 [
                     "role": "user",
-                    "content": userText,
+                    "content": userContent,
                 ],
             ],
         ]
@@ -86,6 +101,12 @@ struct ClaudeClient {
         request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         request.setValue(apiVersion, forHTTPHeaderField: "anthropic-version")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        #if DEBUG
+        if let sent = request.httpBody {
+            let stamp = Int(Date().timeIntervalSince1970 * 1000)
+            try? sent.write(to: FileManager.default.temporaryDirectory.appendingPathComponent("assistant-request-\(stamp).json"))
+        }
+        #endif
 
         let started = Date()
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -114,6 +135,14 @@ struct ClaudeClient {
         guard let text = content.first(where: { ($0["type"] as? String) == "text" })?["text"] as? String else {
             throw ClaudeError.unreadable("No text in the reply.")
         }
+
+        #if DEBUG
+        // Debug builds only: the last note and Claude's raw answer, in the
+        // app's own temporary folder, to see what came back when a screen
+        // looks wrong. Never in a build given to Ashley or Alex.
+        let debugFile = FileManager.default.temporaryDirectory.appendingPathComponent("assistant-last.txt")
+        try? ("NOTE:\n" + note + "\n\nANSWER:\n" + text).write(to: debugFile, atomically: true, encoding: .utf8)
+        #endif
 
         var plan: AssistantPlan
         do {

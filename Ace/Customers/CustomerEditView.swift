@@ -26,20 +26,25 @@ struct CustomerEditView: View {
     var body: some View {
         Form {
             Section {
-                TextField("Name", text: $form.name)
-                TextField("Phone", text: $form.phone)
+                TextField("Name", text: $form.name, prompt: Text("Full name or business"))
+                TextField("Phone", text: $form.phone, prompt: Text("508-555-0123"))
                     .phoneKeyboard()
-                TextField("Address", text: $form.address, axis: .vertical)
+                TextField("Address", text: $form.address, prompt: Text("Street and town"), axis: .vertical)
             }
             Section("Notes") {
                 TextEditor(text: $form.notes)
+                    .scrollContentBackground(.hidden)
                     .frame(minHeight: 80)
             }
             if customer != nil {
                 Section {
-                    Button("Delete customer", role: .destructive) {
+                    Button(role: .destructive) {
                         confirmDelete = true
+                    } label: {
+                        Label("Delete customer", systemImage: "trash")
+                            .foregroundStyle(.red)
                     }
+                    .buttonStyle(.borderless)
                 }
             }
         }
@@ -59,7 +64,7 @@ struct CustomerEditView: View {
         }
         .sensoryFeedback(.success, trigger: saved)
         #if os(macOS)
-        .frame(minWidth: 480, minHeight: 420)
+        .frame(minWidth: 480, minHeight: 360)
         #endif
     }
 

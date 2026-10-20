@@ -27,7 +27,7 @@ struct QuotesView: View {
         List {
             Section {
                 Picker("Show", selection: $filter) {
-                    ForEach(QuoteStatus.allCases) { status in
+                    ForEach(QuoteStatus.listed) { status in
                         Text(status.rawValue).tag(status)
                     }
                 }
@@ -53,9 +53,13 @@ struct QuotesView: View {
                     }
                 }
                 if !waiting.isEmpty {
-                    Section("Waiting") {
+                    Section {
                         ForEach(waiting) { quote in
                             row(quote)
+                        }
+                    } header: {
+                        if QuoteFeatures.followUps {
+                            Text("Waiting")
                         }
                     }
                 }

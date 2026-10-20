@@ -12,6 +12,18 @@ enum QuoteStatus: String, CaseIterable, Codable, Identifiable {
     case lost = "Lost"
 
     var id: String { rawValue }
+
+    /// The choices above the Quotes list. Lost quotes are not listed (Kyle,
+    /// 2026-10-19: "lose the lost quotes tab"); Mark Lost takes a quote off
+    /// the Open list.
+    static let listed: [QuoteStatus] = [.open, .booked]
+}
+
+/// Quote follow-ups (call-back days) are switched off for now (Kyle,
+/// 2026-10-19: "get rid of quotes follow up for now"). The data stays, so
+/// setting this back to true brings them back everywhere.
+enum QuoteFeatures {
+    static let followUps = false
 }
 
 @Model
@@ -56,7 +68,7 @@ final class Quote {
     }
 
     var jobType: JobType {
-        get { JobType(rawValue: jobTypeRaw) ?? .other }
+        get { JobType(stored: jobTypeRaw) }
         set { jobTypeRaw = newValue.rawValue }
     }
 
@@ -101,7 +113,7 @@ extension Quote {
 
     /// Open, with a follow-up day of today or earlier.
     func isFollowUpDue(today: Date = Dates.startOfToday()) -> Bool {
-        guard status == .open, let followUpOn else { return false }
+        guard QuoteFeatures.followUps, status == .open, let followUpOn else { return false }
         return Calendar.current.startOfDay(for: followUpOn) <= today
     }
 
@@ -119,7 +131,7 @@ extension Quote {
     /// left off once the quote is booked or lost.
     func datesText(today: Date = Dates.startOfToday()) -> String {
         var text = "Quoted " + Dates.shortDay(quotedOn)
-        if status == .open, let followUp = followUpText(today: today) {
+        if QuoteFeatures.followUps, status == .open, let followUp = followUpText(today: today) {
             text += " · " + followUp
         }
         return text

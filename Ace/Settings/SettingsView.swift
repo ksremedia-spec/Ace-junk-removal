@@ -51,8 +51,11 @@ struct SettingsView: View {
             }
 
             Section {
-                LabeledContent("Rate per ton over") {
-                    TextField("Dollars", text: $rateText, prompt: Text("Dollars"))
+                // The field's own label used to show again mid-row ("Rate per
+                // ton over  Dollars  125"); the row now reads as one line.
+                LabeledContent("Overweight charge, $ per ton") {
+                    TextField("", text: $rateText, prompt: Text("125"))
+                        .labelsHidden()
                         .multilineTextAlignment(.trailing)
                         .decimalKeyboard()
                         .onChange(of: rateText) { _, newValue in

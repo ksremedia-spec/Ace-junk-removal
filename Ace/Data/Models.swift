@@ -55,10 +55,24 @@ enum JobType: String, CaseIterable, Codable, Identifiable {
     case dumpsterDropOff = "Dumpster drop-off"
     case dumpsterPickup = "Dumpster pickup"
     case dumpsterSwap = "Dumpster swap"
-    case estimate = "Estimate"
+    /// A visit to look at the work and give a price. The office calls it a
+    /// quote, never an estimate (Kyle, Oct 20); stored before that as
+    /// "Estimate", which `init(stored:)` still reads.
+    case estimate = "Quote visit"
     case other = "Other"
 
     var id: String { rawValue }
+
+    /// Reads a stored type, including names used by older versions.
+    init(stored: String) {
+        if let type = JobType(rawValue: stored) {
+            self = type
+        } else if stored.caseInsensitiveCompare("Estimate") == .orderedSame {
+            self = .estimate
+        } else {
+            self = .other
+        }
+    }
 }
 
 enum PaymentType: String, CaseIterable, Codable, Identifiable {
@@ -133,7 +147,7 @@ final class Job {
     }
 
     var jobType: JobType {
-        get { JobType(rawValue: jobTypeRaw) ?? .other }
+        get { JobType(stored: jobTypeRaw) }
         set { jobTypeRaw = newValue.rawValue }
     }
 
@@ -144,7 +158,7 @@ final class Job {
 
     /// "Fri, Oct 24, 9:00 to 11:00 AM", "Fri, Oct 24, 9:00 AM" or "Fri, Oct 24".
     var whenText: String {
-        let day = scheduledAt.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
+        let day = Dates.shortDay(scheduledAt)
         return hasTime ? day + ", " + timeRangeText : day
     }
 
@@ -319,14 +333,23 @@ extension Customer {
         jobs.map(\.scheduledAt).min()
     }
 
-    /// The latest job on file, upcoming ones included.
+    /// The latest job that has happened (today or earlier). Upcoming work
+    /// is `nextJobDate`.
     var lastJobDate: Date? {
-        jobs.map(\.scheduledAt).max()
+        let end = Dates.startOfToday().addingTimeInterval(86_400)
+        return jobs.map(\.scheduledAt).filter { $0 < end }.max()
     }
 
-    /// Every job's price added up, paid or not.
+    /// The soonest job still to come that is not done.
+    var nextJobDate: Date? {
+        let today = Dates.startOfToday()
+        return jobs.filter { !$0.isDone && $0.scheduledAt >= today }.map(\.scheduledAt).min()
+    }
+
+    /// Done work's prices added up, paid or not. Work still to come is not
+    /// billed yet.
     var totalBilled: Double {
-        jobs.reduce(0) { $0 + ($1.price ?? 0) }
+        jobs.filter(\.isDone).reduce(0) { $0 + ($1.price ?? 0) }
     }
 
     /// Prices of done jobs that have not been paid.
@@ -386,11 +409,12 @@ extension Job {
         isDone && !isPaid ? (price ?? 0) : 0
     }
 
-    /// Done and not paid, or past its day with a price and not paid.
+    /// Done, priced and not paid: the same rule as `owedAmount`, so the
+    /// Unpaid list, its sidebar count and the Owed figure always agree.
+    /// (Until Oct 20 2026 this also counted done jobs with no price and past
+    /// jobs never marked done; those belong under "Not marked done".)
     func isUnpaid(asOf today: Date = Dates.startOfToday()) -> Bool {
-        guard !isPaid else { return false }
-        if isDone { return true }
-        return price != nil && scheduledAt < today
+        owedAmount > 0
     }
 
     /// Removes the job's event from the Calendar for Jobs, then deletes the

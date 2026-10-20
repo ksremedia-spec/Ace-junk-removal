@@ -34,6 +34,71 @@ not checked), **Unknown** (with how to find out).
 
 ## 2. Where things stand
 
+- **Oct 20, early morning: full audit of the Mac app and the fixes from it.**
+  Kyle: judge the app start to finish; Mac only ("don't worry about any
+  iPhone screens let's get the Mac app right first"). 12 reviewers read the
+  code and 23 Mac screenshots (`docs/review-2026-10-19/`, not committed);
+  262 findings (`scratchpad`, summarised here). The verify and judge stages
+  hit Kyle's plan limit, so findings were checked by hand as they were fixed.
+  Nothing committed. Fixed and seen on the Mac unless marked:
+  - Money: Unpaid list/count now use the same rule as Owed (done, priced,
+    not paid); done jobs with no price and past jobs not marked done no longer
+    count. Billed and Last on a customer count only done/past work, plus
+    "Next" for booked work. Prices read the first number only ("300-350" was
+    $300,350). Dates show the year when it is not this year. (Built; the
+    Unpaid list itself not re-counted on screen.)
+  - Safety: right-click Delete Job / Delete Quote and Mark Lost ask first;
+    lost quotes show under "Lost" when a search matches them. Job and quote
+    pages keep unsaved edits when another row is clicked (saved on leaving,
+    like Mail/Notes), Save is greyed out until something changes, ⌘S saves.
+  - Calendar: month pinned above the list (never scrolls away, reopens in
+    view), Today in the month header (greyed when on today), ⌘T follows,
+    tighter day cells, today moves on at midnight, VoiceOver says "today".
+  - Look: one colour per meaning (green good, orange owed, red overdue,
+    grey done; blue/indigo only job and dumpster types), deeper light-mode
+    status colours for contrast, quiet grey initials circles, smaller
+    badges, readable address lines, Unpaid rows show how many days owed
+    instead of repeating "Done · Unpaid", Booked quotes without the pill,
+    header Done/Paid buttons neutral until on, overlap alert "Save anyway" /
+    "Change the time", hints in empty fields, Notes boxes match the form,
+    dumpster Choose… is a real button, Settings rate row reads
+    "Overweight charge, $ per ton".
+  - Toolbar: + is a menu (job, quote, customer), a Settings gear, tooltips;
+    search clears when the section changes. Placeholder app icon (white
+    truck on teal) in every size; swap for a real logo.
+  - Assistant (tested with Kyle's key, Sonnet, typed and spoken notes):
+    - Sends the whole customer directory (cached block) instead of at most
+      six named customers; jobs two weeks back to two months ahead; years
+      on dates. "who lives at 63 Locust St in Taunton" now answers (First
+      Parish Church of Raynham). Spec, app and demo prompt in step.
+    - Root cause of "it doesn't understand": Sonnet 5.5 without an explicit
+      thinking setting returned forms with every field empty (verified:
+      byte-identical requests, Haiku filled them, Sonnet did not even at
+      high effort). Now sends `thinking: {type: "adaptive"}`; verified Sonnet
+      then fills them. Safety net: an empty action is re-asked once on Haiku.
+    - "Estimate" renamed "Quote visit" (Kyle: "They refer to them as
+      quotes"); old stored "Estimate" reads as Quote visit. "Schedule a
+      quote … tomorrow at 3" books a Quote visit on that day (verified). No
+      job-type question, no price question on quote visits, no "is this a
+      new customer" question; same name + same address = same customer.
+    - Type a note on the Mac; Send again keeps the note after an error; a
+      missing key shows up front; Mac wording.
+    - Save questions are "Save as is" / "Fix it" (Yes used to save without
+      the thing asked about).
+    - Live transcription with WhisperKit's streaming transcriber: words show
+      while talking, then one full pass for accuracy. Verified with the Mac
+      speaking a note: two actions found (Linda Johnson done/paid cash; new
+      junk removal for Paul Silva tomorrow, $400). Whisper wrote "at ten" as
+      "$10"; the prompt now says a time can come out as money.
+    - Debug builds only: `tmp/assistant-last.txt` and
+      `tmp/assistant-request-*.json` in the app container hold the last note,
+      answer and request. Not in release builds.
+  - Not done, for Kyle (see the proposals in the chat of Oct 20): week view
+    in the empty Calendar detail; billing the overweight charge (it is
+    calculated and then goes nowhere); Undo; selecting what the Assistant
+    saved; Debug section and model/effort settings before handing over;
+    keyboard Delete and Mark done shortcuts; duplicate-customer check.
+
 - **The app is written and compiles, but has never run on a real iPhone or
   Mac.**
   - Verified: GitHub's build check compiles it for iPhone and Mac with
@@ -43,6 +108,188 @@ not checked), **Unknown** (with how to find out).
     GitHub's Macs, to take the screenshots in `docs/screenshots/`. The last
     screenshot run was the morning of Oct 19. Quotes, end times and the
     Calendar tab came after it and have never been seen running anywhere.
+- **Oct 19 evening, first build on Kyle's Mac: the Mac app builds and opens.**
+  - Verified: Xcode 27.1 (27A9275, `~/Desktop/Xcode 2.app`, the Mac's
+    default) on macOS 26.6.1, Apple silicon. WhisperKit resolved
+    (argmax-oss-swift 1.1.1). `xcodebuild` for macOS: BUILD SUCCEEDED, no
+    errors, one deprecation warning (`Text` + `Text` in
+    `Speech/SpeechTestView.swift:175`).
+  - Signed "to run locally" (ad hoc, command-line overrides only; the
+    project file and Kyle's developer account were not changed). Built into
+    the session's scratch folder, not the repo.
+  - The window opened on Calendar in dark mode: sidebar Calendar, Jobs
+    (Unpaid, Done), Quotes, Customers, Dumpsters; October 2026 with the
+    19th marked; "0 jobs today", "No dumpsters", "No jobs today", New job,
+    Tomorrow. No sample data loaded.
+  - The Assistant sheet was open on first look, showing "Preparing the
+    speech model". No launch option was passed, and the code only opens it
+    from the toolbar button, ⇧⌘A or `-open assistant`. Unknown whether
+    Kyle clicked it.
+  - The API key can't be saved in this ad-hoc Mac build. The screen is
+    there (Ace › Settings… › API key) and opens. Verified with a separate
+    ad-hoc-signed probe using the same Keychain call: `SecItemAdd` with
+    `kSecUseDataProtectionKeychain` returns -34018, "A required entitlement
+    isn't present". Assumed the same in Ace (its own footer warns of it); not
+    tried in Ace, because automation can't type into the password field.
+    Signing with Kyle's team alone does NOT fix it (verified: `DEVELOPMENT_TEAM
+    = 6YCK9MG5RD` set in the project, Mac build signed with team 6YCK9MG5RD,
+    no provisioning profile embedded, and the probe signed with his Apple
+    Development certificate still gets -34018). The data-protection keychain
+    needs an application identifier from a provisioning profile. Options put
+    to Kyle: add `keychain-access-groups` to `Ace/Ace-macOS.entitlements` so
+    Xcode makes a Mac development profile (registers the Mac as a device), or
+    drop `kSecUseDataProtectionKeychain` on macOS in `Support/Keychain.swift`.
+    Kyle chose the first. Done: `keychain-access-groups` =
+    `$(AppIdentifierPrefix)com.acejunkremoval.app` added to
+    `Ace/Ace-macOS.entitlements`; built with `-allowProvisioningUpdates
+    -allowProvisioningDeviceRegistration`. Verified: Xcode used its managed
+    "Mac Team Provisioning Profile: *" (team wildcard, expires 2027-10-19),
+    this Mac is in it, and the app carries application-identifier
+    `6YCK9MG5RD.com.acejunkremoval.app` and that keychain group. Kyle then
+    adds his key himself (Ace › Settings… › API key). Verified Oct 19: the
+    screen then read "A key is stored on this device." with Remove key, so
+    the Keychain save works in the team-signed Mac build.
+  - Kyle, Oct 19: "lets just work on mac app 4 now". The iPhone waits.
+  - Sample data loaded by Kyle. Verified on the Mac: the Assistant's full
+    chain ran with his key. A note became a New Job form (John Smith, 9
+    Radcliffe Lane, Junk removal, Oct 30, $600) with Claude's flags: new
+    customer?, no phone, no town, no time. Whether he spoke or typed it:
+    not yet asked.
+  - Kyle's feedback on that form (not built yet, waiting on which first):
+    1. "when i enter incomplete data it should be an esy click and type to
+       fix." Found: every field is already a text field, but on the Mac an
+       empty one shows nothing to click; the Save questions are Yes/No,
+       and for Claude's own wording ("Do you have a phone number?") Yes
+       saves without it while No just stops, pointing nowhere. Proposed:
+       hints in empty fields, a question line that puts the cursor in its
+       field, and "Fix it" / "Save without it" buttons.
+    2. "or when i say incomplete stuff": no way to add a missing piece by
+       voice from the form; only Start over. Proposed: a speak-to-fill
+       button that updates only the fields said. Changes the Assistant
+       contract (`docs/assistant-actions.md` first).
+    3. "if i say a name thats not in the system - assume its new". The
+       app already creates a new customer silently; the question came from
+       Claude. Proposed: one line in the system prompt (spec first, then
+       `AssistantPlan.swift`, then sync the demo) and a plain "New
+       customer." line on the form. Trade-off: a misheard existing name
+       makes a duplicate (a phone match still links correctly).
+       Refined by Kyle: "check name for previous address also so if name
+       and address match its the same customer - if it oesnt assume new".
+       Today `JobReviewView.matchingCustomer` links on the note's
+       reference, a phone match, or the exact name alone. New rule: name
+       AND address (house number + street word, suffix and town ignored)
+       → same customer; otherwise new. Open: does a phone match still
+       link on its own?
+    4. "calander is too small on open to": on the Mac the month is the
+       standard graphical `DatePicker`, about 140pt wide in a column twice
+       that. Options put to Kyle: a full-size month grid in the middle
+       column built from standard buttons, with job dots (bends the "no
+       custom-drawn controls" rule and `calendar-tab.md`), or scale up the
+       standard picker (keeps the rule; no dots; click accuracy unknown).
+       Kyle chose the full-size month, then: "disregard standard control
+       rules. make app look slick - i was only trying to avoid an 'AI'
+       look." CLAUDE.md design rules, `decisions.md` and `calendar-tab.md`
+       updated. Built: `Ace/Mac/MacMonthGrid.swift` (month and year, arrows,
+       weekday row, six weeks, accent circle on the chosen day, accent
+       number for today, hover highlight, dot under days with open jobs),
+       used by `MacCalendarList`. Verified: the Mac build succeeds with no
+       errors or warnings from it. Not yet seen on screen.
+    5. "paid customrs are showing crossed out names": `JobRow` strikes
+       through every done job's name (spec: "done ones crossed out"), so the
+       Unpaid list (all done, not paid) reads like cancelled jobs.
+    6. "app overall spacing looks not used correctly or frankly looks like
+       shit". Audit from the Mac screens: detail pages are stock grouped
+       Forms stretched edge to edge (label far left, value far right, empty
+       middle), no header saying whose job or what it's worth; a black
+       Notes box inside a grey panel; Done and Delete job each alone in a
+       panel at the bottom, Delete not red; list rows cramped, tiny grey
+       secondary lines, status as coloured words; the Calendar column's
+       figures are plain text lines; Save sits in the shared toolbar.
+       Proposed design pass (waiting on Kyle): roomier rows with status
+       pills instead of strikethrough, detail pages with a header (name,
+       type and date, big price, pills) and a centred column of limited
+       width, matched field colours, actions grouped with Delete in red,
+       figure tiles on Calendar, one spacing scale.
+    7. "i just created a quote using the ai assistant and it dint update
+       the quoptes tab". Verified in a read-only copy of the Mac store
+       (`~/Library/Containers/com.acejunkremoval.app/.../default.store`):
+       first reading said nothing was saved, but that query was wrong
+       (compared a stored number with text). Corrected reading: at 6:07 PM
+       the Assistant saved a new customer Tom Sousa (13 Main Street,
+       Taunton, MA, no phone) and a JOB, type Estimate, today 7:00 PM, no
+       price, note "Needs a quote today by 7 PM". Not a quote: by the
+       prompt, new_quote is "a price was given" and an on-site quote visit
+       is an Estimate job. So the save works; the open question for Kyle
+       is what "needs a quote" with no price should become. Settled by
+       Kyle: "yes so it handled correctly". No change.
+    8. "lose the lost quotes tab" and "get rid of quotes follow up for now":
+       done. `QuoteStatus.listed` = Open, Booked; `QuoteFeatures.followUps =
+       false` hides follow-up rows, sections, the Calendar row and Call
+       back, and stops new quotes getting a call-back day (`quotes.md`
+       updated). Verified: Mac build and an iPhone Simulator compile both
+       succeed, no errors or new warnings. Not yet seen on screen.
+  - Seen on screen after a restart (Mac, dark mode, sample data):
+    - The new month: "October 2026" with arrows, SUN…SAT, six weeks, today
+      (19) a blue circle, dots under days with open jobs, hover circle.
+      Choosing the 22nd (pressed through accessibility) worked: blue
+      circle on 22, today's number in blue, a Today button above, that
+      day's jobs and New job. An automated raw mouse click on a day scrolled
+      the list instead; not yet known whether a real mouse click works.
+      Small thing seen: the Today button appearing pushes the month down.
+    - Quotes: only Open and Booked; no Follow up or Waiting sections; rows
+      read "Quoted Tue, Oct 13" with no follow-up. Calendar's figures line
+      no longer mentions quotes.
+  - **Design pass (Oct 19 evening, Kyle away: "think, and drastically
+    change the look and design of the app, work rebuild and test as
+    needed").** Nothing committed; waiting for Kyle to look.
+    - New: `Ace/Support/Design.swift` (spacing, colour meanings, TypeBadge,
+      StatusPill, JobPills, StatTile/StatGrid, Avatar, action buttons,
+      DetailHeader, EmptyDetail, readable width), `Calendar/TodayFigures.swift`,
+      `Customers/CustomerRow.swift`. Accent colour asset set to a deep teal.
+    - Job rows: type badge, time first then type, price and Done / Paid /
+      Unpaid pills; no strikethrough (done jobs get a grey badge). Day-grouped
+      lists no longer repeat the date. Rows on a customer's page lead with the
+      job type.
+    - Job page: header card (badge, name, type, day and time, address, big
+      price, pills incl. Overlaps) with Mark done / Mark paid (save at once,
+      like the right-click menu), Call, Directions; Notes box matches the
+      form; Delete in red; the old Done toggle row is gone (the header button
+      replaces it).
+    - Calendar (iPhone and Mac): four tiles (Today, Owed, Dumpsters, Quotes)
+      replace the figure lines and the Owed row.
+    - Customers: initials circles in the list; page header with Call,
+      Directions, New job and three tiles (Jobs, Billed with per-job average,
+      Owed). Dumpsters: numbered badge in the status colour, status pill,
+      "Back Sat, Oct 17", size on the second line; page header; Mark picked
+      up / dropped off as prominent buttons. Quotes: type badge, details,
+      price; page header with Book job and Mark lost (or Reopen).
+    - Mac: sidebar counts (Unpaid, open Quotes, Dumpsters due or overdue),
+      empty detail pages with a symbol and help line, detail pages at most
+      720 points wide, list column a little wider, pills and coloured text
+      turn white on a selected row.
+    - Verified: Mac build and an iPhone Simulator build succeed with no
+      errors and no new warnings; `check-contract.py` still identical. Seen on
+      screen on the Mac (dark, and light via `-NSRequiresAquaSystemAppearance
+      YES`): Calendar, Jobs, a job page, Mark done and back (Unpaid count
+      31 → 32 → 31), Customers and a customer page, Dumpsters and a dumpster
+      page, Quotes and a quote page. Seen in the iPhone 17 Pro Max simulator
+      (iOS 26.5, light): every tab and the New Job form. Not seen: the
+      iPhone job, customer, dumpster and quote pages (the simulator tool
+      needs Kyle's permission to tap), iPhone dark mode, the largest text
+      sizes, the Assistant screens (not restyled).
+    - Pictures: `docs/design-pass/mac-2026-10-19.png` (job page dark,
+      Calendar light, Dumpsters light, quote page dark) and
+      `docs/design-pass/iphone-2026-10-19.png` (the five tabs, light).
+    - The simulator got its own sample data (`-sampledata`); the Mac's data
+      is the sample data Kyle loaded, unchanged by the checks.
+  - Also verified on the Mac with sample data: the overlap note ("Overlaps
+    Linda Johnson, Junk removal, 9:00 AM to 12:00 PM." on Mark Pereira's
+    11:00 job), and Today's figures line, Owed, Dumpsters (Overdue, Due
+    today) and today's jobs.
+  - Not done yet: the iPhone. It needs the signing team set (Kyle's paid
+    team "Kyle Silva", 6YCK9MG5RD, is signed in to Xcode; `DEVELOPMENT_TEAM`
+    is empty in the project) and the bundle ID `com.acejunkremoval.app`
+    registered on his account, which changes his developer account.
 - **The clickable browser demo is up to date** (version 21, with the
   Calendar tab). It is what the client has been shown. Verified: 203
   automatic checks pass in a test browser (not on a phone).

@@ -47,6 +47,19 @@ final class WhisperKitEngine {
     private(set) var loadedModel: String?
     private var whisperKit: WhisperKit?
 
+    // MARK: Live transcription (Kyle, Oct 20: "live transcription ... when
+    // talking into the app ... It should be using the WhisperKit.")
+
+    /// Words WhisperKit has settled on so far while listening.
+    private(set) var liveConfirmed = ""
+    /// Words still being worked out; they may change as more is heard.
+    private(set) var liveTentative = ""
+    private(set) var isListening = false
+    /// One streamer per loaded model (WhisperKit issue #517: recreating it
+    /// repeatedly grows memory).
+    private var streamer: AudioStreamTranscriber?
+    private var streamTask: Task<Void, Never>?
+
     struct Result {
         var text: String
         /// Wall-clock seconds from handing over the file to getting the text back.
@@ -70,6 +83,7 @@ final class WhisperKitEngine {
         }
         if loadedModel == model, whisperKit != nil { return }
         whisperKit = nil
+        streamer = nil
         loadedModel = nil
         do {
             var folder = Self.localFolder(for: model)
@@ -104,6 +118,68 @@ final class WhisperKitEngine {
         } catch {
             state = .failed(error.localizedDescription)
         }
+    }
+
+    /// Starts listening on the microphone and filling `liveConfirmed` and
+    /// `liveTentative` as words are recognised. Needs a loaded model.
+    func startListening() throws {
+        guard let kit = whisperKit, let tokenizer = kit.tokenizer else { throw EngineError.notLoaded }
+        guard !isListening else { return }
+        liveConfirmed = ""
+        liveTentative = ""
+        kit.audioProcessor.purgeAudioSamples(keepingLast: 0)
+        if streamer == nil {
+            streamer = AudioStreamTranscriber(
+                audioEncoder: kit.audioEncoder,
+                featureExtractor: kit.featureExtractor,
+                segmentSeeker: kit.segmentSeeker,
+                textDecoder: kit.textDecoder,
+                tokenizer: tokenizer,
+                audioProcessor: kit.audioProcessor,
+                decodingOptions: DecodingOptions(language: "en"),
+                stateChangeCallback: { [weak self] _, new in
+                    let confirmed = Self.clean(new.confirmedSegments.map(\.text).joined(separator: " "))
+                    let tentative = Self.clean(new.unconfirmedSegments.map(\.text).joined(separator: " "))
+                    Task { @MainActor in
+                        guard let self, self.isListening else { return }
+                        self.liveConfirmed = confirmed
+                        self.liveTentative = tentative
+                    }
+                }
+            )
+        }
+        isListening = true
+        let active = streamer
+        streamTask = Task.detached {
+            try? await active?.startStreamTranscription()
+        }
+    }
+
+    /// Stops listening and transcribes everything that was heard in one
+    /// full pass, which is more accurate than the live words.
+    func stopListening() async throws -> Result {
+        guard let kit = whisperKit else { throw EngineError.notLoaded }
+        isListening = false
+        await streamer?.stopStreamTranscription()
+        streamTask = nil
+        let samples = Array(kit.audioProcessor.audioSamples)
+        let started = Date()
+        let results = try await Self.run(kit, samples: samples)
+        let text = results
+            .map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        let final = Self.clean(text).isEmpty ? Self.clean(liveConfirmed + " " + liveTentative) : Self.clean(text)
+        return Result(text: final, seconds: Date().timeIntervalSince(started), audioSeconds: Double(samples.count) / 16_000)
+    }
+
+    /// WhisperKit's segment text can carry its own markers ("<|0.00|>",
+    /// "[BLANK_AUDIO]"); people should only see words.
+    nonisolated static func clean(_ text: String) -> String {
+        text.replacing(/<\|[^|]*\|>/, with: "")
+            .replacing(/\[[A-Z_ ]+\]/, with: "")
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
     }
 
     /// Transcribes one audio file. WhisperKit reads WAV, M4A and most other
@@ -172,6 +248,10 @@ final class WhisperKitEngine {
 
     nonisolated private static func run(_ kit: WhisperKit, path: String) async throws -> [TranscriptionResult] {
         try await kit.transcribe(audioPath: path, decodeOptions: DecodingOptions(language: "en"))
+    }
+
+    nonisolated private static func run(_ kit: WhisperKit, samples: [Float]) async throws -> [TranscriptionResult] {
+        try await kit.transcribe(audioArray: samples, decodeOptions: DecodingOptions(language: "en"))
     }
 
     enum EngineError: LocalizedError {
