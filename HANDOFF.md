@@ -64,8 +64,13 @@ not checked), **Unknown** (with how to find out).
     dumpster Choose… is a real button, Settings rate row reads
     "Overweight charge, $ per ton".
   - Toolbar: + is a menu (job, quote, customer), a Settings gear, tooltips;
-    search clears when the section changes. Placeholder app icon (white
-    truck on teal) in every size; swap for a real logo.
+    search clears when the section changes. App icon: Ace's own spade
+    emblem, white on near-black (Kyle: "pull the ace junk removal logo
+    online - clean it up and add"). Source: the header logo on
+    acejunkremovalma.com (`AceJunkRemoval_horizontal-logo_white.png`,
+    4484 × 1416), emblem cut out without the words; both kept in
+    `docs/brand/`. Their round logo was only 274 × 238 with tiny text, too
+    small for an icon.
   - Assistant (tested with Kyle's key, Sonnet, typed and spoken notes):
     - Sends the whole customer directory (cached block) instead of at most
       six named customers; jobs two weeks back to two months ahead; years
