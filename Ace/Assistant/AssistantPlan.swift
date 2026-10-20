@@ -10,6 +10,14 @@ struct AssistantPlan: Codable {
     var actions: [AssistantAction]
     var issues: [PlanIssue]
 
+    /// Questions about actions that are not in the list: the answer was cut
+    /// short. Seen from Sonnet 5.5 on Oct 20 2026, twice on one note: four
+    /// people's hours, one action returned, questions about the third and
+    /// fourth.
+    var isMissingActions: Bool {
+        issues.contains { $0.action >= actions.count || $0.action < 0 }
+    }
+
     /// Gives every action its position in the list, which is what the
     /// issues point at and what the screens use to tell actions apart.
     mutating func numberActions() {
@@ -49,6 +57,8 @@ struct AssistantAction: Codable, Identifiable {
     var newAddress = ""
     var contact = ""
     var message = ""
+    var workerName = ""
+    var hours = ""
 
     /// Position in the plan, set after decoding. Not part of the JSON.
     var index = 0
@@ -60,6 +70,7 @@ struct AssistantAction: Codable, Identifiable {
         case newDate, newTime, dumpsterNumber, otherDumpsterNumber, actualTons, agreedTons, dueBack
         case followUp, quoteStatus, note
         case newName, newPhone, newAddress, contact, message
+        case workerName, hours
     }
 
     enum ActionType: String, CaseIterable {
@@ -76,6 +87,7 @@ struct AssistantAction: Codable, Identifiable {
         case dumpsterNote = "dumpster_note"
         case newQuote = "new_quote"
         case updateQuote = "update_quote"
+        case logHours = "log_hours"
 
         /// The screen title.
         var title: String {
@@ -93,6 +105,7 @@ struct AssistantAction: Codable, Identifiable {
             case .dumpsterNote: return "Dumpster Note"
             case .newQuote: return "New Quote"
             case .updateQuote: return "Update Quote"
+            case .logHours: return "Hours"
             }
         }
 
@@ -115,6 +128,7 @@ struct AssistantAction: Codable, Identifiable {
             case .dumpsterNote: return ["dumpsternumber", "ref", "note"]
             case .newQuote: return ["customername", "phone", "address", "jobtype", "price", "note", "followup"]
             case .updateQuote: return ["ref", "price", "followup", "note", "date", "time", "endtime", "paymenttype", "paid"]
+            case .logHours: return ["ref", "workername", "hours", "date"]
             }
         }
     }
@@ -128,7 +142,7 @@ struct AssistantAction: Codable, Identifiable {
     var isEmptyShell: Bool {
         [ref, customerName, phone, address, jobType, date, time, endTime, newDate, newTime, price, paymentType, paid, done,
          dumpsterNumber, otherDumpsterNumber, actualTons, agreedTons, dueBack, followUp, quoteStatus, note,
-         newName, newPhone, newAddress, contact, message]
+         newName, newPhone, newAddress, contact, message, workerName, hours]
             .allSatisfy { $0.trimmingCharacters(in: .whitespaces).isEmpty }
     }
 
@@ -149,7 +163,7 @@ struct AssistantAction: Codable, Identifiable {
             ("actualTons", actualTons), ("agreedTons", agreedTons), ("dueBack", dueBack),
             ("followUp", followUp), ("quoteStatus", quoteStatus), ("note", note),
             ("newName", newName), ("newPhone", newPhone), ("newAddress", newAddress),
-            ("contact", contact), ("message", message),
+            ("contact", contact), ("message", message), ("workerName", workerName), ("hours", hours),
         ]
         return all.filter { !$0.1.isEmpty }.map { Field(name: $0.0, value: $0.1) }
     }
@@ -191,6 +205,8 @@ extension AssistantAction {
         newAddress = text(.newAddress)
         contact = text(.contact)
         message = text(.message)
+        workerName = text(.workerName)
+        hours = text(.hours)
         normalize()
     }
 
@@ -287,8 +303,8 @@ extension AssistantPlan {
     }
 
     private static let actionProperties: [String: Any] = [
-        "type": oneOf(["new_job", "update_job", "cancel_job", "new_customer", "update_customer", "contact_customer", "dumpster_dropoff", "dumpster_pickup", "dumpster_swap", "update_rental", "dumpster_note", "new_quote", "update_quote"]),
-        "ref": string("Reference of the record this action is about, from the records list (C4, J12, Q2, D3), or empty."),
+        "type": oneOf(["new_job", "update_job", "cancel_job", "new_customer", "update_customer", "contact_customer", "dumpster_dropoff", "dumpster_pickup", "dumpster_swap", "update_rental", "dumpster_note", "new_quote", "update_quote", "log_hours"]),
+        "ref": string("Reference of the record this action is about, from the records list (C4, J12, Q2, D3, W2), or empty."),
         "customerName": string(),
         "phone": string("Digits with dashes, like 508-555-0123, or empty."),
         "address": string("Street address with house number, town and state, or empty."),
@@ -315,15 +331,17 @@ extension AssistantPlan {
         "newAddress": string(),
         "contact": oneOf(["call", "text", "directions", ""]),
         "message": string("For a text: the message to send."),
+        "workerName": string("For log_hours: the crew member's name as said, or empty."),
+        "hours": string("For log_hours: hours worked as digits, like 8 or 7.5, 0 for a day off, or empty."),
     ]
 
     private static let actionRequired: [String] = [
-        "type", "ref", "customerName", "phone", "address", "jobType", "date", "time", "endTime", "price", "paymentType", "paid", "done", "newDate", "newTime", "dumpsterNumber", "otherDumpsterNumber", "actualTons", "agreedTons", "dueBack", "followUp", "quoteStatus", "note", "newName", "newPhone", "newAddress", "contact", "message",
+        "type", "ref", "customerName", "phone", "address", "jobType", "date", "time", "endTime", "price", "paymentType", "paid", "done", "newDate", "newTime", "dumpsterNumber", "otherDumpsterNumber", "actualTons", "agreedTons", "dueBack", "followUp", "quoteStatus", "note", "newName", "newPhone", "newAddress", "contact", "message", "workerName", "hours",
     ]
 
     private static let issueProperties: [String: Any] = [
         "action": integer("Position of the action in the list, 0 for the first."),
-        "field": oneOf(["customerName", "phone", "address", "jobType", "date", "time", "endTime", "price", "paymentType", "paid", "done", "newDate", "newTime", "dumpsterNumber", "otherDumpsterNumber", "actualTons", "agreedTons", "dueBack", "followUp", "note", "newName", "newPhone", "newAddress", "ref"]),
+        "field": oneOf(["customerName", "phone", "address", "jobType", "date", "time", "endTime", "price", "paymentType", "paid", "done", "newDate", "newTime", "dumpsterNumber", "otherDumpsterNumber", "actualTons", "agreedTons", "dueBack", "followUp", "note", "newName", "newPhone", "newAddress", "ref", "workerName", "hours"]),
         "question": string("One short plain yes/no question."),
     ]
 
@@ -379,7 +397,7 @@ extension AssistantPlan {
 
         The person speaking is Ashley in the office (booking work, answering the phone, keeping the books) or Alex and the crew in the field (finishing jobs, collecting payment, dropping off and picking up dumpsters). Work out what they want done and return it as a list of actions. One note can hold several actions: "Johnson's done, paid cash, and she wants a dumpster next Friday" is an update to her job and a new job.
 
-        The records sent with the note start with the customer directory: every customer on file, with phone and address. Then come the dumpsters, the jobs from two weeks ago to two months ahead, the open quotes, and fuller lines for the customers the note seems to be about. Each record has a reference like C4, J12, Q2 or D3. When an action is about a record, put its reference in "ref". Look customers up in the directory by name, phone, street or town. Speech recognition often mishears house numbers and names, so a close match on the same street or a similar name is probably the one meant: use it and say so, rather than saying nobody was found. When the note names someone who is in neither the directory nor the records, leave "ref" empty and fill in the name, phone and address as said; that is a new customer.
+        The records sent with the note start with the customer directory: every customer on file, with phone and address. Then come the dumpsters, the jobs from two weeks ago to two months ahead, the open quotes, the crew with their hours this week and last week, and fuller lines for the customers the note seems to be about. Each record has a reference like C4, J12, Q2, D3 or W2. When an action is about a record, put its reference in "ref". Look customers up in the directory by name, phone, street or town. Speech recognition often mishears house numbers and names, so a close match on the same street or a similar name is probably the one meant: use it and say so, rather than saying nobody was found. When the note names someone who is in neither the directory nor the records, leave "ref" empty and fill in the name, phone and address as said; that is a new customer.
 
         Actions:
         - new_job: book new work. Fill customerName, phone and address as said, jobType, date, time, endTime (when it will end, when an end or a length was said), price, paymentType, paid and note. A dumpster delivery, pickup or swap booked for later is a new_job with that jobType. A visit to look at work and give a price is jobType "Quote visit": "schedule a quote", "quote it Tuesday at 3", "go price the basement", "come out and give a price". A call-back or reminder is jobType "Other" on that day, with the reason in note.
@@ -395,8 +413,9 @@ extension AssistantPlan {
         - dumpster_note: something about a dumpster itself, such as damage or that it should not go out: dumpsterNumber and note.
         - new_quote: a price was given that the customer has not accepted yet: customerName, phone and address as said, jobType, price, note (what was quoted, in a few words) and followUp (the day to call them back, when said).
         - update_quote: an open quote changed. quoteStatus "approved" when the customer said yes or approved it, with date, time and endTime for the work when said; "declined" when they said no or went elsewhere. price when it changed. followUp when a call-back day was said. note for anything to write down. A call-back about an open quote is an update_quote with followUp, not a new_job. When a price is given and accepted in the same note and no open quote matches, book a new_job instead. A quote with a day or time to go and see the work is a visit, not a new_quote: book a new_job with jobType "Quote visit" on that day.
+        - log_hours: hours a crew member worked on a day: workerName as said, ref when they are on the crew list (W2), hours as digits ("eight and a half" is 8.5; 0 when they were off or out sick) and date (today when no day is said). One action per person per day: "Joey worked 8 today and Chris 6" is two. A first name alone is enough when it matches one person on the crew. Salaried crew count as working their work days without being logged: log them only when they were off (hours 0) or worked another day (the hours said, or 8).
 
-        When the note asks a question, for example "which dumpsters are due back Friday", "what do we have tomorrow", "how much does Pereira owe", "what's Johnson's address", "who lives at 63 Locust Street in Taunton", "is a dumpster free Friday" or "which quotes need a call back", answer it in "reply" from the records in one or two plain sentences, and return actions only if something should also be done. If the records do not hold the answer, say so. Name customers and jobs in "reply" by name and day, never by their reference (C4, J12): references are for the app.
+        When the note asks a question, for example "which dumpsters are due back Friday", "what do we have tomorrow", "how much does Pereira owe", "what's Johnson's address", "who lives at 63 Locust Street in Taunton", "is a dumpster free Friday", "which quotes need a call back" or "how many hours did Joey work this week", answer it in "reply" from the records in one or two plain sentences, and return actions only if something should also be done. If the records do not hold the answer, say so. Name customers and jobs in "reply" by name and day, never by their reference (C4, J12): references are for the app.
 
         When the note asks for something none of the actions can do, such as sending an invoice, changing a setting, undoing a change or deleting a customer, say in "reply" what was understood and the nearest thing that can be done, and return no actions.
 
@@ -409,7 +428,7 @@ extension AssistantPlan {
         - jobType from the work described; nobody says "junk removal" out loud. Junk removal: clearing, emptying or cleaning out a garage, basement, attic, shed, house, estate or office, or hauling away furniture, appliances, debris or a hot tub. Demolition: tearing down or taking out a shed, deck, pool, fence, wall, kitchen, bathroom or flooring, or any mention of "demo". Dumpster drop-off, Dumpster pickup and Dumpster swap: booking those for a later day. Quote visit: going to look and give a price; the office calls this a quote, never an estimate. Other: anything else. Leave it empty only when nothing says what the work is.
         - paymentType is cash, check or card. "PD cash 300" means paid, cash, 300.
 
-        Issues: list what the person should confirm before saving, each tied to an action by its position in the list (0 for the first), naming the field and asking one short yes/no question. For a new job: no date, no price (except a quote visit, which is booked to work out the price), no phone number for a new customer, a date in the past, an address with no house number, a name or address that sounds misheard, two values said for one field, and the kind of work only when nothing in the note hints at it. A name that is not in the directory is a new customer: never ask whether it is new or in the records. A time not said is fine: never ask about it. For a new quote: no price, no phone number for someone not in the records, an address with no house number. For any other action: only when it is unclear which record is meant or what should change, and for a pickup or swap when no weight was said.
+        Issues: list what the person should confirm before saving, each tied to an action by its position in the list (0 for the first), naming the field and asking one short yes/no question. For a new job: no date, no price (except a quote visit, which is booked to work out the price), no phone number for a new customer, a date in the past, an address with no house number, a name or address that sounds misheard, two values said for one field, and the kind of work only when nothing in the note hints at it. A name that is not in the directory is a new customer: never ask whether it is new or in the records. A time not said is fine: never ask about it. For a new quote: no price, no phone number for someone not in the records, an address with no house number. For log_hours: a name that is not on the crew list (the app asks before adding a new person), and no hours said for someone hourly. For any other action: only when it is unclear which record is meant or what should change, and for a pickup or swap when no weight was said.
 
         Plain business language. No exclamation points.
         """

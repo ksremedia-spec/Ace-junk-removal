@@ -39,6 +39,38 @@ func matchCustomers(_ draft: JobDraft, in customers: [Customer]) -> [Customer] {
     return []
 }
 
+/// The customer a new job or quote belongs to, or nil for a new one
+/// (Kyle, Oct 19 and 20): the same name, and nothing said that disagrees
+/// with the record. A phone said must be the one on file; an address said
+/// must have the same house number and street. With neither said, the name
+/// alone decides. The same phone under another name is a new customer.
+/// `known` is the customer Claude's reference pointed at; it stands while
+/// the name and phone still agree (house numbers are often misheard, so its
+/// address is not checked).
+func existingCustomer(name: String, phone: String, address: String, known: Customer?, in customers: [Customer]) -> Customer? {
+    let spoken = SpokenName(name).text
+    guard !spoken.isEmpty else { return nil }
+    let digits = phone.filter(\.isNumber)
+    let said = SpokenAddress(address)
+
+    func phoneAgrees(_ customer: Customer) -> Bool {
+        guard digits.count >= 7, !customer.phoneDigits.isEmpty else { return true }
+        return customer.phoneDigits == digits || customer.phoneDigits.hasSuffix(digits)
+    }
+    func addressAgrees(_ customer: Customer) -> Bool {
+        guard said.houseNumber != nil, !customer.address.isEmpty else { return true }
+        let onFile = SpokenAddress(customer.address)
+        return onFile.houseNumber == said.houseNumber && onFile.streetWord == said.streetWord
+    }
+
+    if let known, SpokenName(known.name).text == spoken, phoneAgrees(known) {
+        return known
+    }
+    return customers.first { customer in
+        SpokenName(customer.name).text == spoken && phoneAgrees(customer) && addressAgrees(customer)
+    }
+}
+
 // MARK: Jobs
 
 /// Jobs the note could mean, best first. With a customer match: that

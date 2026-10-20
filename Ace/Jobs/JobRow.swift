@@ -5,6 +5,7 @@ import SwiftUI
 /// (Kyle, 2026-10-19: crossed-out names read as cancelled); its badge goes
 /// grey instead.
 struct JobRow: View {
+    @Environment(\.dynamicTypeSize) private var typeSize
     let job: Job
     var showDate = true
     /// False on a customer's own page, where every row is theirs: the job
@@ -15,31 +16,43 @@ struct JobRow: View {
     /// their room back; Unpaid shows how long the money has been owed.
     var context: JobsFilter? = nil
 
+    /// At the largest text sizes the price and pills go under the details
+    /// instead of squeezing them (the price wrapped as "$3 / 00").
+    private var layout: AnyLayout {
+        typeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: Space.xs))
+            : AnyLayout(HStackLayout(alignment: .center, spacing: Space.m))
+    }
+
     var body: some View {
-        HStack(alignment: .center, spacing: Space.m) {
+        layout {
             TypeBadge(type: job.jobType, muted: job.isDone)
             VStack(alignment: .leading, spacing: 2) {
                 Text(showCustomer ? (job.customer?.name ?? "No customer") : job.jobType.rawValue)
                     .font(.body.weight(.semibold))
-                    .lineLimit(1)
+                    .lineLimit(typeSize.isAccessibilitySize ? 3 : 1)
                 Text(showCustomer ? whenLine : job.whenText)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    .lineLimit(typeSize.isAccessibilitySize ? 3 : 1)
                 if showCustomer, let address = job.customer?.address, !address.isEmpty {
                     Text(address)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        .lineLimit(typeSize.isAccessibilitySize ? 3 : 1)
                 }
             }
-            Spacer(minLength: Space.s)
-            VStack(alignment: .trailing, spacing: Space.xs) {
+            if !typeSize.isAccessibilitySize {
+                Spacer(minLength: Space.s)
+            }
+            VStack(alignment: typeSize.isAccessibilitySize ? .leading : .trailing, spacing: Space.xs) {
                 if !job.priceText.isEmpty {
                     Text(job.priceText)
                         .font(.body.weight(.semibold))
                         .fontDesign(.rounded)
                         .monospacedDigit()
+                        .lineLimit(1)
+                        .fixedSize()
                         .foregroundStyle(job.isPaid ? .secondary : .primary)
                 }
                 switch context {

@@ -14,6 +14,7 @@ struct AssistantView: View {
     @Query(sort: \Customer.name) private var customers: [Customer]
     @Query(sort: \Dumpster.number) private var dumpsters: [Dumpster]
     @Query(sort: \Quote.quotedOn) private var quotes: [Quote]
+    @Query(sort: \Worker.name) private var workers: [Worker]
 
     let engine: WhisperKitEngine
 
@@ -46,6 +47,9 @@ struct AssistantView: View {
     // The plan being stepped through.
     @State private var reply = ""
     @State private var steps: [AssistantAction] = []
+    /// Every log_hours action; they share one screen, at the first one's
+    /// place in the steps.
+    @State private var laborActions: [AssistantAction] = []
     @State private var stepIndex = 0
     @State private var refs = RecordRefs()
     @State private var issues: [PlanIssue] = []
@@ -207,7 +211,11 @@ struct AssistantView: View {
                 onFinish: { finishStep($0) },
                 onSkip: { advance() },
                 onStartOver: { reset() },
-                onStartNewJob: { startNewJobInstead() }
+                onStartNewJob: { startNewJobInstead() },
+                engine: engine,
+                laborActions: laborActions,
+                laborIssues: issues.filter { issue in laborActions.contains { $0.index == issue.action } },
+                workers: workers
             )
             // A fresh screen for every step, even two of the same kind.
             .id("\(stepIndex) \(step.type)")
@@ -277,42 +285,19 @@ struct AssistantView: View {
 
             Section {
                 switch phase {
-                case .idle:
+                case .idle, .recording:
                     HStack(spacing: Space.m) {
-                        Button {
-                            startRecording()
-                        } label: {
-                            Label("Record", systemImage: "mic.fill")
-                        }
-                        .buttonStyle(.action(.accentColor, prominent: true))
-                        Text("or type it below")
+                        HoldToTalkButton(
+                            isListening: phase == .recording,
+                            onStart: startRecording,
+                            onEnd: stopRecording
+                        )
+                        Text(phase == .recording ? "Listening." : "or type it below")
                             .foregroundStyle(.secondary)
                     }
-                case .recording:
-                    HStack(spacing: Space.m) {
-                        Button {
-                            stopRecording()
-                        } label: {
-                            Label("Stop", systemImage: "stop.fill")
-                        }
-                        .buttonStyle(.action(Tint.overdue, prominent: true))
-                        Text("Listening.")
-                            .foregroundStyle(.secondary)
-                    }
-                    if listeningLive {
-                        // What WhisperKit has heard so far: settled words in
-                        // full colour, words still being worked out in grey.
-                        Text("\(engine.liveConfirmed)\(engine.liveConfirmed.isEmpty || engine.liveTentative.isEmpty ? "" : " ")\(Text(engine.liveTentative).foregroundStyle(.secondary))")
+                    if phase == .recording, listeningLive {
+                        LiveWords(engine: engine, placeholder: "Start talking. The words show up here.", minHeight: 60)
                             .font(.title3)
-                            .frame(maxWidth: .infinity, minHeight: 60, alignment: .topLeading)
-                            .animation(.default, value: engine.liveConfirmed)
-                            .overlay(alignment: .topLeading) {
-                                if engine.liveConfirmed.isEmpty && engine.liveTentative.isEmpty {
-                                    Text("Start talking. The words show up here.")
-                                        .font(.title3)
-                                        .foregroundStyle(.tertiary)
-                                }
-                            }
                     }
                 case .transcribing:
                     HStack {
@@ -351,7 +336,7 @@ struct AssistantView: View {
                         .foregroundStyle(.secondary)
                 }
             } footer: {
-                Text("Say or type it the way you would on the phone. A new job, a quote visit, a job done and paid, a dumpster dropped off or picked up, a customer's new number. Several things can go in one note. Or ask, like \"who lives at 63 Locust Street\" or \"which dumpsters are due back Friday\".")
+                Text("Hold to talk and let go to send, or tap once to talk hands-free and tap again to send. Say or type it the way you would on the phone. A new job, a quote visit, a job done and paid, a dumpster dropped off or picked up, a customer's new number. Several things can go in one note. Or ask, like \"who lives at 63 Locust Street\" or \"which dumpsters are due back Friday\".")
             }
 
             Section {
@@ -359,6 +344,18 @@ struct AssistantView: View {
                     .lineLimit(2...6)
                     .focused($typing)
                     .onSubmit(sendTyped)
+                    #if os(iOS)
+                    // On the iPhone the Send button sits under the keyboard,
+                    // so the keyboard's Return key sends the note instead of
+                    // starting a new line.
+                    .submitLabel(.send)
+                    .onChange(of: typedNote) { _, text in
+                        guard text.contains("\n") else { return }
+                        typedNote = text.replacingOccurrences(of: "\n", with: " ")
+                        typing = false
+                        sendTyped()
+                    }
+                    #endif
                     .disabled(phase == .recording || phase == .transcribing || phase == .asking)
                 HStack {
                     Spacer()
@@ -428,6 +425,7 @@ struct AssistantView: View {
     }
 
     private func startRecording() {
+        guard phase == .idle else { return }
         Task { @MainActor in
             guard await recorder.requestPermission() else { return }
             if case .ready = engine.state {
@@ -454,6 +452,8 @@ struct AssistantView: View {
     }
 
     private func stopRecording() {
+        // Let go before the microphone started (a quick tap): nothing to stop.
+        guard phase == .recording else { return }
         phase = .transcribing
         if listeningLive {
             listeningLive = false
@@ -517,18 +517,25 @@ struct AssistantView: View {
                 jobs: jobs,
                 dumpsters: dumpsters,
                 quotes: quotes,
+                workers: workers,
                 now: Date()
             )
-            var response = try await ClaudeClient.plan(
-                note: note,
-                directory: records.directory,
-                records: records.text,
-                model: AppSettings.claudeModel,
-                effort: AppSettings.effort
-            )
-            // Safety net: an answer with an empty action is asked again once,
-            // on Haiku, which filled these notes correctly in every test.
-            if response.plan.actions.contains(where: \.isEmptyShell) {
+            var response: (plan: AssistantPlan, seconds: Double, inputTokens: Int, outputTokens: Int)
+            if let saved = Self.savedTestAnswer() {
+                response = saved
+            } else {
+                response = try await ClaudeClient.plan(
+                    note: note,
+                    directory: records.directory,
+                    records: records.text,
+                    model: AppSettings.claudeModel,
+                    effort: AppSettings.effort
+                )
+            }
+            // Safety net: an answer with an empty action, or with questions
+            // about actions it left out, is asked again once on Haiku, which
+            // filled these notes correctly in every test.
+            if response.plan.actions.contains(where: \.isEmptyShell) || response.plan.isMissingActions {
                 response = try await ClaudeClient.plan(
                     note: note,
                     directory: records.directory,
@@ -544,7 +551,13 @@ struct AssistantView: View {
                 answerText = reply.isEmpty ? "No answer was found." : reply
                 phase = .answer
             } else {
-                steps = response.plan.actions
+                laborActions = response.plan.actions.filter { $0.kind == .logHours }
+                var firstLaborSeen = false
+                steps = response.plan.actions.filter { action in
+                    guard action.kind == .logHours else { return true }
+                    defer { firstLaborSeen = true }
+                    return !firstLaborSeen
+                }
                 stepIndex = 0
                 confirmations = []
                 phase = .steps
@@ -552,6 +565,24 @@ struct AssistantView: View {
         } catch {
             phase = .failed(error.localizedDescription)
         }
+    }
+
+    /// Debug builds only: `-debug.plan answer.json` answers every note with
+    /// that saved answer (a file in the app's temporary folder) instead of
+    /// asking Claude, so the screens can be checked in the Simulator, which
+    /// has no API key. A normal launch never carries the argument.
+    private static func savedTestAnswer() -> (plan: AssistantPlan, seconds: Double, inputTokens: Int, outputTokens: Int)? {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        guard let index = args.firstIndex(of: "-debug.plan"), index + 1 < args.count else { return nil }
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(args[index + 1])
+        guard let data = try? Data(contentsOf: url),
+              var plan = try? JSONDecoder().decode(AssistantPlan.self, from: data) else { return nil }
+        plan.numberActions()
+        return (plan, 0, 0, 0)
+        #else
+        return nil
+        #endif
     }
 
     /// The speech model may still be downloading when the recording ends.
@@ -577,6 +608,7 @@ struct AssistantView: View {
         answerText = ""
         reply = ""
         steps = []
+        laborActions = []
         stepIndex = 0
         refs = RecordRefs()
         issues = []

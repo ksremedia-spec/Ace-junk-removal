@@ -55,9 +55,14 @@ final class WhisperKitEngine {
     /// Words still being worked out; they may change as more is heard.
     private(set) var liveTentative = ""
     private(set) var isListening = false
-    /// One streamer per loaded model (WhisperKit issue #517: recreating it
-    /// repeatedly grows memory).
+    /// A fresh streamer for every recording: in WhisperKit 1.1.1 it keeps the
+    /// last recording's words and its place in the audio, so a reused one
+    /// showed the old words and fell silent (Oct 20). WhisperKit issue #517
+    /// reports memory growth when it is recreated many times on iPadOS 26;
+    /// one per note or answer is far fewer than that report, but watch it.
     private var streamer: AudioStreamTranscriber?
+    /// Counts recordings, so words from an earlier one are not shown.
+    private var session = 0
     private var streamTask: Task<Void, Never>?
 
     struct Result {
@@ -128,26 +133,27 @@ final class WhisperKitEngine {
         liveConfirmed = ""
         liveTentative = ""
         kit.audioProcessor.purgeAudioSamples(keepingLast: 0)
-        if streamer == nil {
-            streamer = AudioStreamTranscriber(
-                audioEncoder: kit.audioEncoder,
-                featureExtractor: kit.featureExtractor,
-                segmentSeeker: kit.segmentSeeker,
-                textDecoder: kit.textDecoder,
-                tokenizer: tokenizer,
-                audioProcessor: kit.audioProcessor,
-                decodingOptions: DecodingOptions(language: "en"),
-                stateChangeCallback: { [weak self] _, new in
-                    let confirmed = Self.clean(new.confirmedSegments.map(\.text).joined(separator: " "))
-                    let tentative = Self.clean(new.unconfirmedSegments.map(\.text).joined(separator: " "))
-                    Task { @MainActor in
-                        guard let self, self.isListening else { return }
-                        self.liveConfirmed = confirmed
-                        self.liveTentative = tentative
-                    }
+        session += 1
+        let current = session
+        streamer = AudioStreamTranscriber(
+            audioEncoder: kit.audioEncoder,
+            featureExtractor: kit.featureExtractor,
+            segmentSeeker: kit.segmentSeeker,
+            textDecoder: kit.textDecoder,
+            tokenizer: tokenizer,
+            audioProcessor: kit.audioProcessor,
+            decodingOptions: DecodingOptions(language: "en"),
+            stateChangeCallback: { [weak self] _, new in
+                let confirmed = Self.clean(new.confirmedSegments.map(\.text).joined(separator: " "))
+                let tentative = Self.clean(new.unconfirmedSegments.map(\.text).joined(separator: " "))
+                Task { @MainActor in
+                    // A late word from an earlier recording is dropped.
+                    guard let self, self.isListening, self.session == current else { return }
+                    self.liveConfirmed = confirmed
+                    self.liveTentative = tentative
                 }
-            )
-        }
+            }
+        )
         isListening = true
         let active = streamer
         streamTask = Task.detached {
@@ -171,6 +177,15 @@ final class WhisperKitEngine {
             .joined(separator: " ")
         let final = Self.clean(text).isEmpty ? Self.clean(liveConfirmed + " " + liveTentative) : Self.clean(text)
         return Result(text: final, seconds: Date().timeIntervalSince(started), audioSeconds: Double(samples.count) / 16_000)
+    }
+
+    /// Stops listening without writing anything down, for when the answer
+    /// is no longer wanted.
+    func cancelListening() async {
+        guard isListening else { return }
+        isListening = false
+        await streamer?.stopStreamTranscription()
+        streamTask = nil
     }
 
     /// WhisperKit's segment text can carry its own markers ("<|0.00|>",

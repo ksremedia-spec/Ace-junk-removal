@@ -29,6 +29,23 @@ enum AppSettings {
     /// Kept on each device, not synced.
     static let hiddenCalendarsKey = "settings.hiddenCalendars"
 
+    /// The weekdays salaried crew count as working (Calendar weekday
+    /// numbers, 1 is Sunday), as "2,3,4,5,6,7". Monday to Saturday until
+    /// Alex says otherwise (Oct 20: an assumption). Kept on each device
+    /// until sync.
+    static let salaryDaysKey = "settings.salaryDays"
+    static let defaultSalaryDays: Set<Int> = [2, 3, 4, 5, 6, 7]
+
+    static var salaryDays: Set<Int> {
+        get {
+            guard let stored = UserDefaults.standard.string(forKey: salaryDaysKey) else { return defaultSalaryDays }
+            return Set(stored.split(separator: ",").compactMap { Int($0) })
+        }
+        set {
+            UserDefaults.standard.set(newValue.sorted().map(String.init).joined(separator: ","), forKey: salaryDaysKey)
+        }
+    }
+
     static var overweightRate: Double {
         let stored = UserDefaults.standard.double(forKey: overweightRateKey)
         return stored > 0 ? stored : defaultOverweightRate

@@ -9,6 +9,8 @@ struct TodayFigures: View {
     let quotes: [Quote]
     /// iPhone: tapping Quotes opens the Quotes tab.
     var onShowQuotes: (() -> Void)? = nil
+    /// Two rows of two, or one row of four on the wide Mac board.
+    var columns = 2
 
     private var calendar: Calendar { .current }
 
@@ -20,7 +22,7 @@ struct TodayFigures: View {
     private var openQuotes: [Quote] { quotes.filter { $0.status == .open } }
 
     var body: some View {
-        StatGrid {
+        StatGrid(columns: columns) {
             StatTile(
                 title: "Today",
                 value: Plural.text(todaysOpenJobs.count, "job"),

@@ -5,7 +5,7 @@ import SwiftUI
 
 // What the Calendar screen lists for one day, worked out from Ace's own
 // records and the device's other calendars. Shared by the iPhone screen
-// (CalendarView) and the Mac list (MacCalendarList). The spec is
+// (CalendarView) and the Mac board (MacBoard). The spec is
 // docs/calendar-tab.md.
 
 /// One day's jobs, dumpster comings and goings, and quotes to call back.

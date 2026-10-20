@@ -94,47 +94,7 @@ struct ClaudeClient {
             ],
         ]
 
-        var request = URLRequest(url: endpoint)
-        request.httpMethod = "POST"
-        request.timeoutInterval = 90
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
-        request.setValue(apiVersion, forHTTPHeaderField: "anthropic-version")
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        #if DEBUG
-        if let sent = request.httpBody {
-            let stamp = Int(Date().timeIntervalSince1970 * 1000)
-            try? sent.write(to: FileManager.default.temporaryDirectory.appendingPathComponent("assistant-request-\(stamp).json"))
-        }
-        #endif
-
-        let started = Date()
-        let (data, response) = try await URLSession.shared.data(for: request)
-        let seconds = Date().timeIntervalSince(started)
-
-        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
-
-        guard (200..<300).contains(status) else {
-            let error = json["error"] as? [String: Any]
-            let message = error?["message"] as? String ?? String(data: data, encoding: .utf8) ?? ""
-            throw ClaudeError.badStatus(status, message)
-        }
-
-        let stopReason = json["stop_reason"] as? String ?? ""
-        if stopReason == "refusal" {
-            let details = json["stop_details"] as? [String: Any]
-            throw ClaudeError.refused(details?["explanation"] as? String ?? "")
-        }
-        if stopReason == "max_tokens" {
-            throw ClaudeError.cutOff
-        }
-
-        // Read blocks by type, never by position: the first block may be thinking.
-        let content = json["content"] as? [[String: Any]] ?? []
-        guard let text = content.first(where: { ($0["type"] as? String) == "text" })?["text"] as? String else {
-            throw ClaudeError.unreadable("No text in the reply.")
-        }
+        let (text, json, seconds) = try await send(body, apiKey: apiKey, timeout: 90)
 
         #if DEBUG
         // Debug builds only: the last note and Claude's raw answer, in the
@@ -159,5 +119,90 @@ struct ClaudeClient {
             inputTokens: usage["input_tokens"] as? Int ?? 0,
             outputTokens: usage["output_tokens"] as? Int ?? 0
         )
+    }
+
+    /// One spoken answer to a follow-up question ("No house number. What's
+    /// the number?"), turned into the field's value in the form's format.
+    /// Empty when the answer does not give it. Haiku at low effort: the
+    /// task is small and the person is waiting with the phone in hand.
+    static func fill(_ field: String, question: String, answer: String, form: String) async throws -> String {
+        guard let apiKey = Keychain.read(Keychain.anthropicAPIKey), !apiKey.isEmpty else {
+            throw ClaudeError.missingKey
+        }
+        let body: [String: Any] = [
+            "model": ClaudeModel.haiku.rawValue,
+            "max_tokens": 2000,
+            "system": FollowUpPrompt.system(),
+            "output_config": [
+                "effort": ClaudeEffort.low.rawValue,
+                "format": [
+                    "type": "json_schema",
+                    "schema": FollowUpPrompt.jsonSchema,
+                ],
+            ],
+            "messages": [
+                [
+                    "role": "user",
+                    "content": "Field: \(field)\nQuestion asked: \(question)\nSpoken answer: \(answer)\n\nThe form so far:\n\(form)",
+                ],
+            ],
+        ]
+        let (text, _, _) = try await send(body, apiKey: apiKey, timeout: 30)
+        let json = (try? JSONSerialization.jsonObject(with: Data(text.utf8))) as? [String: Any]
+        return (json?["value"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Posts one Messages request and returns the reply's text, the whole
+    /// response and how long it took. Throws on an error status, a refusal
+    /// or a cut-off answer.
+    private static func send(_ body: [String: Any], apiKey: String, timeout: TimeInterval) async throws -> (text: String, json: [String: Any], seconds: Double) {
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.timeoutInterval = timeout
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+        request.setValue(apiVersion, forHTTPHeaderField: "anthropic-version")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        #if DEBUG
+        if let sent = request.httpBody {
+            let stamp = Int(Date().timeIntervalSince1970 * 1000)
+            try? sent.write(to: FileManager.default.temporaryDirectory.appendingPathComponent("assistant-request-\(stamp).json"))
+        }
+        #endif
+
+        let started = Date()
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let seconds = Date().timeIntervalSince(started)
+
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+        #if DEBUG
+        // Debug builds only: the whole reply (how it ended, token counts,
+        // thinking), to see why an answer came back short (Oct 20, Sonnet).
+        let stamp = Int(Date().timeIntervalSince1970 * 1000)
+        try? data.write(to: FileManager.default.temporaryDirectory.appendingPathComponent("assistant-response-\(stamp).json"))
+        #endif
+
+        guard (200..<300).contains(status) else {
+            let error = json["error"] as? [String: Any]
+            let message = error?["message"] as? String ?? String(data: data, encoding: .utf8) ?? ""
+            throw ClaudeError.badStatus(status, message)
+        }
+
+        let stopReason = json["stop_reason"] as? String ?? ""
+        if stopReason == "refusal" {
+            let details = json["stop_details"] as? [String: Any]
+            throw ClaudeError.refused(details?["explanation"] as? String ?? "")
+        }
+        if stopReason == "max_tokens" {
+            throw ClaudeError.cutOff
+        }
+
+        // Read blocks by type, never by position: the first block may be thinking.
+        let content = json["content"] as? [[String: Any]] ?? []
+        guard let text = content.first(where: { ($0["type"] as? String) == "text" })?["text"] as? String else {
+            throw ClaudeError.unreadable("No text in the reply.")
+        }
+        return (text, json, seconds)
     }
 }

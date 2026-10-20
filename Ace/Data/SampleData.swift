@@ -107,14 +107,55 @@ enum SampleData {
         }
 
         addGeneratedRecords(into: context, dumpsters: dumpsters, today: today, calendar: calendar)
+        addCrew(into: context, today: today, calendar: calendar)
 
         try? context.save()
+    }
+
+    /// A made-up crew (never Alex's real people): two on salary, three
+    /// hourly with this week's and last week's hours so far.
+    private static func addCrew(into context: ModelContext, today: Date, calendar: Calendar) {
+        let crew: [(String, PayType, Double?)] = [
+            ("Mark Sullivan", .salary, nil),
+            ("Dave Brennan", .salary, nil),
+            ("Joey Medeiros", .hourly, 22),
+            ("Chris Pacheco", .hourly, 20),
+            ("Tyler Gomes", .hourly, 18),
+        ]
+        var workers: [Worker] = []
+        for (name, pay, rate) in crew {
+            let worker = Worker(name: name, payType: pay, hourlyRate: rate)
+            worker.createdAt = calendar.date(byAdding: .day, value: -60, to: today) ?? today
+            context.insert(worker)
+            workers.append(worker)
+        }
+        let hourly = workers.filter { !$0.isSalaried }
+        let pattern: [[Double]] = [[8, 7.5, 0], [8.5, 8, 6], [7, 0, 8], [9, 8, 4.5], [8, 6.5, 0], [6, 0, 5]]
+        for offset in -13...0 {
+            guard let day = calendar.date(byAdding: .day, value: offset, to: today) else { continue }
+            let weekday = calendar.component(.weekday, from: day)
+            guard weekday != 1 else { continue }
+            let row = pattern[(weekday - 2) % pattern.count]
+            for (index, worker) in hourly.enumerated() where row[index] > 0 {
+                let entry = LaborEntry(worker: nil, day: day, hours: row[index])
+                context.insert(entry)
+                entry.worker = worker
+            }
+        }
+        // One day off for a salaried hand last week.
+        if let dayOff = calendar.date(byAdding: .day, value: -6, to: today) {
+            let entry = LaborEntry(worker: nil, day: dayOff, isOff: true)
+            context.insert(entry)
+            entry.worker = workers[1]
+        }
     }
 
     /// Removes everything. Used before loading samples and by "Clear all data".
     /// Deletes record by record (not as a batch), so relationships are
     /// cleaned up and nothing is left behind without its customer.
     static func clear(context: ModelContext) {
+        deleteAll(LaborEntry.self, in: context)
+        deleteAll(Worker.self, in: context)
         deleteAll(Quote.self, in: context)
         deleteAll(RentalRecord.self, in: context)
         deleteAll(Job.self, in: context)

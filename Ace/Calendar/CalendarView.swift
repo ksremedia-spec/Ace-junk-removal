@@ -2,30 +2,43 @@ import EventKit
 import SwiftData
 import SwiftUI
 
-/// The first iPhone tab: a month at the top and the chosen day under it.
-/// On today it shows the day at a glance, as the old Today screen did: the
-/// numbers, what is owed, dumpsters that need attention, today's jobs,
-/// jobs not marked done, quotes to call back, other calendars, tomorrow.
-/// On another day: that day's jobs, dumpsters, call-backs and other
-/// calendars. The spec is docs/calendar-tab.md.
+/// The first iPhone tab, in the same look as the Mac Calendar (Kyle, Oct 20:
+/// bright cards and the week board): today's four figures, the week as a
+/// strip of days (or the full month), the chosen day's jobs as cards tinted
+/// by the kind of work, the six dumpsters as tiles, then jobs not marked
+/// done and quotes waiting. The Quotes list lives here now that Labor has
+/// the fifth tab. The spec is docs/calendar-tab.md.
 struct CalendarView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Job.scheduledAt) private var jobs: [Job]
     @Query(sort: \Dumpster.number) private var dumpsters: [Dumpster]
     @Query(sort: \Quote.quotedOn) private var quotes: [Quote]
     @Query(sort: \RentalRecord.pickedUpAt) private var rentals: [RentalRecord]
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    /// Pushed on the Calendar tab's stack.
+    enum Route: Hashable {
+        case quotes
+    }
+
+    enum Mode: String, CaseIterable, Identifiable {
+        case week = "Week"
+        case month = "Month"
+        var id: String { rawValue }
+    }
 
     /// The chosen day. Held by the tab bar, which shows the Today button.
     @Binding var selectedDay: Date
-    /// Opens the Quotes tab on Open. Set by the tab bar.
+    /// Opens the Quotes list. Set by the tab bar.
     var onShowQuotes: (() -> Void)? = nil
 
+    @AppStorage("phone.calendarMode") private var modeRaw = Mode.week.rawValue
+    @State private var quotesFilter: QuoteStatus = .open
     @State private var showingNewJob = false
     @State private var shownEvent: OtherEvent?
 
     private var calendar: Calendar { .current }
-    private var calendarStore: CalendarStore { .shared }
-
+    private var mode: Mode { Mode(rawValue: modeRaw) ?? .week }
     private var isToday: Bool { calendar.isDateInToday(selectedDay) }
 
     private var schedule: DaySchedule {
@@ -34,25 +47,43 @@ struct CalendarView: View {
 
     /// The day's events from the other calendars on the device.
     private var otherEvents: [OtherEvent] {
-        calendarStore.events(on: selectedDay, hidingJobs: Set(jobs.compactMap(\.jobID)))
+        CalendarStore.shared.events(on: selectedDay, hidingJobs: Set(jobs.compactMap(\.jobID)))
+    }
+
+    private var slippedJobs: [Job] {
+        jobs.filter { !$0.isDone && $0.scheduledAt < Dates.startOfToday() }
+    }
+
+    private var openQuotes: [Quote] {
+        quotes.filter { $0.status == .open }
     }
 
     var body: some View {
-        let day = self.schedule
-        let events = self.otherEvents
-        List {
-            Section {
-                MonthCalendar(selectedDay: $selectedDay, dottedDays: DaySchedule.daysWithOpenJobs(jobs))
+        ScrollView {
+            VStack(alignment: .leading, spacing: Space.l) {
+                TodayFigures(jobs: jobs, dumpsters: dumpsters, quotes: quotes, onShowQuotes: onShowQuotes)
+                calendarCard
+                dayCard
+                yard
+                if !slippedJobs.isEmpty {
+                    slippedCard
+                }
+                quotesCard
             }
-            if isToday {
-                todaySections(day, otherEvents: events)
-            } else {
-                daySections(day, otherEvents: events)
-            }
+            .padding(.horizontal, Space.l)
+            .padding(.vertical, Space.m)
         }
+        .background(Tint.boardPage)
+        .environment(\.cardFill, Tint.boardCard)
         .navigationTitle("Calendar")
         .navigationDestination(for: Quote.self) { quote in
             QuoteEditView(quote: quote)
+        }
+        .navigationDestination(for: Route.self) { route in
+            switch route {
+            case .quotes:
+                QuotesView(filter: $quotesFilter)
+            }
         }
         .sheet(isPresented: $showingNewJob) {
             NavigationStack {
@@ -65,148 +96,193 @@ struct CalendarView: View {
         }
     }
 
-    // MARK: Today
+    // MARK: The week or the month
 
-    private var attentionDumpsters: [Dumpster] {
-        dumpsters.filter { [.dueToday, .overdue].contains($0.status()) }
-    }
-
-    private var tomorrowsJobs: [Job] {
-        jobs.filter { calendar.isDateInTomorrow($0.scheduledAt) && !$0.isDone }
-    }
-
-    private var slippedJobs: [Job] {
-        let today = Dates.startOfToday()
-        return jobs.filter { !$0.isDone && $0.scheduledAt < today }
-    }
-
-    @ViewBuilder
-    private func todaySections(_ schedule: DaySchedule, otherEvents: [OtherEvent]) -> some View {
-        Section {
-            TodayFigures(jobs: jobs, dumpsters: dumpsters, quotes: quotes, onShowQuotes: onShowQuotes)
-                .bareRow()
-        }
-
-        Section("Dumpsters") {
-            if attentionDumpsters.isEmpty {
-                Text(dumpsters.isEmpty ? "No dumpsters set up yet." : "Nothing due back today.")
-                    .foregroundStyle(.secondary)
+    private var calendarCard: some View {
+        VStack(spacing: Space.m) {
+            Picker("Show", selection: $modeRaw) {
+                ForEach(Mode.allCases) { mode in
+                    Text(mode.rawValue).tag(mode.rawValue)
+                }
             }
-            ForEach(attentionDumpsters) { dumpster in
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            switch mode {
+            case .week:
+                WeekStrip(day: $selectedDay, marked: DaySchedule.daysWithOpenJobs(jobs))
+            case .month:
+                MonthCalendar(selectedDay: $selectedDay, dottedDays: DaySchedule.daysWithOpenJobs(jobs))
+            }
+        }
+        .padding(Space.m)
+        .cardBackground()
+    }
+
+    // MARK: The chosen day
+
+    private var dayCard: some View {
+        let day = schedule
+        let events = otherEvents
+        return VStack(alignment: .leading, spacing: Space.s) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(isToday ? "Today" : Dates.longDay(selectedDay))
+                    .font(.title3.weight(.semibold))
+                Spacer()
+                if !day.jobs.isEmpty {
+                    Text(dayTotal(day))
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+            }
+            ForEach(day.jobs) { job in
                 NavigationLink {
-                    DumpsterDetailView(dumpster: dumpster)
+                    JobEditView(job: job)
                 } label: {
-                    DumpsterRow(dumpster: dumpster)
+                    JobCard(job: job, isSelected: false)
                 }
+                .buttonStyle(.plain)
+                .contextMenu { JobQuickMenu(job: job) }
             }
-        }
-
-        jobsSection(schedule, empty: "No jobs today.")
-
-        if !slippedJobs.isEmpty {
-            Section("Not marked done") {
-                ForEach(slippedJobs) { job in
-                    jobRow(job, showDate: true)
+            ForEach(day.dumpsterItems) { item in
+                NavigationLink {
+                    DumpsterDetailView(dumpster: item.dumpster)
+                } label: {
+                    SmallCard(title: item.title, detail: item.customer?.name ?? item.location,
+                              symbol: "shippingbox.fill", tint: item.dumpster.status().tint, isSelected: false)
                 }
+                .buttonStyle(.plain)
             }
-        }
-
-        callBackSection(schedule)
-        otherCalendarsSection(otherEvents)
-
-        Section("Tomorrow") {
-            if tomorrowsJobs.isEmpty {
-                Text("No jobs tomorrow.")
+            ForEach(events) { item in
+                Button { shownEvent = item } label: {
+                    SmallCard(title: item.title, detail: item.timeLine, symbol: "calendar",
+                              tint: item.color, isSelected: false)
+                }
+                .buttonStyle(.plain)
+            }
+            if day.jobs.isEmpty && day.dumpsterItems.isEmpty && events.isEmpty {
+                Text("Nothing booked.")
                     .foregroundStyle(.secondary)
-            }
-            ForEach(tomorrowsJobs) { job in
-                jobRow(job, showDate: false)
-            }
-        }
-    }
-
-    // MARK: Another day
-
-    @ViewBuilder
-    private func daySections(_ schedule: DaySchedule, otherEvents: [OtherEvent]) -> some View {
-        jobsSection(schedule, empty: "No jobs.")
-
-        if !schedule.dumpsterItems.isEmpty {
-            Section("Dumpsters") {
-                ForEach(schedule.dumpsterItems) { item in
-                    NavigationLink {
-                        DumpsterDetailView(dumpster: item.dumpster)
-                    } label: {
-                        DumpsterDayRow(item: item)
-                    }
-                }
-            }
-        }
-
-        callBackSection(schedule)
-        otherCalendarsSection(otherEvents)
-    }
-
-    // MARK: Shared sections
-
-    /// The day's jobs, done ones included and crossed out, headed with the
-    /// date, then New job.
-    private func jobsSection(_ schedule: DaySchedule, empty: String) -> some View {
-        Section(schedule.title) {
-            if schedule.jobs.isEmpty {
-                Text(empty)
-                    .foregroundStyle(.secondary)
-            }
-            ForEach(schedule.jobs) { job in
-                jobRow(job, showDate: false)
+                    .padding(.vertical, Space.xs)
             }
             Button {
                 showingNewJob = true
             } label: {
                 Label("New job", systemImage: "plus")
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.action(.accentColor))
+            .padding(.top, Space.xs)
         }
+        .padding(Space.m)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardBackground()
     }
 
-    @ViewBuilder
-    private func callBackSection(_ schedule: DaySchedule) -> some View {
-        if !schedule.callBacks.isEmpty {
-            Section("Call back") {
-                ForEach(schedule.callBacks) { quote in
-                    // Opened by value, so the form stays open when Mark Lost
-                    // or Book Job moves the quote off this list.
-                    NavigationLink(value: quote) {
-                        QuoteRow(quote: quote)
-                    }
-                }
-            }
-        }
+    /// "2 jobs · $525"
+    private func dayTotal(_ day: DaySchedule) -> String {
+        let total = day.jobs.priceTotal
+        let count = Plural.text(day.jobs.count, "job")
+        return total > 0 ? count + " · " + Money.text(total) : count
     }
 
-    @ViewBuilder
-    private func otherCalendarsSection(_ events: [OtherEvent]) -> some View {
-        if !events.isEmpty {
-            Section("Other calendars") {
-                ForEach(events) { item in
-                    Button {
-                        shownEvent = item
+    // MARK: Dumpsters
+
+    /// Three tiles a row, fewer as the text grows.
+    private var yardColumns: Int {
+        if typeSize.isAccessibilitySize { return 1 }
+        return typeSize >= .xxLarge ? 2 : 3
+    }
+
+    private var yard: some View {
+        VStack(alignment: .leading, spacing: Space.s) {
+            Text("Dumpsters")
+                .font(.title3.weight(.semibold))
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Space.s), count: yardColumns), spacing: Space.s) {
+                ForEach(dumpsters) { dumpster in
+                    NavigationLink {
+                        DumpsterDetailView(dumpster: dumpster)
                     } label: {
-                        OtherEventRow(item: item)
+                        DumpsterTile(dumpster: dumpster, isSelected: false)
                     }
                     .buttonStyle(.plain)
                 }
             }
+            if dumpsters.isEmpty {
+                Text("No dumpsters set up yet. Set them up on the Dumpsters tab.")
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
-    /// A job, opened by tapping, with the same swipe actions as the Jobs list.
-    private func jobRow(_ job: Job, showDate: Bool) -> some View {
-        NavigationLink {
-            JobEditView(job: job)
-        } label: {
-            JobRow(job: job, showDate: showDate)
+    // MARK: Below
+
+    private var slippedCard: some View {
+        BoardListCard(title: "Not marked done", count: slippedJobs.count) {
+            ForEach(slippedJobs) { job in
+                NavigationLink {
+                    JobEditView(job: job)
+                } label: {
+                    JobRow(job: job, showDate: true)
+                        .padding(.horizontal, Space.s)
+                        .padding(.vertical, 2)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .contextMenu { JobQuickMenu(job: job) }
+            }
         }
-        .jobSwipeActions(job)
+    }
+
+    private var quotesCard: some View {
+        BoardListCard(title: "Quotes waiting", count: openQuotes.count) {
+            if openQuotes.isEmpty {
+                Text("No quotes waiting.")
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, Space.s)
+            }
+            ForEach(openQuotes.prefix(5)) { quote in
+                // Opened by value, so the form stays open when Mark Lost or
+                // Book Job moves the quote off this list.
+                NavigationLink(value: quote) {
+                    QuoteRow(quote: quote)
+                        .padding(.horizontal, Space.s)
+                        .padding(.vertical, 2)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+            NavigationLink(value: Route.quotes) {
+                Label(openQuotes.count > 5 ? "All \(openQuotes.count) quotes" : "All quotes", systemImage: "doc.text")
+                    .font(.callout.weight(.semibold))
+                    .padding(.horizontal, Space.s)
+                    .padding(.vertical, Space.xs)
+            }
+        }
+    }
+}
+
+/// Long-press menu on a job card: the two things done most often from the
+/// truck, without opening the job.
+struct JobQuickMenu: View {
+    @Environment(\.modelContext) private var context
+    let job: Job
+
+    var body: some View {
+        Button {
+            job.isDone.toggle()
+            job.updatedAt = Date()
+            try? context.save()
+            CalendarStore.shared.jobSaved(job)
+        } label: {
+            Label(job.isDone ? "Mark not done" : "Mark done", systemImage: job.isDone ? "arrow.uturn.backward" : "checkmark.circle")
+        }
+        Button {
+            job.isPaid.toggle()
+            job.updatedAt = Date()
+            try? context.save()
+            CalendarStore.shared.jobSaved(job)
+        } label: {
+            Label(job.isPaid ? "Mark unpaid" : "Mark paid", systemImage: "dollarsign.circle")
+        }
     }
 }

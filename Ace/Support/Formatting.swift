@@ -1,12 +1,14 @@
 import Foundation
 import SwiftUI
 
-/// Keyboard choices exist only on iOS; on the Mac these do nothing.
+/// Keyboard choices exist only on iOS; on the Mac these do nothing. The
+/// number and phone pads have no Return key, so they get a Done button.
 extension View {
     @ViewBuilder
     func decimalKeyboard() -> some View {
         #if os(iOS)
         self.keyboardType(.decimalPad)
+            .modifier(KeyboardDone())
         #else
         self
         #endif
@@ -16,11 +18,43 @@ extension View {
     func phoneKeyboard() -> some View {
         #if os(iOS)
         self.keyboardType(.phonePad)
+            .modifier(KeyboardDone())
+        #else
+        self
+        #endif
+    }
+
+    /// Numbers first, letters one tap away, for "12" or "12A".
+    @ViewBuilder
+    func houseNumberKeyboard() -> some View {
+        #if os(iOS)
+        self.keyboardType(.numbersAndPunctuation)
         #else
         self
         #endif
     }
 }
+
+#if os(iOS)
+/// A Done button above the keyboard while this one field is being typed
+/// in. Shown per field: one button on the page (Oct 20) never appeared.
+private struct KeyboardDone: ViewModifier {
+    @FocusState private var focused: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .focused($focused)
+            .toolbar {
+                if focused {
+                    ToolbarItemGroup(placement: .keyboard) {
+                        Spacer()
+                        Button("Done") { focused = false }
+                    }
+                }
+            }
+    }
+}
+#endif
 
 enum PhoneFormat {
     /// "5085550147" → "508-555-0147". Anything else is returned as typed.

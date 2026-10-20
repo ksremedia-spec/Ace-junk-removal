@@ -34,6 +34,111 @@ not checked), **Unknown** (with how to find out).
 
 ## 2. Where things stand
 
+- **Oct 20, late night: everything from today is on the iPhone.** Kyle:
+  "pour all the changes we've made today over to the iOS app".
+  `docs/decisions.md` has the why; specs in `docs/calendar-tab.md` and
+  `docs/labor.md` ("iPhone").
+  - Tabs are now Calendar, Jobs, Customers, Dumpsters, Labor. Quotes opens
+    from the Calendar.
+  - Calendar: figures, week strip or month, the day's job cards (long press
+    for Mark done / Mark paid), the six dumpster tiles, Not marked done,
+    Quotes waiting. Dumpsters: the tiles, two to a row.
+  - Labor: day by day, hours boxes and salaried checks, week totals, Add
+    person, a person's page with Retire and Delete.
+  - Assistant: hold to talk, the on-screen Missing questions, the Hours
+    screen, Return sends a typed note.
+  - **Run in the iOS Simulator only** (iPhone 17 Pro Max and the small
+    iPhone 17e, light and dark, normal and the largest text). Not run on a
+    real iPhone. The Assistant was fed saved Claude answers (`-debug.plan`)
+    because the simulator has no API key, and the microphone was not used.
+    The Mac app was rebuilt and opened after the shared changes.
+  - Not committed.
+
+- **Oct 20, evening: Mac Calendar and Dumpsters redesigned.** Kyle: "the
+  app looks kind of blah". Three sketches shown in the chat; Kyle picked
+  bright cards plus the week board, keeping the teal (not Ace's website
+  red). Spec: `docs/calendar-tab.md`, "Mac"; `docs/decisions.md`.
+  - Calendar is one wide page (`Ace/Mac/MacBoard.swift`, which replaces
+    `MacCalendarList`): four figures, the week as seven columns of job
+    cards (or the full month beside the chosen day), the six dumpsters as
+    tiles, then Not marked done and Quotes waiting. Clicking a card opens
+    it in an inspector on the right. Dumpsters is the same idea
+    (`MacDumpsterBoard`).
+  - **Seen on the Mac, dark and light:** the week, Month, the tiles,
+    opening a job in the inspector, the Dumpsters page. Light mode was
+    checked with a new test switch, `-debug.light` (and `-debug.dark`),
+    so the Mac's own setting was not touched.
+  - Not yet redesigned: the job, quote and customer pages (still the
+    settings-style form) and the Jobs, Quotes and Customers lists.
+  - Built for Mac, compiled for iPhone (the iPhone Calendar is unchanged).
+    Not committed.
+- **Oct 20, night: Assistant switched to Haiku; full-resolution screenshots.**
+  Sonnet dropped people and fields on most test notes, Haiku on none; Kyle
+  agreed to switch (`docs/decisions.md`). Debug builds now also save each
+  raw reply to `tmp/assistant-response-*.json` in the app's container.
+  Ten full-resolution screenshots of the running Mac app are in
+  `screenshots/2026-10-20/` (not committed). How they were made: the
+  window filled to the screen, each screen captured as nine zoomed pieces
+  through computer use and stitched (a small Swift script in the session
+  scratchpad); the plain screenshot tool returns only 1453 pixels wide,
+  and macOS's own `screencapture` needs Screen Recording permission, which
+  was not given.
+
+- **Oct 20, night: Labor (Alex's request).** Spec `docs/labor.md`;
+  decision in `docs/decisions.md`. Data `Ace/Data/Labor.swift` (Worker,
+  LaborEntry); Mac page `Ace/Mac/MacLaborBoard.swift`; person screens
+  `Ace/Labor/WorkerViews.swift`; Assistant `AssistantLaborView.swift` and
+  the `log_hours` action.
+  - **Seen on the Mac:** adding five filler people (two salary, three
+    hourly) through Add person; typing hours (8, 7:30, 9.5) with correct
+    totals and pay; marking a salaried day off; the Assistant logging four
+    people from one typed note, adding Kevin as new, and answering "how
+    many hours has Joey worked this week and what do I owe him".
+  - Filler crew in Kyle's Mac copy: Mark Sullivan and Dave Brennan
+    (salary), Chris Pacheco $20, Joey Medeiros $22, Tyler Gomes $18, and
+    Kevin (added by the Assistant test). Made up; Alex replaces them.
+  - Assumed, to confirm with Alex: hours rather than start and end times;
+    salaried work week Monday to Saturday.
+  - Not built: the iPhone screen (where it goes in the tab bar is open),
+    sync between devices, a screen for the salaried work week.
+  - The demo now says "Crew hours are kept in the app" for a log_hours
+    action. The demo's own checks were not run: Node.js is not installed
+    on this Mac.
+  - Built for Mac, compiled for iPhone. Not committed.
+
+- **Oct 20, afternoon: missing details as on-screen questions; hold to
+  talk.** Kyle: click a missing item and type it, and have the Assistant
+  ask for what was missed. A first version asked out loud; Kyle tried it
+  and said no ("I don't want it to talk back, maybe it asks questions back
+  on screen ... maybe a hold to talk"). Spec: `docs/assistant-actions.md`,
+  "Follow-up questions" and "Same customer or new"; `docs/decisions.md`.
+  - New-job and new-quote forms: a Missing section at the top. The first
+    missing item is a question on screen with Hold to answer, Type it and
+    Skip; every missing item is also a button that puts the cursor in its
+    field; a missing house number gets its own field above the address.
+    **Seen working on the Mac:** the question, Skip, Type it (typed a phone,
+    the question moved on to price), and a tapped Hold to answer that heard
+    room speech, sent it to Haiku and correctly filled nothing.
+  - The Assistant's Record/Stop is now one Hold to talk button: hold and
+    let go, or tap once for hands-free and tap again. **Seen on the Mac**
+    through tapping (it heard real speech in the room and answered it).
+    **Not seen:** an actual press-and-hold with the mouse, and a spoken
+    answer filling a field (the Mac's volume was 6 of 100, so its own test
+    voice could not be heard). Needs Kyle to try once.
+  - Fixed on the way: WhisperKit's live transcriber kept the last
+    recording's words and its place in the audio, so a second recording
+    showed old words and went quiet. Now a fresh one per recording.
+  - Customer matching (Kyle): name and phone must both match, otherwise a
+    new customer; any address said must match too. Shared by both forms
+    (`existingCustomer`). Built; not re-checked on screen.
+  - **Seen twice on Oct 20: the Sonnet setting dropped fields** on the same
+    typed note ("Dana Whitcomb, Locust Street in Taunton, garage cleanout
+    tomorrow at 9"): once the date, once the name and address. The Missing
+    section caught both, but Haiku did not do this in earlier tests.
+    Recommendation to Kyle: switch Settings › Claude model to Haiku.
+  - Built for Mac and compiled for iPhone (not run on a phone). Not
+    committed.
+
 - **Oct 20, early morning: full audit of the Mac app and the fixes from it.**
   Kyle: judge the app start to finish; Mac only ("don't worry about any
   iPhone screens let's get the Mac app right first"). 12 reviewers read the
@@ -183,8 +288,9 @@ not checked), **Unknown** (with how to find out).
        Today `JobReviewView.matchingCustomer` links on the note's
        reference, a phone match, or the exact name alone. New rule: name
        AND address (house number + street word, suffix and town ignored)
-       → same customer; otherwise new. Open: does a phone match still
-       link on its own?
+       → same customer; otherwise new. Answered Oct 20: a phone match
+       alone does not link ("both the phone number and customer name need
+       to match otherwise new customer"); see the Oct 20 entry above.
     4. "calander is too small on open to": on the Mac the month is the
        standard graphical `DatePicker`, about 140pt wide in a column twice
        that. Options put to Kyle: a full-size month grid in the middle

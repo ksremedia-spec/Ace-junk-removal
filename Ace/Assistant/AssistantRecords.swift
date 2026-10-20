@@ -8,6 +8,7 @@ struct RecordRefs {
     var jobs: [String: Job] = [:]
     var quotes: [String: Quote] = [:]
     var dumpsters: [String: Dumpster] = [:]
+    var workers: [String: Worker] = [:]
 
     /// " c4 " → "C4".
     static func key(_ ref: String) -> String {
@@ -18,6 +19,7 @@ struct RecordRefs {
     func job(_ ref: String) -> Job? { jobs[Self.key(ref)] }
     func quote(_ ref: String) -> Quote? { quotes[Self.key(ref)] }
     func dumpster(_ ref: String) -> Dumpster? { dumpsters[Self.key(ref)] }
+    func worker(_ ref: String) -> Worker? { workers[Self.key(ref)] }
 
     /// The job a reference points at, only while it is still on the books
     /// (`live` is the current list), so a job deleted by an earlier step is
@@ -68,7 +70,8 @@ enum AssistantRecords {
         let refs: RecordRefs
     }
 
-    static func build(note: String, customers: [Customer], jobs: [Job], dumpsters: [Dumpster], quotes: [Quote], now: Date) -> Result {
+    static func build(note: String, customers: [Customer], jobs: [Job], dumpsters: [Dumpster], quotes: [Quote],
+                      workers: [Worker] = [], now: Date) -> Result {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: now)
         let windowStart = calendar.date(byAdding: .day, value: -14, to: today) ?? today
@@ -136,6 +139,20 @@ enum AssistantRecords {
         if openQuotes.isEmpty { lines.append("- none") }
         for quote in openQuotes {
             lines.append("- " + builder.quoteLine(quote, today: today))
+        }
+
+        let crew = workers.filter(\.isActive).sorted { a, b in
+            if a.isSalaried != b.isSalaried { return a.isSalaried }
+            return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
+        }
+        let thisWeek = Labor.week(containing: today, calendar: calendar)
+        let lastWeek = Labor.week(containing: calendar.date(byAdding: .day, value: -7, to: today) ?? today, calendar: calendar)
+        lines.append("Crew (hours this week from \(Format.day(thisWeek.first ?? today)), and last week):")
+        if crew.isEmpty { lines.append("- none") }
+        for (position, worker) in crew.enumerated() {
+            let ref = "W\(position + 1)"
+            builder.refs.workers[ref] = worker
+            lines.append("- " + ref + " " + crewLine(worker, thisWeek: thisWeek, lastWeek: lastWeek, today: today, calendar: calendar))
         }
 
         lines.append("Customers named in the note or on these records:")
@@ -300,6 +317,45 @@ enum AssistantRecords {
     }
 
     /// "Totals: owed $19,550 from 31 jobs; done this week $2,140 from 6 jobs; booked today $750 from 2 jobs."
+    /// "Chris Pacheco · hourly, $20 an hour · this week: Mon 8, Tue 7.5 (15.5 hrs) · last week: 38 hrs"
+    /// "Dave Brennan · salary, works Mon to Sat · this week: off Mon, Oct 19, 2026 · last week: 6 days"
+    private static func crewLine(_ worker: Worker, thisWeek: [Date], lastWeek: [Date], today: Date, calendar: Calendar) -> String {
+        var parts = [worker.name]
+        if worker.isSalaried {
+            parts.append("salary, works " + salaryDaysText(calendar: calendar))
+            let changed = thisWeek.filter { day in
+                guard let entry = worker.entry(on: day, calendar: calendar) else { return false }
+                return entry.isOff == worker.usuallyWorks(on: day, calendar: calendar)
+            }
+            let notes = changed.map { day in
+                (worker.worked(on: day, calendar: calendar) ? "in " : "off ") + Format.day(day)
+            }
+            parts.append("this week: " + (notes.isEmpty ? "as usual" : notes.joined(separator: ", ")))
+            parts.append("last week: " + Plural.text(Labor.daysWorked(worker, over: lastWeek), "day"))
+        } else {
+            parts.append(worker.hourlyRate.map { "hourly, " + Money.text($0) + " an hour" } ?? "hourly")
+            let days = thisWeek.compactMap { day -> String? in
+                guard let hours = worker.hours(on: day) else { return nil }
+                return day.formatted(.dateTime.weekday(.abbreviated)) + " " + Labor.hoursText(hours)
+            }
+            let total = Labor.hours(worker, over: thisWeek)
+            parts.append("this week: " + (days.isEmpty ? "none yet" : days.joined(separator: ", ") + " (" + Labor.hoursLabel(total) + ")"))
+            parts.append("last week: " + Labor.hoursLabel(Labor.hours(worker, over: lastWeek)))
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    /// "Mon to Sat", or the days listed when they are not in a row.
+    private static func salaryDaysText(calendar: Calendar) -> String {
+        let symbols = calendar.shortWeekdaySymbols
+        let days = AppSettings.salaryDays.sorted()
+        guard let first = days.first, let last = days.last else { return "no set days" }
+        if days == Array(first...last) {
+            return symbols[first - 1] + " to " + symbols[last - 1]
+        }
+        return days.map { symbols[$0 - 1] }.joined(separator: ", ")
+    }
+
     private static func totalsLine(jobs: [Job], today: Date, calendar: Calendar) -> String {
         let tomorrow = calendar.date(byAdding: .day, value: 1, to: today) ?? today
         // Monday of this week: weekday 1 is Sunday, 2 is Monday.

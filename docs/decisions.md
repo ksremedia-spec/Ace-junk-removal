@@ -3,6 +3,93 @@
 Short log of decisions and why, newest first. Written in plain English so it
 can be read later without the conversation.
 
+## 2026-10-20 (late night) · iPhone gets the boards and a Labor tab; Quotes moves under Calendar
+
+- Kyle: "pour all the changes we've made today over to the iOS app".
+  The iPhone Calendar and Dumpsters use the same cards and tiles as the
+  Mac; Labor gets its own tab.
+- Five tabs fit on an iPhone; a sixth hides behind "More", two taps deep,
+  which breaks the "nothing deeper than two taps" rule. Labor took the
+  fifth place and **Quotes moved under Calendar** (its figure and "All
+  quotes"). Quotes is mostly Ashley's, at her Mac, where it keeps its own
+  sidebar entry; Labor is Alex's, on his phone.
+- Fixes found while testing in the iPhone Simulator: number pads get a
+  Done button (they have no Return key); the Assistant's note box sends on
+  the keyboard's Return key (its Send button sat under the keyboard); a
+  Missing question's "Type it", a gap chip and "Fix it" scroll to the field
+  and bring up the keyboard; the house number gets a numbers keyboard; the
+  largest text sizes stack rows instead of cutting them.
+
+## 2026-10-20 (night) · The Assistant runs on Haiku
+
+- Kyle had Sonnet set ("he'd want the smarter of the two models"). Tested on
+  his Mac the same day, with every raw answer saved (Debug builds write
+  `tmp/assistant-response-*.json`): Sonnet 5.5 dropped work on most notes -
+  an empty form, the name and address missing, the date missing, and three
+  times one person out of four on an hours note (twice with no questions
+  pointing at the missing ones, so no check could catch it). At the app's
+  `medium` effort it often did no thinking at all (`thinking_tokens: 0`);
+  at `high` it thought and still returned one of four. Haiku 5.5 filled
+  every one of the same notes correctly.
+- Kyle: "We can switch to haiku then it's cheaper faster if it's doing the
+  job right then it's doing the job right." Settings › Claude model is now
+  Haiku on his Mac (the app's default already was). Sonnet stays in
+  Settings for testing; the Haiku retry for empty or short answers stays.
+- Cause not proven: it looks like Sonnet 5.5 with structured output and
+  this 30-field schema, not reasoning. Worth retesting when a new Sonnet
+  ships.
+
+## 2026-10-20 (night) · Labor: crew, hours, and the Assistant
+
+- Alex, through Kyle: a Labor tab to track "how many hours each guy worked
+  every day"; two guys are on salary and count as working every day; add
+  people for seasonal hires; and "build the laborers portion into the
+  assistant as well, obviously". Mac first, then iPhone. Filler names and
+  wages until Alex fills in his own (Kyle).
+- Plain hours per day, not start and end times (Kyle was asked and did not
+  answer; hours are quickest to type and say). Salaried work week Monday to
+  Saturday, assumed. People leaving are retired, not deleted.
+- Assistant: new action `log_hours` (workerName, hours, ref W#, date); all
+  of a note's hours on one screen; the crew and two weeks of hours go with
+  every note. A second safety net asks Haiku again when Sonnet's answer
+  leaves actions out. Details: `labor.md`.
+
+## 2026-10-20 (evening) · Mac Calendar and Dumpsters become wide boards
+
+- Kyle: "I still think the app looks kind of blah." Shown three sketches
+  (Ace red and dark; bright cards; a week board), he picked "BNC" (bright
+  cards and the week board) and said not to change the colouring: "Ace's
+  website is very old. Just use the color we have for now." So the teal
+  accent stays; Ace's website red was not used.
+- Calendar and Dumpsters on the Mac are now one wide page each, with the
+  chosen record in an inspector on the right, instead of a list beside an
+  empty pane. Jobs, Quotes and Customers keep sidebar, list and page.
+  Details: `calendar-tab.md`, "Mac".
+
+## 2026-10-20 (later) · Missing details as on-screen questions; hold to talk
+
+- Kyle: when the Assistant's form is missing something, "just be able to
+  click it and quickly type it in", and have it ask for what was missed
+  ("is there a house number, is there an address"). A version that asked
+  out loud was built and tried; Kyle: "I don't want it to talk back, maybe
+  it asks questions back on screen. And I want a slicker integration of
+  it, maybe a hold to talk".
+- So: a Missing section at the top of the new-job and new-quote forms asks
+  one question at a time on screen, answered by holding the talk button,
+  by typing in the field, or skipped; every missing item is also a button
+  that puts the cursor in its field. Plain numbers are read in code;
+  anything else goes to Haiku in a small separate request. Saving is still
+  a tap. Details: `assistant-actions.md`, "Follow-up questions".
+- The Assistant's Record/Stop buttons became one **hold to talk** button:
+  hold, talk, let go to send; or tap once for hands-free and tap again to
+  send (for the truck). The same button answers the questions.
+- Same customer or new, Kyle: "both the phone number and customer name need
+  to match otherwise new customer". With his Oct 19 rule (same name and
+  address is the same customer): the name must match and any phone or
+  address said must agree with the record.
+- Still Claude + WhisperKit underneath: on-device speech is already a rule,
+  and Claude's API works on text (no live speech-to-speech that I know of).
+
 ## 2026-10-20 · Assistant: whole directory, thinking on, quote visits, live words
 
 - Claude is sent every customer (cached), so lookups by address or street

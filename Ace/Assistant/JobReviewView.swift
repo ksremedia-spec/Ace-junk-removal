@@ -14,6 +14,8 @@ struct JobReviewView: View {
     /// The customer the note's reference pointed at, if any. The job goes to
     /// them unless the name is changed to someone else.
     let knownCustomer: Customer?
+    /// The voice model, for answering the Missing questions by voice.
+    let engine: WhisperKitEngine?
     var onSaved: () -> Void
     var onStartOver: () -> Void
 
@@ -31,6 +33,15 @@ struct JobReviewView: View {
     @State private var paymentType: PaymentType
     @State private var isPaid: Bool
     @State private var notes: String
+    /// Typed or said separately when the address came without one; it goes
+    /// in front of the street on save.
+    @State private var houseNumber = ""
+    /// A date picked or said after the note had none.
+    @State private var dateSet = false
+    @FocusState private var focus: Gap?
+    /// A Missing button's field, scrolled to before it is typed in: on the
+    /// iPhone a field further down the form is not built until it is near.
+    @State private var scrollTarget: Gap?
 
     /// What Claude filled in, parsed once, so we can tell what Ashley changed.
     private let original: Original
@@ -57,9 +68,11 @@ struct JobReviewView: View {
     @State private var saved = false
     @State private var flagged = 0
 
-    init(draft: JobDraft, knownCustomer: Customer? = nil, onSaved: @escaping () -> Void, onStartOver: @escaping () -> Void) {
+    init(draft: JobDraft, knownCustomer: Customer? = nil, engine: WhisperKitEngine? = nil,
+         onSaved: @escaping () -> Void, onStartOver: @escaping () -> Void) {
         self.draft = draft
         self.knownCustomer = knownCustomer
+        self.engine = engine
         self.onSaved = onSaved
         self.onStartOver = onStartOver
 
@@ -94,87 +107,140 @@ struct JobReviewView: View {
     }
 
     var body: some View {
-        Form {
-            Section {
-                // Every field shows where to type, so a gap is one click and
-                // a few keys to fix (Kyle, Oct 19).
-                field("customerName") {
-                    TextField("Name", text: $name, prompt: Text("Customer name"))
-                }
-                field("phone") {
-                    TextField("Phone", text: $phone, prompt: Text("Add a phone number"))
-                        .phoneKeyboard()
-                }
-                field("address") {
-                    TextField("Address", text: $address, prompt: Text("Street and town"), axis: .vertical)
-                }
-                if let match = matchingCustomer {
-                    Text("Matches existing customer \(match.name), \(match.address.isEmpty ? "no address on file" : match.address).")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                } else if !name.trimmingCharacters(in: .whitespaces).isEmpty {
-                    Text("New customer.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-            } header: {
-                Text("Customer")
-            }
+        ScrollViewReader { proxy in
+            Form {
+                MissingSection(
+                    gaps: gaps,
+                    engine: engine,
+                    formSummary: { formSummary },
+                    onPick: pick,
+                    onFill: fill
+                )
 
-            Section("Job") {
-                field("jobType") {
-                    Picker("Type", selection: $jobType) {
-                        ForEach(JobType.allCases) { type in
-                            Text(type.rawValue).tag(type)
+                Section {
+                    // Every field shows where to type, so a gap is one click and
+                    // a few keys to fix (Kyle, Oct 19).
+                    field("customerName") {
+                        TextField("Name", text: $name, prompt: Text("Customer name"))
+                            .focused($focus, equals: .name)
+                            .id(Gap.name)
+                    }
+                    field("phone") {
+                        TextField("Phone", text: $phone, prompt: Text("Add a phone number"))
+                            .phoneKeyboard()
+                            .focused($focus, equals: .phone)
+                            .id(Gap.phone)
+                    }
+                    if gaps.contains(.houseNumber) || !houseNumber.isEmpty {
+                        TextField("House number", text: $houseNumber, prompt: Text("Number"))
+                            .houseNumberKeyboard()
+                            .focused($focus, equals: .houseNumber)
+                            .id(Gap.houseNumber)
+                            .foregroundStyle(houseNumber.isEmpty ? Color.orange : Color.primary)
+                    }
+                    field("address") {
+                        TextField("Address", text: $address, prompt: Text("Street and town"), axis: .vertical)
+                            .focused($focus, equals: .address)
+                            .id(Gap.address)
+                    }
+                    if let match = matchingCustomer {
+                        Text("Matches existing customer \(match.name), \(match.address.isEmpty ? "no address on file" : match.address).")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else if !name.trimmingCharacters(in: .whitespaces).isEmpty {
+                        Text("New customer.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                } header: {
+                    Text("Customer")
+                }
+
+                Section("Job") {
+                    field("jobType") {
+                        Picker("Type", selection: $jobType) {
+                            ForEach(JobType.allCases) { type in
+                                Text(type.rawValue).tag(type)
+                            }
                         }
                     }
-                }
-                field("date") {
-                    DatePicker("Date", selection: $date, displayedComponents: .date)
-                }
-                Toggle("Set a time", isOn: $hasTime)
-                if hasTime {
-                    field("time") {
-                        DatePicker("Time", selection: $date, displayedComponents: .hourAndMinute)
+                    field("date") {
+                        DatePicker("Date", selection: $date, displayedComponents: .date)
+                            .focused($focus, equals: .date)
+                            .id(Gap.date)
                     }
-                    EndTimeRows(hasEnd: $hasEnd, endTime: $endTime, start: date, note: questions[Self.key("endTime")])
-                    OverlapNote(overlapping: overlapping)
-                } else if let question = questions[Self.key("time")] {
-                    Text(question)
-                        .font(.footnote)
-                        .foregroundStyle(.orange)
+                    Toggle("Set a time", isOn: $hasTime)
+                    if hasTime {
+                        field("time") {
+                            DatePicker("Time", selection: $date, displayedComponents: .hourAndMinute)
+                        }
+                        EndTimeRows(hasEnd: $hasEnd, endTime: $endTime, start: date, note: questions[Self.key("endTime")])
+                        OverlapNote(overlapping: overlapping)
+                    } else if let question = questions[Self.key("time")] {
+                        Text(question)
+                            .font(.footnote)
+                            .foregroundStyle(.orange)
+                    }
                 }
-            }
 
-            Section("Payment") {
-                field("price") {
-                    TextField("Price", text: $priceText, prompt: Text("Price in dollars"))
-                        .decimalKeyboard()
-                }
-                field("paymentType") {
-                    Picker("Payment", selection: $paymentType) {
-                        ForEach(PaymentType.allCases) { type in
-                            Text(type.rawValue).tag(type)
+                Section("Payment") {
+                    field("price") {
+                        TextField("Price", text: $priceText, prompt: Text("Price in dollars"))
+                            .decimalKeyboard()
+                            .focused($focus, equals: .price)
+                            .id(Gap.price)
+                    }
+                    field("paymentType") {
+                        Picker("Payment", selection: $paymentType) {
+                            ForEach(PaymentType.allCases) { type in
+                                Text(type.rawValue).tag(type)
+                            }
                         }
                     }
+                    field("paid") {
+                        Toggle("Paid", isOn: $isPaid)
+                    }
                 }
-                field("paid") {
-                    Toggle("Paid", isOn: $isPaid)
+
+                Section("Notes") {
+                    field("notes") {
+                        TextEditor(text: $notes)
+                            .frame(minHeight: 60)
+                    }
+                }
+
+                Section {
+                    Button("Start over") { onStartOver() }
                 }
             }
-
-            Section("Notes") {
-                field("notes") {
-                    TextEditor(text: $notes)
-                        .frame(minHeight: 60)
+            .formStyle(.grouped)
+            .onChange(of: focus) { _, gap in
+                // Brings the field being filled in clear of the keyboard.
+                guard let gap else { return }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    withAnimation { proxy.scrollTo(gap, anchor: .center) }
                 }
             }
-
-            Section {
-                Button("Start over") { onStartOver() }
+            .onChange(of: scrollTarget) { _, gap in
+                guard let gap else { return }
+                // Cleared first: focus set while an alert was closing can
+                // be left pointing at a field that never got the keyboard,
+                // and setting the same field again would then do nothing.
+                focus = nil
+                withAnimation { proxy.scrollTo(gap, anchor: .center) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    focus = gap
+                    scrollTarget = nil
+                }
+                // Once more if it did not take (a closing alert can swallow
+                // the first try).
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
+                    guard focus != gap else { return }
+                    withAnimation { proxy.scrollTo(gap, anchor: .center) }
+                    focus = gap
+                }
             }
         }
-        .formStyle(.grouped)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save") { beginSave() }
@@ -191,7 +257,10 @@ struct JobReviewView: View {
             Text("Save the job as it is, or go back and fix it first?")
         }
         .onAppear {
-            if !draft.issues.isEmpty { flagged += 1 }
+            if !draft.issues.isEmpty || !gaps.isEmpty { flagged += 1 }
+        }
+        .onChange(of: date) { _, _ in
+            dateSet = true
         }
         .sensoryFeedback(.success, trigger: saved)
         .sensoryFeedback(.warning, trigger: flagged)
@@ -208,7 +277,7 @@ struct JobReviewView: View {
     /// Claude's questions plus the gaps the app itself can see.
     private var questions: [String: String] {
         var map = Dictionary(draft.issues.map { (Self.key($0.field), $0.question) }, uniquingKeysWith: { first, _ in first })
-        if draft.date.isEmpty, map[Self.key("date")] == nil {
+        if draft.date.isEmpty, !dateSet, map[Self.key("date")] == nil {
             map[Self.key("date")] = "No date was given. Save for today?"
         }
         // No job type said: the form shows its default quietly, without a
@@ -220,7 +289,7 @@ struct JobReviewView: View {
     /// and the question appears underneath.
     @ViewBuilder
     private func field<Content: View>(_ name: String, @ViewBuilder content: () -> Content) -> some View {
-        if let question = questions[Self.key(name)] {
+        if let question = questions[Self.key(name)], !resolved(name) {
             content()
                 .foregroundStyle(Color.orange)
             Text(question)
@@ -228,6 +297,73 @@ struct JobReviewView: View {
                 .foregroundStyle(.orange)
         } else {
             content()
+        }
+    }
+
+    // MARK: Missing pieces
+
+    /// The address with the house number typed or said separately in front.
+    private var fullAddress: String {
+        let street = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        let number = houseNumber.trimmingCharacters(in: .whitespaces)
+        guard !number.isEmpty else { return street }
+        return street.isEmpty ? number : number + " " + street
+    }
+
+    /// What is still missing, in the order it is asked about. A customer on
+    /// file covers their own phone and address. No time is fine (the prompt
+    /// never asks about one either).
+    private var gaps: [Gap] {
+        var list: [Gap] = []
+        let match = matchingCustomer
+        if name.trimmingCharacters(in: .whitespaces).isEmpty { list.append(.name) }
+        if fullAddress.isEmpty {
+            if match?.address.isEmpty ?? true { list.append(.address) }
+        } else if SpokenAddress(fullAddress).houseNumber == nil {
+            list.append(.houseNumber)
+        }
+        if phoneDigits.isEmpty, match?.phone.isEmpty ?? true { list.append(.phone) }
+        if draft.date.isEmpty, !dateSet { list.append(.date) }
+        if Parse.money(priceText) == nil, jobType != .estimate { list.append(.price) }
+        return list
+    }
+
+    /// A Missing button: the field, ready to type in.
+    private func pick(_ gap: Gap) {
+        scrollTarget = gap
+    }
+
+    /// The form as it stands, for reading an answer in context.
+    private var formSummary: String {
+        [
+            "Name: \(name)",
+            "Phone: \(phone)",
+            "Address: \(fullAddress)",
+            "Job: \(jobType.rawValue)",
+            "Date: \(Dates.longDay(date))",
+            "Price: \(priceText)",
+        ].joined(separator: "\n")
+    }
+
+    /// A spoken answer, into its field.
+    private func fill(_ gap: Gap, _ value: String) {
+        switch gap {
+        case .name:
+            name = value
+        case .address:
+            address = value
+        case .houseNumber:
+            houseNumber = value
+        case .phone:
+            phone = PhoneFormat.formatted(value)
+        case .date:
+            guard let day = JobDraft.day(from: value) else { return }
+            let calendar = Calendar.current
+            let clock = calendar.dateComponents([.hour, .minute], from: date)
+            date = calendar.date(bySettingHour: clock.hour ?? 0, minute: clock.minute ?? 0, second: 0, of: day) ?? day
+            dateSet = true
+        case .price:
+            priceText = value
         }
     }
 
@@ -254,25 +390,7 @@ struct JobReviewView: View {
     private var phoneDigits: String { phone.filter(\.isNumber) }
 
     private var matchingCustomer: Customer? {
-        if let knownCustomer,
-           SpokenName(name).text == SpokenName(knownCustomer.name).text {
-            return knownCustomer
-        }
-        if phoneDigits.count >= 7, let byPhone = customers.first(where: { $0.phoneDigits == phoneDigits }) {
-            return byPhone
-        }
-        // Kyle, Oct 19: same name and same address is the same customer;
-        // the same name somewhere else is a new one. With no address said,
-        // the name alone decides.
-        let trimmed = name.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !trimmed.isEmpty else { return nil }
-        let said = SpokenAddress(address)
-        return customers.first { customer in
-            guard customer.name.lowercased() == trimmed else { return false }
-            guard said.houseNumber != nil, !customer.address.isEmpty else { return true }
-            let onFile = SpokenAddress(customer.address)
-            return onFile.houseNumber == said.houseNumber && onFile.streetWord == said.streetWord
-        }
+        existingCustomer(name: name, phone: phone, address: fullAddress, known: knownCustomer, in: customers)
     }
 
     // MARK: Questions, one at a time
@@ -299,7 +417,7 @@ struct JobReviewView: View {
         let scheduled = hasTime ? date : Calendar.current.startOfDay(for: date)
         if scheduled < Dates.startOfToday() {
             ask("date", "The date is in the past (\(Dates.shortDay(date))). Save anyway?")
-        } else if draft.date.isEmpty && !resolved("date") {
+        } else if draft.date.isEmpty && !dateSet {
             ask("date", "No date was given. Save for today (\(Dates.shortDay(date)))?")
         }
         if let question = JobOverlap.question(overlapping) {
@@ -325,11 +443,11 @@ struct JobReviewView: View {
         case "phone":
             return phoneDigits != draft.phone.filter(\.isNumber) && !phoneDigits.isEmpty
         case "address":
-            return address != draft.address && address.contains(where: \.isNumber)
+            return fullAddress != draft.address && fullAddress.contains(where: \.isNumber)
         case "jobtype":
             return jobType != original.jobType
         case "date":
-            return !Calendar.current.isDate(date, inSameDayAs: original.date)
+            return dateSet || !Calendar.current.isDate(date, inSameDayAs: original.date)
         case "time":
             return hasTime && (!original.hasTime || date != original.date)
         case "endtime":
@@ -366,9 +484,18 @@ struct JobReviewView: View {
         }
     }
 
+    /// "Fix it": back to the form, with the field the question was about
+    /// ready to type in.
     private func answeredNo() {
+        let field = current?.field
         pending = []
         current = nil
+        if let field, let gap = Gap(field: field) {
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(350))
+                pick(gap == .address && !address.isEmpty ? .houseNumber : gap)
+            }
+        }
     }
 
     // MARK: Save
@@ -378,14 +505,14 @@ struct JobReviewView: View {
         if let match = matchingCustomer {
             customer = match
             if customer.phone.isEmpty, !phoneDigits.isEmpty { customer.phone = PhoneFormat.formatted(phone) }
-            if customer.address.isEmpty { customer.address = address.trimmingCharacters(in: .whitespacesAndNewlines) }
+            if customer.address.isEmpty { customer.address = fullAddress }
             customer.updatedAt = Date()
         } else {
             let trimmedName = name.trimmingCharacters(in: .whitespaces)
             customer = Customer(
                 name: trimmedName.isEmpty ? "Unknown customer" : trimmedName,
                 phone: PhoneFormat.formatted(phone),
-                address: address.trimmingCharacters(in: .whitespacesAndNewlines)
+                address: fullAddress
             )
             context.insert(customer)
         }

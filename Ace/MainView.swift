@@ -1,12 +1,14 @@
 import SwiftData
 import SwiftUI
 
-/// The iPhone layout: five tabs, with the Assistant reachable from every
-/// tab's toolbar and Settings from the Calendar tab's. The app reopens on
-/// the tab it was left on.
+/// The iPhone layout: five tabs (Calendar, Jobs, Customers, Dumpsters,
+/// Labor), with the Assistant reachable from every tab's toolbar and
+/// Settings from the Calendar tab's. Quotes moved under Calendar when Labor
+/// took the fifth tab (Oct 20): a sixth would hide behind "More". The app
+/// reopens on the tab it was left on.
 struct MainView: View {
     enum AppTab: String {
-        case calendar, jobs, quotes, customers, dumpsters
+        case calendar, jobs, customers, dumpsters, labor
     }
 
     /// Screens that can be pushed from a launch argument (testing aid) or
@@ -26,12 +28,11 @@ struct MainView: View {
     /// The day chosen on the Calendar tab. Not remembered: the app always
     /// opens on today.
     @State private var calendarDay = Dates.startOfToday()
-    @State private var quotesPath = NavigationPath()
-    @State private var quotesFilter: QuoteStatus = .open
     @State private var handledLaunchArguments = false
 
     private var selectedTab: Binding<AppTab> {
         Binding(
+            // "quotes" (the old fifth tab) and anything unknown open Calendar.
             get: { AppTab(rawValue: lastTabRaw) ?? .calendar },
             set: { lastTabRaw = $0.rawValue }
         )
@@ -52,12 +53,6 @@ struct MainView: View {
                         .toolbar { toolbarItems(showSettings: false) }
                 }
             }
-            Tab("Quotes", systemImage: "doc.text", value: AppTab.quotes) {
-                NavigationStack(path: $quotesPath) {
-                    QuotesView(filter: $quotesFilter)
-                        .toolbar { toolbarItems(showSettings: false) }
-                }
-            }
             Tab("Customers", systemImage: "person.2", value: AppTab.customers) {
                 NavigationStack {
                     CustomersView()
@@ -67,6 +62,12 @@ struct MainView: View {
             Tab("Dumpsters", systemImage: "shippingbox", value: AppTab.dumpsters) {
                 NavigationStack {
                     DumpstersView()
+                        .toolbar { toolbarItems(showSettings: false) }
+                }
+            }
+            Tab("Labor", systemImage: "clock", value: AppTab.labor) {
+                NavigationStack {
+                    LaborView()
                         .toolbar { toolbarItems(showSettings: false) }
                 }
             }
@@ -113,12 +114,11 @@ struct MainView: View {
         }
     }
 
-    /// The Calendar screen's "Quotes to follow up" row: the Quotes tab, back at
-    /// its list, on Open.
+    /// The Calendar's Quotes figure: the Quotes list, on the Calendar tab.
     private func showOpenQuotes() {
-        quotesFilter = .open
-        quotesPath = NavigationPath()
-        lastTabRaw = AppTab.quotes.rawValue
+        lastTabRaw = AppTab.calendar.rawValue
+        calendarPath = NavigationPath()
+        calendarPath.append(CalendarView.Route.quotes)
     }
 
     @ViewBuilder
@@ -163,6 +163,8 @@ struct MainView: View {
 
         if let tab = AppTab(rawValue: name) {
             lastTabRaw = tab.rawValue
+        } else if name == "quotes" {
+            showOpenQuotes()
         } else if name == "today" {
             lastTabRaw = AppTab.calendar.rawValue
         } else if name == "newjob" {

@@ -93,7 +93,17 @@ matches, it is a new_job, not a quote.
 "Which dumpsters are due back Friday", "what do we have tomorrow", "how much
 does Pereira owe", "what's Johnson's address", "who has dumpster 3", "is a
 dumpster free Friday", "how much is owed", "what did we do this week",
-"which quotes need a call back", "what's out for quotes".
+"which quotes need a call back", "what's out for quotes", "how many hours
+did Joey work this week", "who was off Monday".
+
+### Crew hours (added 2026-10-20, see `labor.md`)
+
+| Said | Action | Screen |
+| --- | --- | --- |
+| "Joey worked 8 today and Chris 6 and a half" | log_hours × 2 | Hours: one screen with a row per person |
+| "Dave was out sick Monday" | log_hours (hours 0) | Hours: Dave off Monday |
+| "Mark worked Sunday" | log_hours (hours 8) | Hours: Mark in on Sunday |
+| "New guy Kevin did 5 hours" | log_hours (no ref) | Hours, with "Add Kevin to the crew" |
 
 ### Several things at once
 
@@ -103,8 +113,8 @@ update_job per job, each pointing at its reference.
 
 ### Things the app cannot do yet (plain answer, nothing saved)
 
-Sending an invoice or receipt, changing a setting, undoing a change, drivers'
-hours, anything about a truck, deleting a customer. The reply says what was
+Sending an invoice or receipt, changing a setting, undoing a change,
+anything about a truck, deleting a customer. The reply says what was
 understood and the nearest thing that can be done.
 
 ## The answer Claude returns (structured output)
@@ -122,8 +132,8 @@ allow other properties.
       "items": {
         "type": "object",
         "properties": {
-          "type": { "type": "string", "enum": ["new_job", "update_job", "cancel_job", "new_customer", "update_customer", "contact_customer", "dumpster_dropoff", "dumpster_pickup", "dumpster_swap", "update_rental", "dumpster_note", "new_quote", "update_quote"] },
-          "ref": { "type": "string", "description": "Reference of the record this action is about, from the records list (C4, J12, Q2, D3), or empty." },
+          "type": { "type": "string", "enum": ["new_job", "update_job", "cancel_job", "new_customer", "update_customer", "contact_customer", "dumpster_dropoff", "dumpster_pickup", "dumpster_swap", "update_rental", "dumpster_note", "new_quote", "update_quote", "log_hours"] },
+          "ref": { "type": "string", "description": "Reference of the record this action is about, from the records list (C4, J12, Q2, D3, W2), or empty." },
           "customerName": { "type": "string" },
           "phone": { "type": "string", "description": "Digits with dashes, like 508-555-0123, or empty." },
           "address": { "type": "string", "description": "Street address with house number, town and state, or empty." },
@@ -149,9 +159,11 @@ allow other properties.
           "newPhone": { "type": "string" },
           "newAddress": { "type": "string" },
           "contact": { "type": "string", "enum": ["call", "text", "directions", ""] },
-          "message": { "type": "string", "description": "For a text: the message to send." }
+          "message": { "type": "string", "description": "For a text: the message to send." },
+          "workerName": { "type": "string", "description": "For log_hours: the crew member's name as said, or empty." },
+          "hours": { "type": "string", "description": "For log_hours: hours worked as digits, like 8 or 7.5, 0 for a day off, or empty." }
         },
-        "required": ["type", "ref", "customerName", "phone", "address", "jobType", "date", "time", "endTime", "price", "paymentType", "paid", "done", "newDate", "newTime", "dumpsterNumber", "otherDumpsterNumber", "actualTons", "agreedTons", "dueBack", "followUp", "quoteStatus", "note", "newName", "newPhone", "newAddress", "contact", "message"],
+        "required": ["type", "ref", "customerName", "phone", "address", "jobType", "date", "time", "endTime", "price", "paymentType", "paid", "done", "newDate", "newTime", "dumpsterNumber", "otherDumpsterNumber", "actualTons", "agreedTons", "dueBack", "followUp", "quoteStatus", "note", "newName", "newPhone", "newAddress", "contact", "message", "workerName", "hours"],
         "additionalProperties": false
       }
     },
@@ -161,7 +173,7 @@ allow other properties.
         "type": "object",
         "properties": {
           "action": { "type": "integer", "description": "Position of the action in the list, 0 for the first." },
-          "field": { "type": "string", "enum": ["customerName", "phone", "address", "jobType", "date", "time", "endTime", "price", "paymentType", "paid", "done", "newDate", "newTime", "dumpsterNumber", "otherDumpsterNumber", "actualTons", "agreedTons", "dueBack", "followUp", "note", "newName", "newPhone", "newAddress", "ref"] },
+          "field": { "type": "string", "enum": ["customerName", "phone", "address", "jobType", "date", "time", "endTime", "price", "paymentType", "paid", "done", "newDate", "newTime", "dumpsterNumber", "otherDumpsterNumber", "actualTons", "agreedTons", "dueBack", "followUp", "note", "newName", "newPhone", "newAddress", "ref", "workerName", "hours"] },
           "question": { "type": "string", "description": "One short plain yes/no question." }
         },
         "required": ["action", "field", "question"],
@@ -195,7 +207,7 @@ Today is {today} ({zone}). The time is {now}.
 
 The person speaking is Ashley in the office (booking work, answering the phone, keeping the books) or Alex and the crew in the field (finishing jobs, collecting payment, dropping off and picking up dumpsters). Work out what they want done and return it as a list of actions. One note can hold several actions: "Johnson's done, paid cash, and she wants a dumpster next Friday" is an update to her job and a new job.
 
-The records sent with the note start with the customer directory: every customer on file, with phone and address. Then come the dumpsters, the jobs from two weeks ago to two months ahead, the open quotes, and fuller lines for the customers the note seems to be about. Each record has a reference like C4, J12, Q2 or D3. When an action is about a record, put its reference in "ref". Look customers up in the directory by name, phone, street or town. Speech recognition often mishears house numbers and names, so a close match on the same street or a similar name is probably the one meant: use it and say so, rather than saying nobody was found. When the note names someone who is in neither the directory nor the records, leave "ref" empty and fill in the name, phone and address as said; that is a new customer.
+The records sent with the note start with the customer directory: every customer on file, with phone and address. Then come the dumpsters, the jobs from two weeks ago to two months ahead, the open quotes, the crew with their hours this week and last week, and fuller lines for the customers the note seems to be about. Each record has a reference like C4, J12, Q2, D3 or W2. When an action is about a record, put its reference in "ref". Look customers up in the directory by name, phone, street or town. Speech recognition often mishears house numbers and names, so a close match on the same street or a similar name is probably the one meant: use it and say so, rather than saying nobody was found. When the note names someone who is in neither the directory nor the records, leave "ref" empty and fill in the name, phone and address as said; that is a new customer.
 
 Actions:
 - new_job: book new work. Fill customerName, phone and address as said, jobType, date, time, endTime (when it will end, when an end or a length was said), price, paymentType, paid and note. A dumpster delivery, pickup or swap booked for later is a new_job with that jobType. A visit to look at work and give a price is jobType "Quote visit": "schedule a quote", "quote it Tuesday at 3", "go price the basement", "come out and give a price". A call-back or reminder is jobType "Other" on that day, with the reason in note.
@@ -211,8 +223,9 @@ Actions:
 - dumpster_note: something about a dumpster itself, such as damage or that it should not go out: dumpsterNumber and note.
 - new_quote: a price was given that the customer has not accepted yet: customerName, phone and address as said, jobType, price, note (what was quoted, in a few words) and followUp (the day to call them back, when said).
 - update_quote: an open quote changed. quoteStatus "approved" when the customer said yes or approved it, with date, time and endTime for the work when said; "declined" when they said no or went elsewhere. price when it changed. followUp when a call-back day was said. note for anything to write down. A call-back about an open quote is an update_quote with followUp, not a new_job. When a price is given and accepted in the same note and no open quote matches, book a new_job instead. A quote with a day or time to go and see the work is a visit, not a new_quote: book a new_job with jobType "Quote visit" on that day.
+- log_hours: hours a crew member worked on a day: workerName as said, ref when they are on the crew list (W2), hours as digits ("eight and a half" is 8.5; 0 when they were off or out sick) and date (today when no day is said). One action per person per day: "Joey worked 8 today and Chris 6" is two. A first name alone is enough when it matches one person on the crew. Salaried crew count as working their work days without being logged: log them only when they were off (hours 0) or worked another day (the hours said, or 8).
 
-When the note asks a question, for example "which dumpsters are due back Friday", "what do we have tomorrow", "how much does Pereira owe", "what's Johnson's address", "who lives at 63 Locust Street in Taunton", "is a dumpster free Friday" or "which quotes need a call back", answer it in "reply" from the records in one or two plain sentences, and return actions only if something should also be done. If the records do not hold the answer, say so. Name customers and jobs in "reply" by name and day, never by their reference (C4, J12): references are for the app.
+When the note asks a question, for example "which dumpsters are due back Friday", "what do we have tomorrow", "how much does Pereira owe", "what's Johnson's address", "who lives at 63 Locust Street in Taunton", "is a dumpster free Friday", "which quotes need a call back" or "how many hours did Joey work this week", answer it in "reply" from the records in one or two plain sentences, and return actions only if something should also be done. If the records do not hold the answer, say so. Name customers and jobs in "reply" by name and day, never by their reference (C4, J12): references are for the app.
 
 When the note asks for something none of the actions can do, such as sending an invoice, changing a setting, undoing a change or deleting a customer, say in "reply" what was understood and the nearest thing that can be done, and return no actions.
 
@@ -225,7 +238,7 @@ Rules for fields:
 - jobType from the work described; nobody says "junk removal" out loud. Junk removal: clearing, emptying or cleaning out a garage, basement, attic, shed, house, estate or office, or hauling away furniture, appliances, debris or a hot tub. Demolition: tearing down or taking out a shed, deck, pool, fence, wall, kitchen, bathroom or flooring, or any mention of "demo". Dumpster drop-off, Dumpster pickup and Dumpster swap: booking those for a later day. Quote visit: going to look and give a price; the office calls this a quote, never an estimate. Other: anything else. Leave it empty only when nothing says what the work is.
 - paymentType is cash, check or card. "PD cash 300" means paid, cash, 300.
 
-Issues: list what the person should confirm before saving, each tied to an action by its position in the list (0 for the first), naming the field and asking one short yes/no question. For a new job: no date, no price (except a quote visit, which is booked to work out the price), no phone number for a new customer, a date in the past, an address with no house number, a name or address that sounds misheard, two values said for one field, and the kind of work only when nothing in the note hints at it. A name that is not in the directory is a new customer: never ask whether it is new or in the records. A time not said is fine: never ask about it. For a new quote: no price, no phone number for someone not in the records, an address with no house number. For any other action: only when it is unclear which record is meant or what should change, and for a pickup or swap when no weight was said.
+Issues: list what the person should confirm before saving, each tied to an action by its position in the list (0 for the first), naming the field and asking one short yes/no question. For a new job: no date, no price (except a quote visit, which is booked to work out the price), no phone number for a new customer, a date in the past, an address with no house number, a name or address that sounds misheard, two values said for one field, and the kind of work only when nothing in the note hints at it. A name that is not in the directory is a new customer: never ask whether it is new or in the records. A time not said is fine: never ask about it. For a new quote: no price, no phone number for someone not in the records, an address with no house number. For log_hours: a name that is not on the crew list (the app asks before adding a new person), and no hours said for someone hourly. For any other action: only when it is unclear which record is meant or what should change, and for a pickup or swap when no weight was said.
 
 Plain business language. No exclamation points.
 ```
@@ -256,6 +269,9 @@ Jobs from Mon, Oct 5, 2026 to Fri, Dec 18, 2026:
 - J1 Mon, Oct 19, 2026 9:00 to 11:00 AM · C311 Linda Johnson · Junk removal · $300 cash · not paid · not done · 42 Elm St, Taunton, MA
 Open quotes:
 - Q1 C120 Dave Macomber · 88 Plymouth St, Middleborough, MA · Junk removal · Garage cleanout, about two loads · $450 · quoted Tue, Oct 13, 2026
+Crew (hours this week from Sun, Oct 18, 2026, and last week):
+- W1 Dave Brennan · salary, works Mon to Sat · this week: off Mon, Oct 19 · last week: 6 days
+- W3 Chris Pacheco · hourly, $20 an hour · this week: Mon 8, Tue 7.5 (15.5 hrs) · last week: 38 hrs
 Customers named in the note or on these records:
 - C311 Linda Johnson · 508-555-0147 · 42 Elm St, Taunton, MA · Side gate code 4412 · 4 jobs, $1,180, owes $0, last job Mon, Oct 19, 2026
   - J1 ... (for customers the note names, their last 8 jobs, each with a reference)
@@ -268,6 +284,11 @@ Totals: owed $19,550 from 31 jobs; done this week $2,140 from 6 jobs; booked tod
   fresh for each note (J1, J2…, Q1…; D is the dumpster number). All are kept
   with the request so the app can turn them back into records.
 - Dates always carry the year ("Mon, Oct 19, 2026"): history goes back years.
+- Crew: everyone still on the crew, salaried first, then by name, with W
+  references made fresh for each note. Salaried lines list only the days
+  that differ from their work week ("off Mon, Oct 19", "in Sun, Oct 18");
+  hourly lines list each day with hours and the week's total. Retired
+  people are not sent.
 - Jobs: two weeks back to two months ahead (was one week back, two weeks
   ahead, until 2026-10-20).
 - Fuller customer lines: up to ten customers the note seems to name,
@@ -328,12 +349,17 @@ Totals: owed $19,550 from 31 jobs; done this week $2,140 from 6 jobs; booked tod
   that day gives a note in the warning color and one yes/no question before
   saving. This replaces the old same-start-time check. A job with no end
   time counts as its start moment only.
-- new_quote: the New Quote form, filled in. A reference wins; otherwise the
-  customer is matched the way the new-job form matches: the same phone
-  number, or the same full name. A shared last name or an address alone is
-  not enough, so a quote never lands on a different person. When nobody
-  matches, saving adds a customer with the name, phone and address said. Quoted is today. The call-back day is the one said, else three days
+- new_quote: the New Quote form, filled in. The customer is matched the
+  way the new-job form matches (see "Same customer or new" below). When
+  nobody matches, saving adds a customer with the name, phone and address
+  said. Quoted is today. The call-back day is the one said, else three days
   out (shown, not flagged). Confirmation "Quote saved."
+- log_hours: every log_hours action in the plan shares one Hours screen,
+  at the first one's place among the steps (see `labor.md`). Confirmation
+  "Hours saved." or "Hours saved for 3 people."
+- Asked again on Haiku, once: an answer with an action that is completely
+  empty, or with questions about actions it does not contain (Sonnet 5.5,
+  Oct 20: one action returned for a note naming four people).
 - update_quote: finds the quote by its reference; otherwise among open
   quotes by the customer's phone, name or address ("Which quote?" for
   several, "No open quote found for …" for none, with Skip). Then:
@@ -349,3 +375,68 @@ Totals: owed $19,550 from 31 jobs; done this week $2,140 from 6 jobs; booked tod
 - A step that saved nothing (Skip) adds nothing to the confirmation.
 - dumpster_note is kept on the dumpster until changed and shown on its row and
   screen.
+
+## Same customer or new (Kyle, 2026-10-19 and 10-20)
+
+A new job or quote goes to a customer on file only when the name matches
+(ignoring Mr./Mrs. and a trailing 's) and nothing said disagrees with the
+record: a phone said must be the one on file, and an address said must have
+the same house number and street. With no phone or address said, the name
+alone decides. The same phone under a different name is a new customer, and
+so is the same name at a different address. The customer Claude's reference
+points at stands while the name and phone agree; its address is not checked,
+because house numbers are often misheard. Code: `existingCustomer` in
+`AssistantMatching.swift`.
+
+## Follow-up questions (Kyle, 2026-10-20)
+
+The new-job and new-quote forms show a **Missing** section at the top while
+something is missing, in this order: name, address (or only the house
+number), phone, date (new job only), price (not for a quote visit). A
+customer on file covers their own phone and address. A time is never asked
+for. The app never talks back out loud (Kyle: "I don't want it to talk
+back, maybe it asks questions back on screen").
+
+- **One question on screen.** The first missing item is asked as a
+  question ("No house number. What's the number?") with three buttons:
+  **Hold to answer**, **Type it** (the cursor goes to that field) and
+  **Skip**. Filling the field by any means moves on to the next question.
+  Skipped items stay below as buttons.
+- **Click to type.** Under the question, every missing item is a button
+  that puts the cursor in its field. A missing house number gets its own
+  small field above the address, and the number goes in front of the
+  street on save. On Save, "Fix it" in a question also goes to the field.
+- **Answering by voice.** Hold to answer works like the main talk button:
+  hold, talk, let go; or tap once, talk, tap again. The words show as they
+  are heard. Saying "skip" (or "no", "I don't know", "no phone") skips.
+- **Reading the answer.** A plain number for the house number, a 7- or
+  10-digit phone and a price with digits are read in code. Everything else
+  (a name, an address, "tomorrow", "three hundred") goes to Claude Haiku at
+  low effort with the question, the answer and the form so far, and comes
+  back as one value in the field's format. An empty value means the answer
+  did not give it; the question stays, with "Heard “…”, but no … in it."
+- Saving is still a tap on Save.
+
+The instructions for one answer (`FollowUpPrompt` in `FollowUp.swift`),
+word for word, with `{today}` and `{zone}` as in the main prompt:
+
+```text
+You fill in one missing detail on a booking form for Ace Junk Removal, a junk removal, demolition and dumpster rental company in Massachusetts. The app asked a question on screen and speech recognition wrote down the spoken answer, so words and numbers may be misheard.
+
+Today is {today} ({zone}).
+
+Return the value for the field named, in its format:
+- customerName: the name as it should be written, e.g. "Maria Pereira" or "First Parish Church".
+- address: house number, street and town, e.g. "42 Elm St, Taunton". Keep the town already on the form when the answer leaves it out.
+- houseNumber: the house number only, with a letter if one was said, e.g. "42" or "42B".
+- phone: the digits only, e.g. "5085550147".
+- date: YYYY-MM-DD, worked out from today: "tomorrow", "Friday" (the next Friday, or today if today is Friday), "next week".
+- price: dollars as digits: "three hundred" is 300.
+
+Return an empty value when the answer does not give it, for example "skip", "I don't know", "no phone" or something unrelated. Never invent a value.
+```
+
+The user message is `Field: …`, `Question asked: …`, `Spoken answer: …`,
+then `The form so far:` with the name, phone, address, job (or what was
+quoted), date and price. Structured output: one string property, `value`.
+

@@ -8,9 +8,9 @@ import SwiftUI
 // MARK: - New quote
 
 /// "Quote for 66 Johnson Street, garage cleanout, 800." The New Quote form,
-/// filled in. The customer is found the way the new-job form finds one: the
-/// one the note pointed at, the same phone number, or the same full name.
-/// A shared last name or an address alone is not enough. With no match,
+/// filled in. The customer is found the way the new-job form finds one:
+/// the same name, with no phone or address said that disagrees. A shared
+/// last name, a phone or an address alone is not enough. With no match,
 /// saving adds a customer with the name, phone and address said.
 struct NewQuoteView: View {
     @Environment(\.modelContext) private var context
@@ -20,6 +20,8 @@ struct NewQuoteView: View {
     /// to them unless the name is changed to someone else.
     let knownCustomer: Customer?
     private let flags: AssistantFlags
+    /// The voice model, for answering the Missing questions by voice.
+    let engine: WhisperKitEngine?
     var onFinish: (String) -> Void
     var onStartOver: () -> Void
 
@@ -29,11 +31,19 @@ struct NewQuoteView: View {
     @State private var form: QuoteFormData
     @State private var saved = false
     @State private var flagged = 0
+    /// Typed or said separately when the address came without one.
+    @State private var houseNumber = ""
+    @FocusState private var focus: Gap?
+    /// A Missing button's field, scrolled to before it is typed in (see
+    /// JobReviewView).
+    @State private var scrollTarget: Gap?
 
     init(action: AssistantAction, issues: [PlanIssue], customers: [Customer], knownCustomer: Customer?,
+         engine: WhisperKitEngine? = nil,
          onFinish: @escaping (String) -> Void, onStartOver: @escaping () -> Void) {
         self.customers = customers
         self.knownCustomer = knownCustomer
+        self.engine = engine
         self.onFinish = onFinish
         self.onStartOver = onStartOver
 
@@ -70,20 +80,10 @@ struct NewQuoteView: View {
     private var trimmedName: String { name.trimmingCharacters(in: .whitespaces) }
     private var phoneDigits: String { phone.filter(\.isNumber) }
 
-    /// Same rules as the new-job form: the referenced customer while the
-    /// name still matches, then the same phone number, then the same full
-    /// name. Nil means saving adds a new customer.
+    /// Same rule as the new-job form (existingCustomer). Nil means saving
+    /// adds a new customer.
     private var matchingCustomer: Customer? {
-        if let knownCustomer,
-           SpokenName(name).text == SpokenName(knownCustomer.name).text {
-            return knownCustomer
-        }
-        if phoneDigits.count >= 7, let byPhone = customers.first(where: { $0.phoneDigits == phoneDigits }) {
-            return byPhone
-        }
-        let lowered = trimmedName.lowercased()
-        guard !lowered.isEmpty else { return nil }
-        return customers.first { $0.name.lowercased() == lowered }
+        existingCustomer(name: name, phone: phone, address: fullAddress, known: knownCustomer, in: customers)
     }
 
     private var nameNote: String? {
@@ -96,66 +96,117 @@ struct NewQuoteView: View {
     }
 
     var body: some View {
-        Form {
-            Section {
-                FlaggedRow(nameNote) {
-                    TextField("Name", text: $name)
-                }
-                FlaggedRow(flags["phone"]) {
-                    TextField("Phone", text: $phone)
-                        .phoneKeyboard()
-                }
-                FlaggedRow(flags["address"]) {
-                    TextField("Address", text: $address, axis: .vertical)
-                }
-                if let match = matchingCustomer {
-                    Text("Matches existing customer \(match.name).")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                } else if !trimmedName.isEmpty {
-                    Text("Saving adds \(trimmedName) as a new customer.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-            } header: {
-                Text("Customer")
-            }
+        ScrollViewReader { proxy in
+            Form {
+                MissingSection(
+                    gaps: gaps,
+                    engine: engine,
+                    formSummary: { formSummary },
+                    onPick: pick,
+                    onFill: fill
+                )
 
-            Section("Quote") {
-                FlaggedRow(flags["jobType"]) {
-                    Picker("Type", selection: $form.jobType) {
-                        ForEach(JobType.allCases) { type in
-                            Text(type.rawValue).tag(type)
+                Section {
+                    FlaggedRow(nameNote) {
+                        TextField("Name", text: $name, prompt: Text("Customer name"))
+                            .focused($focus, equals: .name)
+                            .id(Gap.name)
+                    }
+                    FlaggedRow(phoneDigits.isEmpty ? flags["phone"] : nil) {
+                        TextField("Phone", text: $phone, prompt: Text("Add a phone number"))
+                            .phoneKeyboard()
+                            .focused($focus, equals: .phone)
+                            .id(Gap.phone)
+                    }
+                    if gaps.contains(.houseNumber) || !houseNumber.isEmpty {
+                        TextField("House number", text: $houseNumber, prompt: Text("Number"))
+                            .houseNumberKeyboard()
+                            .focused($focus, equals: .houseNumber)
+                            .id(Gap.houseNumber)
+                            .foregroundStyle(houseNumber.isEmpty ? Color.orange : Color.primary)
+                    }
+                    FlaggedRow(SpokenAddress(fullAddress).houseNumber == nil ? flags["address"] : nil) {
+                        TextField("Address", text: $address, prompt: Text("Street and town"), axis: .vertical)
+                            .focused($focus, equals: .address)
+                            .id(Gap.address)
+                    }
+                    if let match = matchingCustomer {
+                        Text("Matches existing customer \(match.name).")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else if !trimmedName.isEmpty {
+                        Text("Saving adds \(trimmedName) as a new customer.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                } header: {
+                    Text("Customer")
+                }
+
+                Section("Quote") {
+                    FlaggedRow(flags["jobType"]) {
+                        Picker("Type", selection: $form.jobType) {
+                            ForEach(JobType.allCases) { type in
+                                Text(type.rawValue).tag(type)
+                            }
+                        }
+                    }
+                    FlaggedRow(flags["note"]) {
+                        TextField("What", text: $form.details, prompt: Text("What was quoted, e.g. garage cleanout"), axis: .vertical)
+                    }
+                    FlaggedRow(priceNote) {
+                        TextField("Price", text: $form.priceText, prompt: Text("Price in dollars"))
+                            .decimalKeyboard()
+                            .focused($focus, equals: .price)
+                            .id(Gap.price)
+                    }
+                    DatePicker("Quoted", selection: $form.quotedOn, displayedComponents: .date)
+                    if QuoteFeatures.followUps {
+                        Toggle("Follow up", isOn: $form.hasFollowUp)
+                        if form.hasFollowUp {
+                            FlaggedRow(flags["followUp"]) {
+                                DatePicker("Follow up on", selection: $form.followUpOn, displayedComponents: .date)
+                            }
                         }
                     }
                 }
-                FlaggedRow(flags["note"]) {
-                    TextField("What", text: $form.details, prompt: Text("What was quoted, e.g. garage cleanout"), axis: .vertical)
+
+                Section("Notes") {
+                    TextField("Notes", text: $form.notes, axis: .vertical)
                 }
-                FlaggedRow(priceNote) {
-                    TextField("Price", text: $form.priceText, prompt: Text("Price in dollars"))
-                        .decimalKeyboard()
-                }
-                DatePicker("Quoted", selection: $form.quotedOn, displayedComponents: .date)
-                if QuoteFeatures.followUps {
-                    Toggle("Follow up", isOn: $form.hasFollowUp)
-                    if form.hasFollowUp {
-                        FlaggedRow(flags["followUp"]) {
-                            DatePicker("Follow up on", selection: $form.followUpOn, displayedComponents: .date)
-                        }
-                    }
+
+                Section {
+                    Button("Start over") { onStartOver() }
                 }
             }
-
-            Section("Notes") {
-                TextField("Notes", text: $form.notes, axis: .vertical)
+            .formStyle(.grouped)
+            .onChange(of: focus) { _, gap in
+                // Brings the field being filled in clear of the keyboard.
+                guard let gap else { return }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    withAnimation { proxy.scrollTo(gap, anchor: .center) }
+                }
             }
-
-            Section {
-                Button("Start over") { onStartOver() }
+            .onChange(of: scrollTarget) { _, gap in
+                guard let gap else { return }
+                // Cleared first: focus set while an alert was closing can
+                // be left pointing at a field that never got the keyboard,
+                // and setting the same field again would then do nothing.
+                focus = nil
+                withAnimation { proxy.scrollTo(gap, anchor: .center) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    focus = gap
+                    scrollTarget = nil
+                }
+                // Once more if it did not take (a closing alert can swallow
+                // the first try).
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
+                    guard focus != gap else { return }
+                    withAnimation { proxy.scrollTo(gap, anchor: .center) }
+                    focus = gap
+                }
             }
         }
-        .formStyle(.grouped)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save") { save() }
@@ -169,18 +220,66 @@ struct NewQuoteView: View {
         .sensoryFeedback(.warning, trigger: flagged)
     }
 
+    // MARK: Missing pieces (same as the new-job form)
+
+    private var fullAddress: String {
+        let street = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        let number = houseNumber.trimmingCharacters(in: .whitespaces)
+        guard !number.isEmpty else { return street }
+        return street.isEmpty ? number : number + " " + street
+    }
+
+    private var gaps: [Gap] {
+        var list: [Gap] = []
+        let match = matchingCustomer
+        if trimmedName.isEmpty { list.append(.name) }
+        if fullAddress.isEmpty {
+            if match?.address.isEmpty ?? true { list.append(.address) }
+        } else if SpokenAddress(fullAddress).houseNumber == nil {
+            list.append(.houseNumber)
+        }
+        if phoneDigits.isEmpty, match?.phone.isEmpty ?? true { list.append(.phone) }
+        if Parse.money(form.priceText) == nil { list.append(.price) }
+        return list
+    }
+
+    private func pick(_ gap: Gap) {
+        scrollTarget = gap
+    }
+
+    private var formSummary: String {
+        [
+            "Name: \(name)",
+            "Phone: \(phone)",
+            "Address: \(fullAddress)",
+            "Quote for: \(form.jobType.rawValue), \(form.details)",
+            "Price: \(form.priceText)",
+        ].joined(separator: "\n")
+    }
+
+    private func fill(_ gap: Gap, _ value: String) {
+        switch gap {
+        case .name: name = value
+        case .address: address = value
+        case .houseNumber: houseNumber = value
+        case .phone: phone = PhoneFormat.formatted(value)
+        case .price: form.priceText = value
+        case .date: break
+        }
+    }
+
     private func save() {
         let customer: Customer
         if let match = matchingCustomer {
             customer = match
             if customer.phone.isEmpty, !phoneDigits.isEmpty { customer.phone = PhoneFormat.formatted(phone) }
-            if customer.address.isEmpty { customer.address = address.trimmingCharacters(in: .whitespacesAndNewlines) }
+            if customer.address.isEmpty { customer.address = fullAddress }
             customer.updatedAt = Date()
         } else {
             customer = Customer(
                 name: trimmedName,
                 phone: PhoneFormat.formatted(phone),
-                address: address.trimmingCharacters(in: .whitespacesAndNewlines)
+                address: fullAddress
             )
             context.insert(customer)
         }

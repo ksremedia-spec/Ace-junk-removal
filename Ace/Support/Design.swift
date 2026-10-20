@@ -53,9 +53,17 @@ enum Tint {
     #if os(iOS)
     static let card = Color(uiColor: .secondarySystemGroupedBackground)
     static let cardStroke = Color.clear
+    /// The board pages on iPhone: the grouped-list grey with white cards,
+    /// like Settings and Health.
+    static let boardPage = Color(uiColor: .systemGroupedBackground)
+    static let boardCard = Color(uiColor: .secondarySystemGroupedBackground)
     #else
     static let card = Color.primary.opacity(0.055)
     static let cardStroke = Color.primary.opacity(0.07)
+    /// The Mac Calendar board: a soft grey page with white cards, and
+    /// their dark-mode pair.
+    static let boardPage = Color(light: Color(white: 0.945), dark: Color(white: 0.105))
+    static let boardCard = Color(light: .white, dark: Color(white: 0.165))
     #endif
 }
 
@@ -210,11 +218,13 @@ struct StatTile: View {
 
 /// Tiles in rows of two, or another number of columns.
 struct StatGrid<Content: View>: View {
+    @Environment(\.dynamicTypeSize) private var typeSize
     var columns = 2
     @ViewBuilder var content: Content
 
+    /// One tile a row at the largest text sizes, where two cut every word.
     var body: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Space.s), count: columns),
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Space.s), count: typeSize.isAccessibilitySize ? 1 : columns),
                   spacing: Space.s) {
             content
         }
@@ -278,17 +288,34 @@ extension ButtonStyle where Self == ActionButtonStyle {
 
 // MARK: - Cards and headers
 
-extension View {
-    /// The rounded fill used behind tiles and header cards.
-    func cardBackground(cornerRadius: CGFloat = 12) -> some View {
-        background(
+extension EnvironmentValues {
+    /// The fill behind cards and tiles. The Mac Calendar board sets white
+    /// cards on a grey page (Kyle, Oct 20: "bright cards").
+    @Entry var cardFill: Color = Tint.card
+}
+
+/// The rounded fill behind tiles and header cards, in the colour the
+/// surroundings ask for.
+private struct CardBackground: ViewModifier {
+    var cornerRadius: CGFloat
+    @Environment(\.cardFill) private var fill
+
+    func body(content: Content) -> some View {
+        content.background(
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .fill(Tint.card)
+                .fill(fill)
                 .overlay(
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                         .strokeBorder(Tint.cardStroke, lineWidth: 1)
                 )
         )
+    }
+}
+
+extension View {
+    /// The rounded fill used behind tiles and header cards.
+    func cardBackground(cornerRadius: CGFloat = 12) -> some View {
+        modifier(CardBackground(cornerRadius: cornerRadius))
     }
 
     /// Lets a header or tiles sit in a Form or List without the row's own
@@ -394,3 +421,22 @@ struct EmptyDetail: View {
         }
     }
 }
+
+// MARK: - Ace's logo
+
+/// Ace's own logo (from acejunkremovalma.com, Oct 20), drawn in the colour
+/// around it: white in dark mode, near-black in light. Kyle: "a nice little
+/// touch for them". Kept to the Mac sidebar and Settings › About.
+struct AceLogo: View {
+    var height: CGFloat = 28
+
+    var body: some View {
+        Image("AceLogo")
+            .renderingMode(.template)
+            .resizable()
+            .scaledToFit()
+            .frame(height: height)
+            .accessibilityLabel("Ace Junk Removal")
+    }
+}
+

@@ -86,6 +86,10 @@ struct SettingsView: View {
             }
 
             Section("About") {
+                AceLogo(height: 44)
+                    .foregroundStyle(.primary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, Space.s)
                 LabeledContent("Version", value: version)
             }
         }

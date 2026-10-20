@@ -93,7 +93,7 @@ struct MonthCalendar: UIViewRepresentable {
 #else
 
 /// The Mac's Calendar list uses Apple's month picker directly
-/// (MacCalendarList). This stand-in only keeps the shared iPhone screen
+/// (MacBoard). This stand-in only keeps the shared iPhone screen
 /// compiling for the Mac, where it is never shown.
 struct MonthCalendar: View {
     @Binding var selectedDay: Date

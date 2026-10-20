@@ -26,74 +26,74 @@ built.
 
 ## iPhone
 
-- **Tab bar:** Calendar, Jobs, Quotes, Customers, Dumpsters. Calendar uses
-  the `calendar` symbol; Jobs changes to `list.bullet`. A phone that was
-  left on Today reopens on Calendar.
-- **The month:** Apple's own iPhone month view (the one with dots under
-  days), at the top of the screen. Swipe for other months. A dot under a
-  day means it has at least one job that is not done. Today is marked the
-  standard way.
-- **Today button:** in the toolbar, next to the gear, only while another day
-  is selected. Tapping it goes back to today and its month.
-- **When today is selected**, under the month, in this order (the same as
-  the old Today screen, plus two sections):
-  1. Four tiles (changed 2026-10-19, design pass): Today (open jobs and
-     what they are worth), Owed (in orange when anything is), Dumpsters
-     (leads with overdue or due today, else how many are out), Quotes
-     (open, and what they are worth; on iPhone a tap opens Quotes).
-  2. (Owed is now a tile.)
-  3. Dumpsters (due back today or overdue).
-  4. **Today's jobs**, headed with the date ("Monday, October 19"),
-     including done ones (crossed out, as in the Jobs list), then **New
-     job**.
-  5. Not marked done.
-  6. **Call back**: open quotes whose follow-up day is today or earlier.
-  7. **Other calendars**: today's events from the device's other calendars.
-  8. Tomorrow.
-- **When another day is selected**, under the month:
-  1. **That day's jobs**, headed "Thursday, October 22": every job that
-     day, in time order (jobs without a time first), done ones crossed out.
-     "No jobs." when there are none. Then **New job**, which opens the New
-     Job form on that day (time off).
-  2. **Dumpsters**: "Dumpster 3 drop-off", "Dumpster 3 due back" or
-     "Dumpster 3 picked up", with the customer and location. Tap for the
-     dumpster. Drop-offs and due-backs come from dumpsters out now;
-     drop-offs and pickups of finished rentals come from their history.
-     Hidden when there are none.
-  3. **Call back**: open quotes with a follow-up on that day. Hidden when
-     none.
-  4. **Other calendars**: that day's events, as in today's list. Hidden
-     when none.
-- **Other-calendar rows:** a small dot in the calendar's own colour, the
-  title, and "9:00 to 10:00 AM · Alex" (time, then the calendar's name), or
-  "All day · Alex". Tapping one opens Apple's standard event screen, where
-  it can be read and edited like in Apple's Calendar app.
-- Events in "Ace Jobs" that are copies of jobs on this device are not shown
-  there (the job is already listed). An "Ace Jobs" event that matches no
-  job on this device (for example, one saved on another device before
-  Ace's own sync exists) shows under Other calendars like any other event.
-- Jobs rows open the job, swipe actions and all, exactly as in the Jobs
-  list.
+Redesigned on Oct 20 to match the Mac boards (Kyle: "pour all the changes
+we've made today over to the iOS app"). Source: `Ace/Calendar/CalendarView.swift`,
+with the shared pieces in `Ace/Calendar/BoardCards.swift` and
+`Ace/Calendar/WeekStrip.swift`.
+
+- **Tab bar:** Calendar, Jobs, Customers, Dumpsters, Labor. Quotes is no
+  longer a tab (Labor took the fifth place; a sixth tab hides behind
+  "More"). Quotes opens from the Quotes figure or "All quotes" on the
+  Calendar. A phone left on the old Quotes tab reopens on Calendar.
+- **One scrolling page, top to bottom:**
+  1. Four figures: Today, Owed, Dumpsters, Quotes (a tap opens Quotes).
+  2. **Week / Month** switch (remembered). Week: the week as seven day
+     buttons with a dot under days that have open jobs; arrows or a swipe
+     move a week. Month: Apple's own month view.
+  3. **The chosen day:** "Today" or "Thursday, October 22", the count and
+     total, then the jobs as cards tinted by the kind of work, dumpster
+     drop-offs and due-backs as small cards, other calendars' events, and
+     New job. A long press on a job card gives Mark done and Mark paid.
+  4. **Dumpsters:** the six as tiles in their status colour.
+  5. **Not marked done** (when there are any) and **Quotes waiting** (the
+     first five, then "All quotes").
+- **Today button:** in the toolbar while another day is chosen.
 - The day picked is not remembered: the app always opens on today.
+- **Large text:** at the accessibility text sizes the figures go one to a
+  row, the dumpster tiles one to a row (two from the xxLarge size), and the
+  day buttons stop growing at xxLarge so seven still fit, as in Apple's
+  Calendar.
 
 ## Mac
 
 - **Sidebar:** Calendar replaces Today, first in the list (`calendar`
   symbol); Jobs changes to `list.bullet`.
-- **Middle column:** a full-width month at the top (changed 2026-10-19,
-  Kyle: "calander is too small"; Apple's month picker was about 140 points
-  wide). Month and year with arrows for the previous and next month, the
-  weekday initials, and six weeks of days. The chosen day is a filled
-  circle in the accent colour; today's number is in the accent colour; days
-  of other months are dimmed and choosing one moves to its month. A dot
-  under a day means it has a job not done, as on iPhone. Then the same
-  sections as on iPhone for the chosen day. A **Today** button above the
-  month while another day is chosen. Right-click a job for the same menu as
-  in Jobs.
-- **Detail column:** the selected job, dumpster or quote, as elsewhere. An
+- **One wide page** (changed 2026-10-20, Kyle: the app "looks kind of
+  blah"; he picked the bright-cards and week-board sketches and kept the
+  teal). No middle list and no empty "Nothing selected" pane: the Calendar
+  is sidebar plus a board (`MacBoard`), on a soft grey page with white
+  cards (dark grey in dark mode).
+  - **Header:** "Today" over the date (or the chosen day over "Week of
+    October 19"), a Week / Month switch (remembered), and in Week ‹ Today ›
+    to move a week at a time.
+  - **Figures:** the same four tiles as before (Today, Owed, Dumpsters,
+    Quotes), in one row.
+  - **Week:** seven columns in the month grid's order, each a white card:
+    weekday and date at the top (today's date in a teal circle; the chosen
+    day's column outlined in teal; clicking a date chooses that day), then
+    the day's jobs as cards tinted by job type (time, customer, type and
+    price; done jobs faded with a check; jobs with money owed show an
+    orange dollar sign), dumpster drop-offs and due-backs, and other
+    calendars' events. "Nothing booked" when empty; "New job" on hover adds
+    a job on that day. Too narrow for seven days (the inspector open), the
+    week scrolls sideways.
+  - **Month:** the full-size month (`MacMonthGrid`, with its own arrows and
+    Today) beside the chosen day's cards.
+  - **Dumpsters:** the six as tiles in their status colour: the number,
+    "3 days late" / "Due back today" / "Back Sat, Oct 24" / "In the yard",
+    and who has it.
+  - **Below:** "Not marked done" and "Quotes waiting" cards, when there are
+    any.
+  Right-click a job for the same menu as in Jobs.
+- **Inspector:** clicking any card opens it in an inspector on the right
+  (the job, dumpster, quote or other-calendar event page as before); the
+  board stays in view. Closing the inspector clears the choice. An
   other-calendar event shows a simple read-only page: title, calendar,
   date and time, location and notes. To change it, use Apple's Calendar
   app.
+- **Dumpsters** (sidebar) uses the same layout: the six as big tiles with
+  where each one is, days out, price and agreed weight, and the chosen one
+  in the inspector.
 - **Menu:** View › **Go to Today** (⌘T), as in Apple's Calendar app.
 
 ## Settings: Calendar section (iPhone and Mac)

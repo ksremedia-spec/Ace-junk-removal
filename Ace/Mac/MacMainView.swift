@@ -7,7 +7,7 @@ import SwiftUI
 /// The Mac layout: sidebar, list, detail, like Mail and Notes.
 struct MacMainView: View {
     enum SidebarItem: String, CaseIterable, Identifiable {
-        case calendar, jobs, unpaid, done, quotes, customers, dumpsters
+        case calendar, jobs, unpaid, done, quotes, customers, dumpsters, labor
 
         var id: String { rawValue }
 
@@ -20,6 +20,7 @@ struct MacMainView: View {
             case .quotes: return "Quotes"
             case .customers: return "Customers"
             case .dumpsters: return "Dumpsters"
+            case .labor: return "Labor"
             }
         }
 
@@ -32,6 +33,7 @@ struct MacMainView: View {
             case .quotes: return "doc.text"
             case .customers: return "person.2"
             case .dumpsters: return "shippingbox"
+            case .labor: return "clock"
             }
         }
 
@@ -76,6 +78,7 @@ struct MacMainView: View {
     @State private var selectedDumpster: Dumpster?
     @State private var selectedQuote: Quote?
     @State private var selectedCalendarItem: CalendarItem?
+    @State private var selectedWorker: Worker?
     /// The day chosen in the Calendar list. Not remembered: the app always
     /// opens on today.
     @State private var calendarDay = Dates.startOfToday()
@@ -109,17 +112,7 @@ struct MacMainView: View {
     }
 
     var body: some View {
-        NavigationSplitView {
-            sidebarList
-                .navigationSplitViewColumnWidth(min: 160, ideal: 190, max: 260)
-        } content: {
-            contentColumn
-                .navigationSplitViewColumnWidth(min: 320, ideal: 380)
-        } detail: {
-            NavigationStack {
-                detailColumn
-            }
-        }
+        splitView
         .searchable(text: $searchText, placement: .toolbar, prompt: "Search")
         .searchFocused($searchFocused)
         .toolbar {
@@ -198,6 +191,113 @@ struct MacMainView: View {
             handleLaunchArguments()
             WindowSnapshot.captureIfRequested()
         }
+        // Checking light and dark without changing the Mac's own setting:
+        // `-debug.light` or `-debug.dark`. A normal launch carries neither.
+        .preferredColorScheme(launchColorScheme)
+    }
+
+    /// Calendar and Dumpsters are wide pages with the chosen record in an
+    /// inspector on the right; the other sections are sidebar, list and
+    /// page, like Mail (Kyle, Oct 20: no more half-empty window).
+    @ViewBuilder
+    private var splitView: some View {
+        switch section {
+        case .calendar:
+            NavigationSplitView {
+                sidebarColumn
+            } detail: {
+                MacBoard(selection: $selectedCalendarItem, day: $calendarDay)
+                    .navigationTitle("Calendar")
+                    .inspector(isPresented: inspectorShown($selectedCalendarItem)) {
+                        NavigationStack { calendarDetail }
+                            .inspectorColumnWidth(min: 320, ideal: 380, max: 560)
+                    }
+            }
+        case .dumpsters:
+            NavigationSplitView {
+                sidebarColumn
+            } detail: {
+                MacDumpsterBoard(selection: $selectedDumpster)
+                    .navigationTitle("Dumpsters")
+                    .inspector(isPresented: inspectorShown($selectedDumpster)) {
+                        NavigationStack {
+                            if let dumpster = selectedDumpster {
+                                DumpsterDetailView(dumpster: dumpster)
+                                    .id(dumpster.persistentModelID)
+                            }
+                        }
+                        .inspectorColumnWidth(min: 320, ideal: 380, max: 560)
+                    }
+            }
+        case .labor:
+            NavigationSplitView {
+                sidebarColumn
+            } detail: {
+                MacLaborBoard(selection: $selectedWorker)
+                    .navigationTitle("Labor")
+                    .inspector(isPresented: inspectorShown($selectedWorker)) {
+                        NavigationStack {
+                            if let worker = selectedWorker {
+                                WorkerPage(worker: worker, onDeleted: { selectedWorker = nil })
+                                    .id(worker.persistentModelID)
+                            }
+                        }
+                        .inspectorColumnWidth(min: 320, ideal: 360, max: 520)
+                    }
+            }
+        default:
+            NavigationSplitView {
+                sidebarColumn
+            } content: {
+                contentColumn
+                    .navigationSplitViewColumnWidth(min: 320, ideal: 380)
+            } detail: {
+                NavigationStack {
+                    detailColumn
+                }
+            }
+        }
+    }
+
+    private var sidebarColumn: some View {
+        sidebarList
+            .navigationSplitViewColumnWidth(min: 160, ideal: 190, max: 260)
+    }
+
+    /// Open while something is chosen; closing it clears the choice.
+    private func inspectorShown<Value>(_ selection: Binding<Value?>) -> Binding<Bool> {
+        Binding(
+            get: { selection.wrappedValue != nil },
+            set: { if !$0 { selection.wrappedValue = nil } }
+        )
+    }
+
+    /// The chosen job, dumpster, quote or event from the Calendar board.
+    @ViewBuilder
+    private var calendarDetail: some View {
+        switch selectedCalendarItem {
+        case .job(let job):
+            JobEditView(job: job)
+                .id(job.persistentModelID)
+        case .dumpster(let dumpster):
+            DumpsterDetailView(dumpster: dumpster)
+                .id(dumpster.persistentModelID)
+        case .quote(let quote):
+            QuoteEditView(quote: quote, onDeleted: { selectedCalendarItem = nil })
+                .id(quote.persistentModelID)
+        case .event(let item):
+            CalendarEventPage(event: item.event)
+                .id(item.id)
+        case .none:
+            EmptyView()
+        }
+    }
+
+    private var launchColorScheme: ColorScheme? {
+        let args = ProcessInfo.processInfo.arguments
+        if args.contains("-debug.light") { return .light }
+        if args.contains("-debug.dark") { return .dark }
+        return nil
     }
 
     /// The screenshot workflow draws the window from inside the app, where the
@@ -206,6 +306,17 @@ struct MacMainView: View {
     private var screenshotMode: Bool { ProcessInfo.processInfo.arguments.contains("-screenshot") }
 
     private var sidebarRows: some View {
+        sidebarItems
+            .safeAreaInset(edge: .bottom) {
+                AceLogo(height: 30)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, Space.l)
+                    .padding(.bottom, Space.l)
+            }
+    }
+
+    private var sidebarItems: some View {
         List(selection: sidebarSelection) {
             sidebarRow(.calendar)
             sidebarRow(.jobs)
@@ -214,6 +325,7 @@ struct MacMainView: View {
             sidebarRow(.quotes)
             sidebarRow(.customers)
             sidebarRow(.dumpsters)
+            sidebarRow(.labor)
         }
     }
 
@@ -253,9 +365,6 @@ struct MacMainView: View {
     @ViewBuilder
     private var contentColumn: some View {
         switch section {
-        case .calendar:
-            MacCalendarList(selection: $selectedCalendarItem, day: $calendarDay)
-                .navigationTitle("Calendar")
         case .jobs, .unpaid, .done:
             MacJobsList(selection: $selectedJob, filter: jobsFilter, searchText: searchText)
                 .navigationTitle(section.title)
@@ -265,33 +374,15 @@ struct MacMainView: View {
         case .customers:
             MacCustomersList(selection: $selectedCustomer, searchText: searchText)
                 .navigationTitle("Customers")
-        case .dumpsters:
-            MacDumpstersList(selection: $selectedDumpster)
-                .navigationTitle("Dumpsters")
+        case .calendar, .dumpsters, .labor:
+            // Wide pages; see splitView.
+            EmptyView()
         }
     }
 
     @ViewBuilder
     private var detailColumn: some View {
         switch section {
-        case .calendar:
-            switch selectedCalendarItem {
-            case .job(let job):
-                JobEditView(job: job)
-                    .id(job.persistentModelID)
-            case .dumpster(let dumpster):
-                DumpsterDetailView(dumpster: dumpster)
-                    .id(dumpster.persistentModelID)
-            case .quote(let quote):
-                QuoteEditView(quote: quote, onDeleted: { selectedCalendarItem = nil })
-                    .id(quote.persistentModelID)
-            case .event(let item):
-                CalendarEventPage(event: item.event)
-                    .id(item.id)
-            case .none:
-                EmptyDetail(title: "Nothing selected", symbol: "calendar",
-                            message: "Choose a job, dumpster, quote or event on the left.")
-            }
         case .jobs, .unpaid, .done:
             if let job = selectedJob {
                 JobEditView(job: job)
@@ -316,14 +407,8 @@ struct MacMainView: View {
                 EmptyDetail(title: "No customer selected", symbol: "person.2",
                             message: "Choose a customer on the left, or press ⇧⌘N for a new one.")
             }
-        case .dumpsters:
-            if let dumpster = selectedDumpster {
-                DumpsterDetailView(dumpster: dumpster)
-                    .id(dumpster.persistentModelID)
-            } else {
-                EmptyDetail(title: "No dumpster selected", symbol: "shippingbox",
-                            message: "Choose a dumpster on the left to drop it off, pick it up or see its rentals.")
-            }
+        case .calendar, .dumpsters, .labor:
+            EmptyView()
         }
     }
 
@@ -769,28 +854,61 @@ struct MacCustomersList: View {
     }
 }
 
-struct MacDumpstersList: View {
+/// Dumpsters on the Mac: the six as big tiles on one page, the chosen one
+/// in the inspector (Kyle, Oct 20).
+struct MacDumpsterBoard: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Dumpster.number) private var dumpsters: [Dumpster]
     @Binding var selection: Dumpster?
 
+    /// "2 overdue · 1 out · 3 in the yard"
+    private var summary: String {
+        let overdue = dumpsters.filter { $0.status() == .overdue }.count
+        let dueToday = dumpsters.filter { $0.status() == .dueToday }.count
+        let out = dumpsters.filter { $0.status() == .out }.count
+        let yard = dumpsters.filter { !$0.isOut }.count
+        var parts: [String] = []
+        if overdue > 0 { parts.append("\(overdue) overdue") }
+        if dueToday > 0 { parts.append("\(dueToday) due today") }
+        if out > 0 { parts.append("\(out) out") }
+        parts.append("\(yard) in the yard")
+        return parts.joined(separator: " · ")
+    }
+
     var body: some View {
-        List(selection: $selection) {
-            if dumpsters.isEmpty {
-                Text("No dumpsters set up yet.")
-                    .foregroundStyle(.secondary)
-                Button("Set up 6 dumpsters") {
-                    for number in 1...6 {
-                        context.insert(Dumpster(number: number))
+        ScrollView {
+            VStack(alignment: .leading, spacing: Space.xl) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Dumpsters")
+                        .font(.largeTitle.weight(.bold))
+                    Text(dumpsters.isEmpty ? "None set up yet." : summary)
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                }
+                if dumpsters.isEmpty {
+                    Button("Set up 6 dumpsters") {
+                        for number in 1...6 {
+                            context.insert(Dumpster(number: number))
+                        }
+                        try? context.save()
                     }
-                    try? context.save()
+                    .buttonStyle(.action(.accentColor, prominent: true))
+                }
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: Space.m)], spacing: Space.m) {
+                    ForEach(dumpsters) { dumpster in
+                        Button { selection = dumpster } label: {
+                            DumpsterTile(dumpster: dumpster, isSelected: selection == dumpster, showsPlace: true)
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
             }
-            ForEach(dumpsters) { dumpster in
-                DumpsterRow(dumpster: dumpster)
-                    .tag(dumpster)
-            }
+            .padding(Space.xl)
+            .frame(maxWidth: 1400, alignment: .leading)
+            .frame(maxWidth: .infinity)
         }
+        .background(Tint.boardPage)
+        .environment(\.cardFill, Tint.boardCard)
     }
 }
 

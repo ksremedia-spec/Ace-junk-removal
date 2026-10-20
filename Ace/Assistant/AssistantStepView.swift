@@ -21,6 +21,13 @@ struct AssistantStepView: View {
     var onStartOver: () -> Void
     /// Turns this step into a new job, for "Start a new job instead".
     var onStartNewJob: () -> Void
+    /// The voice model, for answering the forms' questions by voice.
+    var engine: WhisperKitEngine? = nil
+    /// Every log_hours action in the plan, shown together on the first one's
+    /// screen, and the crew to match them to.
+    var laborActions: [AssistantAction] = []
+    var laborIssues: [PlanIssue] = []
+    var workers: [Worker] = []
 
     var body: some View {
         switch action.kind ?? .newJob {
@@ -37,6 +44,15 @@ struct AssistantStepView: View {
         case .dumpsterNote: dumpsterNote
         case .newQuote: newQuote
         case .updateQuote: updateQuote
+        case .logHours:
+            AssistantLaborView(
+                actions: laborActions.isEmpty ? [action] : laborActions,
+                issues: laborIssues,
+                refs: refs,
+                workers: workers,
+                onFinish: onFinish,
+                onStartOver: onStartOver
+            )
         }
     }
 
@@ -114,6 +130,7 @@ struct AssistantStepView: View {
         return JobReviewView(
             draft: prefilled,
             knownCustomer: customer,
+            engine: engine,
             onSaved: { onFinish("Job saved.") },
             onStartOver: onStartOver
         )
@@ -271,6 +288,7 @@ struct AssistantStepView: View {
             issues: issues,
             customers: customers,
             knownCustomer: refCustomer,
+            engine: engine,
             onFinish: onFinish,
             onStartOver: onStartOver
         )
