@@ -527,5 +527,8 @@ is in `docs/status.md`.
   `demo/checks/check-contract.py` to confirm the app matches.
 - **Publishing the demo pages:** this needs the Artifact tool. If the Local
   session doesn't have it, say so instead of working around it.
-- **Commits:** commit and push to `main`, then check that GitHub's build
-  check is green.
+- **Commits:** build on Kyle's Mac first (that is the check), then commit
+  and push to `main`. Don't wait on GitHub's build check from a Mac session
+  (Kyle, Oct 20: "Why are you build checking in GitHub? You have a Mac");
+  it was the only check while the work was done in the cloud. Whether to
+  keep the GitHub workflows at all is open question 7.
