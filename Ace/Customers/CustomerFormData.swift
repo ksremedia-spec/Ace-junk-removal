@@ -1,6 +1,6 @@
 import Foundation
 
-struct CustomerFormData {
+struct CustomerFormData: Equatable {
     var name = ""
     var phone = ""
     var address = ""

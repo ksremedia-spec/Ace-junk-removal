@@ -5,6 +5,9 @@ import SwiftUI
 /// listening hands-free until the next tap, for the truck.
 struct HoldToTalkButton: View {
     var idleTitle = "Hold to talk"
+    /// The Assistant's main button: full width and taller, easy to find with
+    /// a thumb (Oct 20 phone audit).
+    var large = false
     let isListening: Bool
     var onStart: () -> Void
     var onEnd: () -> Void
@@ -14,6 +17,10 @@ struct HoldToTalkButton: View {
     @State private var pressedAt: Date?
     /// Listening after a quick tap; the next tap sends.
     @State private var handsFree = false
+    /// True while a finger is down. Unlike onEnded it also resets when the
+    /// system takes the touch away (the microphone permission box on first
+    /// use), which used to leave the button stuck on "Release to send".
+    @GestureState private var fingerDown = false
 
     /// Shorter than this is a tap, not a hold.
     private let tapLength: TimeInterval = 0.4
@@ -21,10 +28,12 @@ struct HoldToTalkButton: View {
     var body: some View {
         Label(title, systemImage: isListening ? "waveform" : "mic.fill")
             .symbolEffect(.variableColor.iterative, isActive: isListening)
-            .font(.callout.weight(.semibold))
+            .font(large ? .title3.weight(.semibold) : .callout.weight(.semibold))
             .labelStyle(.titleAndIcon)
+            .lineLimit(1)
             .padding(.horizontal, Space.m)
             .padding(.vertical, 7)
+            .frame(maxWidth: large ? .infinity : nil, minHeight: large ? 56 : 44)
             .foregroundStyle(.white)
             .background(Capsule().fill(isListening ? Tint.overdue : Color.accentColor))
             .scaleEffect(pressing ? 0.95 : 1)
@@ -35,6 +44,20 @@ struct HoldToTalkButton: View {
             .sensoryFeedback(.impact(weight: .light), trigger: isListening)
             .onChange(of: isListening) { _, listening in
                 if !listening { handsFree = false }
+            }
+            .onChange(of: fingerDown) { _, down in
+                guard !down else { return }
+                // After onEnded has had its turn: a touch that was taken
+                // away clears the press, and a microphone already on stays
+                // on hands-free, so the next tap sends.
+                DispatchQueue.main.async {
+                    guard pressing else { return }
+                    pressing = false
+                    if pressedAt != nil {
+                        pressedAt = nil
+                        if isListening { handsFree = true }
+                    }
+                }
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(isListening ? "Stop and send" : idleTitle)
@@ -56,6 +79,7 @@ struct HoldToTalkButton: View {
 
     private var press: some Gesture {
         DragGesture(minimumDistance: 0)
+            .updating($fingerDown) { _, state, _ in state = true }
             .onChanged { _ in
                 guard isEnabled, !pressing else { return }
                 pressing = true

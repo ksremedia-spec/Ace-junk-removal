@@ -16,7 +16,7 @@ struct ClaudeTestView: View {
     @State private var running = false
     @State private var flaggedCount = 0
 
-    private var hasKey: Bool { Keychain.read(Keychain.anthropicAPIKey) != nil }
+    private var hasKey: Bool { Beta.assistantReady }
 
     struct Run {
         var plan: AssistantPlan
@@ -159,7 +159,7 @@ private struct PlanRows: View {
         }
         ForEach(run.plan.issues) { issue in
             Label("\(issue.action + 1). \(issue.field): \(issue.question)", systemImage: "exclamationmark.triangle")
-                .foregroundStyle(.orange)
+                .foregroundStyle(Tint.warning)
         }
     }
 }

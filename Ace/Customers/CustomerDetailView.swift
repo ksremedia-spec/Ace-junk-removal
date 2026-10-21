@@ -43,6 +43,10 @@ struct CustomerDetailView: View {
         }
         .readableWidth()
         .navigationTitle(customer.name)
+        #if os(iOS)
+        // The header card already shows the name large.
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button("Edit") { showingEdit = true }
@@ -119,16 +123,23 @@ struct CustomerDetailView: View {
     /// "Next Tue, Oct 20" when work is booked, else "Last Sun, Nov 8, 2024".
     private var jobsDetail: String {
         if let next = customer.nextJobDate { return "Next " + Dates.shortDay(next) }
-        if let last = customer.lastJobDate { return "Last " + Dates.shortDay(last) }
+        if let last = customer.lastJobDate {
+            // "Last Nov 8" this year, "Last Nov 2024" before: short enough for
+            // a phone tile.
+            let sameYear = Calendar.current.isDate(last, equalTo: Date(), toGranularity: .year)
+            return "Last " + last.formatted(sameYear ? .dateTime.month(.abbreviated).day() : .dateTime.month(.abbreviated).year())
+        }
         return "None yet"
     }
 
     /// "$275 a job" over done, priced work, or "Has a dumpster now" while
     /// one is out with them.
     private var billedDetail: String {
-        if !dumpstersOut.isEmpty { return "Has a dumpster now" }
+        if !dumpstersOut.isEmpty { return "Dumpster out" }
         let priced = customer.jobs.filter { $0.isDone && $0.price != nil }
-        guard !priced.isEmpty else { return "Nothing priced" }
+        // Billed counts done work only: a priced job still to come is not
+        // "nothing priced" (Oct 20 phone audit).
+        guard !priced.isEmpty else { return "Nothing billed yet" }
         return Money.text(customer.totalBilled / Double(priced.count)) + " a job"
     }
 

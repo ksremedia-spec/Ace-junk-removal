@@ -75,6 +75,7 @@ struct TodayFigures: View {
 
     private var openQuotesDetail: String {
         let total = openQuotes.reduce(0) { $0 + ($1.price ?? 0) }
+        if openQuotes.isEmpty { return "None waiting" }
         return total > 0 ? Money.text(total) + " waiting" : "None priced"
     }
 }

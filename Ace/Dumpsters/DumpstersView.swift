@@ -10,17 +10,16 @@ struct DumpstersView: View {
     @Query(sort: \Dumpster.number) private var dumpsters: [Dumpster]
     @Environment(\.dynamicTypeSize) private var typeSize
 
-    /// "2 overdue · 1 out · 3 in the yard"
+    /// "3 of 6 out · 1 overdue · 1 due today", or "6 in the yard". "1 out"
+    /// next to an overdue one read as if only one was out (Oct 20 phone audit).
     private var summary: String {
+        let out = dumpsters.filter(\.isOut).count
+        guard out > 0 else { return "\(dumpsters.count) in the yard" }
         let overdue = dumpsters.filter { $0.status() == .overdue }.count
         let dueToday = dumpsters.filter { $0.status() == .dueToday }.count
-        let out = dumpsters.filter { $0.status() == .out }.count
-        let yard = dumpsters.filter { !$0.isOut }.count
-        var parts: [String] = []
+        var parts = ["\(out) of \(dumpsters.count) out"]
         if overdue > 0 { parts.append("\(overdue) overdue") }
         if dueToday > 0 { parts.append("\(dueToday) due today") }
-        if out > 0 { parts.append("\(out) out") }
-        parts.append("\(yard) in the yard")
         return parts.joined(separator: " · ")
     }
 

@@ -777,14 +777,9 @@ struct MacCustomersList: View {
     @State private var confirmDelete = false
 
     private var filtered: [Customer] {
-        let query = searchText.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !query.isEmpty else { return sort.sorted(customers) }
-        let digits = query.filter(\.isNumber)
-        return sort.sorted(customers.filter {
-            $0.name.lowercased().contains(query)
-                || $0.address.lowercased().contains(query)
-                || (!digits.isEmpty && $0.phoneDigits.contains(digits))
-        })
+        let search = SearchText(searchText)
+        guard !search.isEmpty else { return sort.sorted(customers) }
+        return sort.sorted(customers.filter { $0.matches(search) })
     }
 
     var body: some View {

@@ -5,6 +5,7 @@ import SwiftUI
 /// weigh-in at pickup with the overweight charge, and past rentals.
 struct DumpsterDetailView: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.openURL) private var openURL
     @Bindable var dumpster: Dumpster
 
     @AppStorage(AppSettings.overweightRateKey) private var ratePerTon = AppSettings.defaultOverweightRate
@@ -25,6 +26,11 @@ struct DumpsterDetailView: View {
 
     @State private var saved = false
     @State private var flagged = 0
+    /// The address filled in from the chosen customer, so choosing another
+    /// customer replaces it rather than keeping the first one's.
+    @State private var autoFilledLocation = ""
+    /// "Dumpster 1 picked up. Overweight charge $137.50." until leaving.
+    @State private var savedNote: String?
 
     private var actualTons: Double? { Parse.tons(actualTonsText) }
 
@@ -52,17 +58,23 @@ struct DumpsterDetailView: View {
                     .bareRow()
             }
 
-            Section {
-                TextField("Size or nickname", text: $dumpster.label, prompt: Text("e.g. 15 yard"))
-                TextField("Dumpster note", text: $dumpster.conditionNote, prompt: Text("e.g. cracked door, don't send out"), axis: .vertical)
+            if let savedNote {
+                Section {
+                    Label(savedNote, systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(Tint.paid)
+                }
             }
 
+            // Out: the pickup comes first, the thing Alex does at the curb
+            // (Oct 20 phone audit: the weight box was below the fold).
             if dumpster.isOut {
-                currentRentalSection
                 pickupSection
+                currentRentalSection
             } else {
                 dropOffSection
             }
+
+            aboutSection
 
 
             if !historyNewestFirst.isEmpty {
@@ -91,13 +103,15 @@ struct DumpsterDetailView: View {
             }
         }
         .onChange(of: dropOffCustomer) { _, customer in
-            if let customer, dropOffLocation.isEmpty {
+            guard let customer else { return }
+            if dropOffLocation.isEmpty || dropOffLocation == autoFilledLocation {
                 dropOffLocation = customer.address
+                autoFilledLocation = customer.address
             }
         }
-        .confirmationDialog(pickupQuestion, isPresented: $confirmPickup, titleVisibility: .visible) {
-            Button("Mark picked up") { markPickedUp() }
-        }
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
         .sensoryFeedback(.success, trigger: saved)
         .sensoryFeedback(.warning, trigger: flagged)
     }
@@ -110,7 +124,7 @@ struct DumpsterDetailView: View {
             subtitle: headerSubtitle,
             caption: dumpster.isOut && !dumpster.location.isEmpty ? dumpster.location : nil,
             value: dumpster.isOut ? dumpster.price.map(Money.text) : nil,
-            hasActions: false
+            hasActions: dumpster.isOut && (renterPhone != nil || placeDirections != nil)
         ) {
             DumpsterBadge(dumpster: dumpster, size: 52)
         } pills: {
@@ -120,13 +134,30 @@ struct DumpsterDetailView: View {
                     StatusPill(text: "This month " + Plural.text(thisMonth.count, "rental") + ", " + Money.text(thisMonthTotal),
                                tint: .secondary)
                 }
-                if !dumpster.conditionNote.isEmpty {
-                    StatusPill(text: dumpster.conditionNote, tint: Tint.owed, symbol: "exclamationmark.triangle.fill")
-                }
+            }
+            // On its own line, so a long note wraps instead of running off.
+            if !dumpster.conditionNote.isEmpty {
+                Label(dumpster.conditionNote, systemImage: "exclamationmark.triangle.fill")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(Tint.owed)
             }
         } actions: {
-            EmptyView()
+            if let url = renterPhone {
+                Button { openURL(url) } label: { Label("Call", systemImage: "phone.fill") }
+                    .buttonStyle(.action())
+            }
+            if let url = placeDirections {
+                Button { openURL(url) } label: { Label("Directions", systemImage: "map.fill") }
+                    .buttonStyle(.action())
+            }
         }
+    }
+
+    private var renterPhone: URL? { dumpster.customer?.phoneURL }
+
+    /// Where the dumpster is, else the renter's address.
+    private var placeDirections: URL? {
+        Maps.directions(to: dumpster.location) ?? dumpster.customer?.directionsURL
     }
 
     /// "Out with Harborview Realty · due back Sat, Oct 17" or "In the yard".
@@ -141,12 +172,15 @@ struct DumpsterDetailView: View {
 
     // MARK: Out
 
+    /// The header already shows who, where and the price.
     private var currentRentalSection: some View {
         Section("Current rental") {
-            LabeledContent("Customer", value: dumpster.customer?.name ?? "—")
-            LabeledContent("Location") {
-                Text(dumpster.location.isEmpty ? "—" : dumpster.location)
-                    .multilineTextAlignment(.trailing)
+            if let customer = dumpster.customer {
+                NavigationLink {
+                    CustomerDetailView(customer: customer)
+                } label: {
+                    LabeledContent("Customer", value: customer.name)
+                }
             }
             if let droppedOffAt = dumpster.droppedOffAt {
                 LabeledContent("Dropped off", value: Dates.shortDay(droppedOffAt))
@@ -155,8 +189,6 @@ struct DumpsterDetailView: View {
                 get: { dumpster.dueBackAt ?? Date() },
                 set: { dumpster.dueBackAt = $0; dumpster.updatedAt = Date() }
             ), displayedComponents: .date)
-            LabeledContent("Price", value: dumpster.price.map(Money.text) ?? "—")
-            LabeledContent("Agreed weight", value: dumpster.agreedWeightTons.map { Tons.text($0) } ?? "—")
             if !dumpster.notes.isEmpty {
                 Text(dumpster.notes)
             }
@@ -165,14 +197,23 @@ struct DumpsterDetailView: View {
 
     private var pickupSection: some View {
         Section {
-            TextField("Actual weight in tons", text: $actualTonsText, prompt: Text("e.g. 2.8"))
-                .decimalKeyboard()
+            LabeledContent("Agreed weight", value: dumpster.agreedWeightTons.map { Tons.text($0) } ?? "None")
+            LabeledContent("Actual weight, tons") {
+                TextField("Actual weight in tons", text: $actualTonsText, prompt: Text("e.g. 2.8"))
+                    .multilineTextAlignment(.trailing)
+                    .decimalKeyboard()
+            }
+            if actualTons != nil, dumpster.agreedWeightTons == nil {
+                Text("No agreed weight on this rental. No overweight charge.")
+                    .font(.footnote)
+                    .foregroundStyle(Tint.owed)
+            }
             if let actualTons, let agreed = dumpster.agreedWeightTons {
                 if actualTons > agreed {
                     LabeledContent("Over by", value: Tons.text(actualTons - agreed))
                     LabeledContent("Overweight charge") {
                         Text(Money.text(pickupCharge))
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(Tint.owed)
                     }
                 } else {
                     Text("Within the agreed weight. No extra charge.")
@@ -184,8 +225,12 @@ struct DumpsterDetailView: View {
                 confirmPickup = true
             } label: {
                 Label("Mark picked up", systemImage: "tray.and.arrow.up.fill")
+                    .frame(maxWidth: .infinity)
             }
             .buttonStyle(.action(.accentColor, prominent: true))
+            .confirmationDialog(pickupQuestion, isPresented: $confirmPickup, titleVisibility: .visible) {
+                Button("Mark picked up") { markPickedUp() }
+            }
         } header: {
             Text("Pickup")
         } footer: {
@@ -200,13 +245,18 @@ struct DumpsterDetailView: View {
         if actualTons == nil {
             return "No weight entered. Mark Dumpster \(dumpster.number) as picked up without one?"
         }
+        if dumpster.agreedWeightTons == nil {
+            return "No agreed weight, so no overweight charge. Mark Dumpster \(dumpster.number) as picked up?"
+        }
         return "Mark Dumpster \(dumpster.number) as picked up?"
     }
 
     private func markPickedUp() {
+        let charge = pickupCharge
         dumpster.markPickedUp(actualWeightTons: actualTons, ratePerTon: ratePerTon)
         try? context.save()
         actualTonsText = ""
+        savedNote = "Dumpster \(dumpster.number) picked up." + (charge > 0 ? " Overweight charge \(Money.text(charge))." : "")
         saved.toggle()
     }
 
@@ -220,17 +270,26 @@ struct DumpsterDetailView: View {
                 }
             }
             TextField("Location", text: $dropOffLocation, prompt: Text("Address, or where on the lot"), axis: .vertical)
+                .wordsCapitalized()
             DatePicker("Drop-off", selection: $dropOffDate, displayedComponents: .date)
             DatePicker("Due back", selection: $dueBackDate, displayedComponents: .date)
-            TextField("Price", text: $dropOffPriceText, prompt: Text("Price in dollars"))
-                .decimalKeyboard()
-            TextField("Agreed weight", text: $dropOffAgreedTonsText, prompt: Text("Tons, e.g. 2"))
-                .decimalKeyboard()
+            // Labelled: a bare "450" and "2" once typed said nothing.
+            LabeledContent("Price") {
+                TextField("Price", text: $dropOffPriceText, prompt: Text("$0"))
+                    .multilineTextAlignment(.trailing)
+                    .decimalKeyboard()
+            }
+            LabeledContent("Agreed weight, tons") {
+                TextField("Agreed weight", text: $dropOffAgreedTonsText, prompt: Text("e.g. 2"))
+                    .multilineTextAlignment(.trailing)
+                    .decimalKeyboard()
+            }
             TextField("Notes", text: $dropOffNotes, prompt: Text("Gate code, where to put it"), axis: .vertical)
             Button {
                 markDroppedOff()
             } label: {
                 Label("Mark dropped off", systemImage: "tray.and.arrow.down.fill")
+                    .frame(maxWidth: .infinity)
             }
             .buttonStyle(.action(.accentColor, prominent: true))
             .disabled(dropOffCustomer == nil)
@@ -251,13 +310,34 @@ struct DumpsterDetailView: View {
             notes: dropOffNotes
         )
         try? context.save()
+        savedNote = "Dumpster \(dumpster.number) dropped off" + (dropOffLocation.isEmpty ? "." : " at \(dropOffLocation).")
 
         dropOffCustomer = nil
+        autoFilledLocation = ""
         dropOffLocation = ""
         dropOffPriceText = ""
         dropOffAgreedTonsText = ""
         dropOffNotes = ""
         saved.toggle()
+    }
+
+    // MARK: About
+
+    /// What stays with the dumpster between rentals.
+    private var aboutSection: some View {
+        Section {
+            LabeledContent("Size") {
+                TextField("Size or nickname", text: $dumpster.label, prompt: Text("e.g. 15 yard"))
+                    .multilineTextAlignment(.trailing)
+            }
+            TextField("Condition", text: $dumpster.conditionNote, prompt: Text("Condition, e.g. cracked door, don't send out"), axis: .vertical)
+        } header: {
+            Text("About this dumpster")
+        } footer: {
+            Text("Stays with the dumpster between rentals.")
+        }
+        .onChange(of: dumpster.label) { _, _ in dumpster.updatedAt = Date() }
+        .onChange(of: dumpster.conditionNote) { _, _ in dumpster.updatedAt = Date() }
     }
 
     // MARK: Text

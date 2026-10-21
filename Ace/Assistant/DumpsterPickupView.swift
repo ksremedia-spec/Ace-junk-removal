@@ -160,7 +160,7 @@ private struct DumpsterPickupForm: View {
         .formStyle(.grouped)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button("Mark Picked Up") { markPickedUp() }
+                Button("Mark picked up") { markPickedUp() }
             }
         }
         .onAppear {
@@ -200,7 +200,7 @@ private struct DumpsterPickupForm: View {
                     LabeledContent("Over by", value: Tons.text(actualTons - agreed))
                     LabeledContent("Overweight charge") {
                         Text(Money.text(charge))
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(Tint.warning)
                     }
                 } else {
                     Text("Within the agreed weight. No extra charge.")

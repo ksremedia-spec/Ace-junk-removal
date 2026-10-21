@@ -23,8 +23,22 @@ struct JobEditView: View {
     @State private var askingOverlap = false
     @State private var overlapQuestion = ""
     @State private var flagged = 0
+    /// Set first when the job is deleted, so nothing writes back onto it
+    /// as the page closes (Oct 20 phone audit: a crash and a ghost event).
+    @State private var deleted = false
+    @State private var confirmDiscard = false
 
     private var isNew: Bool { job == nil }
+
+    /// iPhone: going Back from a job whose new time clashes with another
+    /// asks the overlap question first, instead of saving quietly.
+    private var backNeedsOverlapQuestion: Bool {
+        #if os(iOS)
+        return !isNew && hasChanges && timingChanged && !overlapping.isEmpty
+        #else
+        return false
+        #endif
+    }
 
     init(job: Job?, prefill: JobFormData? = nil, onSaved: ((Job) -> Void)? = nil) {
         self.job = job
@@ -42,11 +56,30 @@ struct JobEditView: View {
             }
 
             Section("Customer") {
+                #if os(iOS)
+                // A saved job's customer opens their page; changing the
+                // customer is its own row, so a stray tap never moves the job.
+                if !isNew, let customer = form.customer {
+                    NavigationLink {
+                        CustomerDetailView(customer: customer)
+                    } label: {
+                        LabeledContent("Customer", value: customer.name)
+                    }
+                    Button("Change customer") { showingCustomerPicker = true }
+                } else {
+                    LabeledContent("Customer") {
+                        Button(form.customer?.name ?? "Choose…") {
+                            showingCustomerPicker = true
+                        }
+                    }
+                }
+                #else
                 LabeledContent("Customer") {
                     Button(form.customer?.name ?? "Choose…") {
                         showingCustomerPicker = true
                     }
                 }
+                #endif
                 if let customer = form.customer {
                     if !customer.phone.isEmpty {
                         LabeledContent("Phone", value: customer.phone)
@@ -73,14 +106,23 @@ struct JobEditView: View {
             }
 
             Section("Payment") {
-                TextField("Price", text: $form.priceText, prompt: Text("Price in dollars"))
-                    .decimalKeyboard()
+                // Labelled on the iPhone too, where a form hides a text box's
+                // own label and "300" alone said nothing.
+                LabeledContent("Price") {
+                    TextField("Price", text: $form.priceText, prompt: Text("$0"))
+                        .multilineTextAlignment(.trailing)
+                        .decimalKeyboard()
+                }
                 Picker("Payment", selection: $form.paymentType) {
                     ForEach(PaymentType.allCases) { type in
                         Text(type.rawValue).tag(type)
                     }
                 }
-                Toggle("Paid", isOn: $form.isPaid)
+                // A saved job has Mark paid in its header, which saves at
+                // once; a second switch here could disagree with it.
+                if isNew {
+                    Toggle("Paid", isOn: $form.isPaid)
+                }
             }
 
             Section("Notes") {
@@ -107,9 +149,23 @@ struct JobEditView: View {
         .toolbar {
             if isNew {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel") {
+                        if hasChanges { confirmDiscard = true } else { dismiss() }
+                    }
                 }
             }
+            #if os(iOS)
+            if backNeedsOverlapQuestion {
+                ToolbarItem(placement: .navigation) {
+                    // Save anyway saves and closes; Change the time stays.
+                    Button {
+                        trySave()
+                    } label: {
+                        Label("Back", systemImage: "chevron.backward")
+                    }
+                }
+            }
+            #endif
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save") { trySave() }
                     .keyboardShortcut("s", modifiers: .command)
@@ -128,21 +184,38 @@ struct JobEditView: View {
             Button("Save anyway") { save() }
             Button("Change the time", role: .cancel) {}
         }
+        // A half-typed booking is not thrown away by a brush of the sheet;
+        // Cancel asks first (Oct 20 phone audit).
+        .interactiveDismissDisabled(isNew && hasChanges)
+        .confirmationDialog("Discard this job?", isPresented: $confirmDiscard, titleVisibility: .visible) {
+            Button("Discard changes", role: .destructive) { dismiss() }
+            Button("Keep editing", role: .cancel) {}
+        }
+        #if os(iOS)
+        .navigationBarBackButtonHidden(backNeedsOverlapQuestion)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
+        .onChange(of: form.hasTime) { _, on in
+            // Turning on a time for a job that had none starts at the next
+            // full hour, not midnight.
+            guard on, form.date == Calendar.current.startOfDay(for: form.date) else { return }
+            form.date = JobTimes.combine(day: form.date, time: Dates.nextFullHour())
+        }
         .sensoryFeedback(.success, trigger: saved)
         .sensoryFeedback(.warning, trigger: flagged)
         // On the Mac the list's right-click menu can change these while this
         // form is open; keep the form in step so Save does not undo them.
         .onChange(of: job?.isDone) { _, newValue in
-            if let newValue { form.isDone = newValue; original.isDone = newValue }
+            if !deleted, let newValue { form.isDone = newValue; original.isDone = newValue }
         }
         .onChange(of: job?.isPaid) { _, newValue in
-            if let newValue { form.isPaid = newValue; original.isPaid = newValue }
+            if !deleted, let newValue { form.isPaid = newValue; original.isPaid = newValue }
         }
         // On the Mac this page sits beside the list: clicking another job
         // used to throw away unsaved changes without a word. Like Mail and
         // Notes, they are kept instead (Oct 20 audit).
         .onDisappear {
-            if !isNew, hasChanges, form.customer != nil, form.endIsValid { persist() }
+            if !deleted, !isNew, hasChanges, form.customer != nil, form.endIsValid { persist() }
         }
         #if os(macOS)
         .frame(minWidth: 480, minHeight: 560)
@@ -158,7 +231,7 @@ struct JobEditView: View {
             subtitle: whenText,
             caption: form.customer?.address.isEmpty == false ? form.customer?.address : nil,
             value: Parse.money(form.priceText).map(Money.text),
-            valueTint: form.isPaid ? .secondary : .primary,
+            valueTint: (job?.isPaid ?? form.isPaid) ? .secondary : .primary,
             hasActions: job != nil || form.customer?.phoneURL != nil || form.customer?.directionsURL != nil
         ) {
             TypeBadge(type: form.jobType, size: 52, muted: form.isDone)
@@ -187,14 +260,14 @@ struct JobEditView: View {
                 } label: {
                     Label(job.isDone ? "Done" : "Mark done", systemImage: job.isDone ? "checkmark.circle.fill" : "checkmark.circle")
                 }
-                .buttonStyle(.action(job.isDone ? Tint.paid : .secondary, prominent: job.isDone))
+                .buttonStyle(.action(job.isDone ? Tint.paid : .accentColor, prominent: job.isDone))
                 .help(job.isDone ? "Done. Click to mark it not done." : "Mark this job done")
                 Button {
                     setPaid(!job.isPaid, on: job)
                 } label: {
                     Label(job.isPaid ? "Paid" : "Mark paid", systemImage: job.isPaid ? "dollarsign.circle.fill" : "dollarsign.circle")
                 }
-                .buttonStyle(.action(job.isPaid ? Tint.paid : .secondary, prominent: job.isPaid))
+                .buttonStyle(.action(job.isPaid ? Tint.paid : .accentColor, prominent: job.isPaid))
                 .help(job.isPaid ? "Paid. Click to mark it unpaid." : "Mark this job paid")
             }
             if let url = form.customer?.phoneURL {
@@ -304,6 +377,8 @@ struct JobEditView: View {
     }
 
     private func delete() {
+        deleted = true
+        original = form
         if let job {
             job.remove(from: context)
         }

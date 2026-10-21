@@ -242,11 +242,11 @@ private struct CancelJobForm: View {
         .formStyle(.grouped)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button("Delete Job", role: .destructive) { confirming = true }
+                Button("Delete job", role: .destructive) { confirming = true }
             }
         }
         .confirmationDialog("Delete this job?", isPresented: $confirming, titleVisibility: .visible) {
-            Button("Delete Job", role: .destructive) { delete() }
+            Button("Delete job", role: .destructive) { delete() }
         }
         .onAppear {
             if !flags.isEmpty { flagged += 1 }

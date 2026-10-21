@@ -4,11 +4,18 @@ import SwiftUI
 /// Keyboard choices exist only on iOS; on the Mac these do nothing. The
 /// number and phone pads have no Return key, so they get a Done button.
 extension View {
+    /// `focus`: the field's own focus, when the view already tracks it (the
+    /// hours box), so the Done button uses it instead of a second tracker.
     @ViewBuilder
-    func decimalKeyboard() -> some View {
+    func decimalKeyboard(focus: FocusState<Bool>.Binding? = nil) -> some View {
         #if os(iOS)
-        self.keyboardType(.decimalPad)
-            .modifier(KeyboardDone())
+        if let focus {
+            self.keyboardType(.decimalPad)
+                .modifier(KeyboardDoneFor(focused: focus))
+        } else {
+            self.keyboardType(.decimalPad)
+                .modifier(KeyboardDone())
+        }
         #else
         self
         #endif
@@ -21,6 +28,18 @@ extension View {
             .modifier(KeyboardDone())
         #else
         self
+        #endif
+    }
+
+    /// Names and addresses: each word starts with a capital, and spelling
+    /// correction stays off so "Souza" is not changed to "Sousa".
+    @ViewBuilder
+    func wordsCapitalized() -> some View {
+        #if os(iOS)
+        self.textInputAutocapitalization(.words)
+            .autocorrectionDisabled()
+        #else
+        self.autocorrectionDisabled()
         #endif
     }
 
@@ -54,12 +73,86 @@ private struct KeyboardDone: ViewModifier {
             }
     }
 }
+
+/// The same Done button, for a field whose focus the view tracks itself.
+private struct KeyboardDoneFor: ViewModifier {
+    var focused: FocusState<Bool>.Binding
+
+    func body(content: Content) -> some View {
+        content
+            .toolbar {
+                if focused.wrappedValue {
+                    ToolbarItemGroup(placement: .keyboard) {
+                        Spacer()
+                        Button("Done") { focused.wrappedValue = false }
+                    }
+                }
+            }
+    }
+}
 #endif
 
+enum Maps {
+    /// Apple Maps driving directions to an address, so Directions starts the
+    /// route instead of showing a pin or a list of towns (Oct 20 phone audit).
+    static func directions(to address: String) -> URL? {
+        let place = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !place.isEmpty else { return nil }
+        var components = URLComponents(string: "https://maps.apple.com/")
+        components?.queryItems = [URLQueryItem(name: "daddr", value: place), URLQueryItem(name: "dirflg", value: "d")]
+        return components?.url
+    }
+}
+
+/// A search as typed, read the way people search a customer list (Oct 20
+/// phone audit). Every word must be found somewhere ("souza lakeville",
+/// "al souza"), accents do not matter ("conceicao" finds Conceição), and
+/// digits search phone numbers only when the search is mostly a phone
+/// number, so "42 elm" does not match every phone with a 42 in it.
+struct SearchText {
+    let words: [String]
+    /// The phone digits, when the search reads as a phone number.
+    let phoneDigits: String?
+
+    init(_ raw: String) {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        words = trimmed.split(whereSeparator: \.isWhitespace).map(String.init)
+        let stripped = trimmed.filter { !" -.()+".contains($0) }
+        let digits = PhoneFormat.digits(stripped)
+        phoneDigits = digits.count >= 3 && digits.count == stripped.filter(\.isNumber).count && stripped.allSatisfy(\.isNumber) ? digits : nil
+    }
+
+    var isEmpty: Bool { words.isEmpty }
+
+    func matches(texts: [String], phoneDigits phone: String) -> Bool {
+        guard !isEmpty else { return true }
+        if let phoneDigits, phone.contains(phoneDigits) { return true }
+        return words.allSatisfy { word in
+            texts.contains { $0.localizedStandardContains(word) }
+        }
+    }
+}
+
 enum PhoneFormat {
+    /// The phone number's digits, without a leading US 1: "+1 (508) 555-0147"
+    /// and "508-555-0147" both give "5085550147".
+    static func digits(_ raw: String) -> String {
+        let digits = raw.filter(\.isNumber)
+        if digits.count == 11, digits.hasPrefix("1") { return String(digits.dropFirst()) }
+        return digits
+    }
+
+    /// "Phone number has 9 digits, not 10." for a number that looks short or
+    /// long. It still saves; this only warns.
+    static func problem(_ raw: String) -> String? {
+        let count = digits(raw).count
+        guard count > 0, count != 10 else { return nil }
+        return "Phone number has \(count) digits, not 10."
+    }
+
     /// "5085550147" → "508-555-0147". Anything else is returned as typed.
     static func formatted(_ raw: String) -> String {
-        let digits = raw.filter(\.isNumber)
+        let digits = digits(raw)
         guard digits.count == 10 else { return raw.trimmingCharacters(in: .whitespaces) }
         let a = digits.prefix(3)
         let b = digits.dropFirst(3).prefix(3)

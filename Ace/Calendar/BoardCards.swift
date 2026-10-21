@@ -31,14 +31,16 @@ struct JobCard: View {
                     .monospacedDigit()
                     .foregroundStyle(job.isDone ? .secondary : tint)
                 Spacer(minLength: 0)
-                if job.isDone {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else if job.owedAmount > 0 {
+                // Owed comes first: a done job that is not paid still needs
+                // the money (it is always done, so it never showed before).
+                if job.owedAmount > 0 {
                     Image(systemName: "dollarsign.circle.fill")
                         .font(.caption)
                         .foregroundStyle(Tint.owed)
+                } else if job.isDone {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
             Text(job.customer?.name ?? "No customer")
@@ -113,7 +115,16 @@ struct DumpsterTile: View {
     /// The Dumpsters page also shows the address it is at.
     var showsPlace = false
 
+    @Environment(\.dynamicTypeSize) private var typeSize
+    /// Grows with the text, so at large sizes it is not the smallest thing
+    /// on the tile.
+    @ScaledMetric(relativeTo: .largeTitle) private var numberSize: CGFloat = 30
+
     private var status: Dumpster.Status { dumpster.status() }
+    /// Detail lines a shade darker than the usual grey, for sunlight on a
+    /// tinted tile (Oct 20 phone audit).
+    private var detailColor: Color { Color.primary.opacity(0.7) }
+    private var lines: Int { typeSize.isAccessibilitySize ? 3 : 1 }
 
     /// "3 days late", "Due today", "Back Sat, Oct 24", "In the yard".
     private var whenText: String {
@@ -156,7 +167,7 @@ struct DumpsterTile: View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(alignment: .firstTextBaseline) {
                 Text("\(dumpster.number)")
-                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                    .font(.system(size: min(numberSize, 56), weight: .bold, design: .rounded))
                     .foregroundStyle(tint)
                 Spacer(minLength: 0)
                 if dumpster.isOut, !dumpster.label.isEmpty {
@@ -170,23 +181,30 @@ struct DumpsterTile: View {
                 .foregroundStyle(status == .inYard || status == .out ? Color.primary : tint)
             Text(whoText)
                 .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+                .foregroundStyle(dumpster.isOut ? Color.primary : detailColor)
+                .lineLimit(lines)
             if showsPlace, dumpster.isOut {
                 if !dumpster.location.isEmpty {
                     Text(dumpster.location)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        .foregroundStyle(detailColor)
+                        .lineLimit(lines)
                 }
                 if !rentalText.isEmpty {
                     Text(rentalText)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(detailColor)
                         .monospacedDigit()
-                        .lineLimit(1)
+                        .lineLimit(lines)
                         .padding(.top, 2)
                 }
+            }
+            // "Cracked door, don't send out" shows where it is seen.
+            if !dumpster.conditionNote.isEmpty {
+                Label(dumpster.conditionNote, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Tint.owed)
+                    .lineLimit(lines)
             }
         }
         .padding(Space.m)

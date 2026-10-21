@@ -116,7 +116,7 @@ struct DumpsterDropoffView: View {
         .formStyle(.grouped)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button("Mark Dropped Off") { markDroppedOff() }
+                Button("Mark dropped off") { markDroppedOff() }
                     .disabled(!canSave)
             }
         }
@@ -153,7 +153,7 @@ struct DumpsterDropoffView: View {
                 if let note = selectedDumpster?.conditionNote, !note.isEmpty {
                     Text(note)
                         .font(.footnote)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(Tint.warning)
                 }
             }
         }

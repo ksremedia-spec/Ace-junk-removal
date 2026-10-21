@@ -27,18 +27,11 @@ enum JobSearch {
     /// Jobs whose customer name, address or phone, notes or type contain
     /// `text`. Empty text keeps everything.
     static func filter(_ jobs: [Job], _ text: String) -> [Job] {
-        let query = text.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !query.isEmpty else { return jobs }
-        let digits = query.filter(\.isNumber)
+        let search = SearchText(text)
+        guard !search.isEmpty else { return jobs }
         return jobs.filter { job in
-            let name = job.customer?.name.lowercased() ?? ""
-            let address = job.customer?.address.lowercased() ?? ""
-            let phone = job.customer?.phoneDigits ?? ""
-            return name.contains(query)
-                || address.contains(query)
-                || (!digits.isEmpty && phone.contains(digits))
-                || job.notes.lowercased().contains(query)
-                || job.jobType.rawValue.lowercased().contains(query)
+            search.matches(texts: [job.customer?.name ?? "", job.customer?.address ?? "", job.notes, job.jobType.rawValue],
+                           phoneDigits: job.customer?.phoneDigits ?? "")
         }
     }
 }
@@ -53,7 +46,11 @@ struct JobDay: Identifiable {
     /// "Friday, October 24 · 3 jobs · $1,250". The money is left off when no
     /// job that day has a price.
     var title: String {
-        var text = Dates.longDay(day) + " · " + Plural.text(jobs.count, "job")
+        let calendar = Calendar.current
+        let name = calendar.isDateInToday(day) ? "Today"
+            : calendar.isDateInTomorrow(day) ? "Tomorrow"
+            : Dates.longDay(day)
+        var text = name + " · " + Plural.text(jobs.count, "job")
         let total = jobs.priceTotal
         if total > 0 { text += " · " + Money.text(total) }
         return text

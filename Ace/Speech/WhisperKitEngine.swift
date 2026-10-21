@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import Observation
 import WhisperKit
@@ -129,7 +130,14 @@ final class WhisperKitEngine {
     /// `liveTentative` as words are recognised. Needs a loaded model.
     func startListening() throws {
         guard let kit = whisperKit, let tokenizer = kit.tokenizer else { throw EngineError.notLoaded }
-        guard !isListening else { return }
+        // A listen left running (the sheet closed mid-note) is stopped, so
+        // its words never land in the new note.
+        if isListening {
+            isListening = false
+            let old = streamer
+            Task { await old?.stopStreamTranscription() }
+            streamTask = nil
+        }
         liveConfirmed = ""
         liveTentative = ""
         kit.audioProcessor.purgeAudioSamples(keepingLast: 0)
@@ -168,6 +176,7 @@ final class WhisperKitEngine {
         isListening = false
         await streamer?.stopStreamTranscription()
         streamTask = nil
+        Self.releaseAudio()
         let samples = Array(kit.audioProcessor.audioSamples)
         let started = Date()
         let results = try await Self.run(kit, samples: samples)
@@ -186,6 +195,18 @@ final class WhisperKitEngine {
         isListening = false
         await streamer?.stopStreamTranscription()
         streamTask = nil
+        liveConfirmed = ""
+        liveTentative = ""
+        Self.releaseAudio()
+    }
+
+    /// Hands the audio back once the microphone is done, so music or a
+    /// podcast on the truck's speakers comes back (Oct 20 phone audit).
+    /// Unverified until tried on a real iPhone with Bluetooth audio.
+    private static func releaseAudio() {
+        #if os(iOS)
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        #endif
     }
 
     /// WhisperKit's segment text can carry its own markers ("<|0.00|>",

@@ -275,14 +275,24 @@ struct SpokenAddress {
             .map(String.init)
     }
 
-    /// The first all-digit word, e.g. "7".
+    /// A house number: digits with at most one letter after ("7", "42b").
+    /// A five-digit word at the end is a ZIP code, not a house number
+    /// (Oct 20 phone audit: "42B" kept asking, and a ZIP counted).
+    private func isHouseNumber(at index: Int) -> Bool {
+        let word = words[index]
+        guard word.wholeMatch(of: /[0-9]+[a-z]?/) != nil else { return false }
+        if index == words.count - 1, word.count == 5, word.allSatisfy(\.isNumber) { return false }
+        return true
+    }
+
+    /// The first house number, e.g. "7".
     var houseNumber: String? {
-        words.first { $0.allSatisfy(\.isNumber) }
+        words.indices.first(where: isHouseNumber).map { words[$0] }
     }
 
     /// The first word after the house number that is not a number, e.g. "bay".
     var streetWord: String? {
-        guard let index = words.firstIndex(where: { $0.allSatisfy(\.isNumber) }) else { return nil }
+        guard let index = words.indices.first(where: isHouseNumber) else { return nil }
         return words.dropFirst(index + 1).first { !$0.allSatisfy(\.isNumber) }
     }
 }

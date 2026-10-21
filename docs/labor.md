@@ -73,12 +73,22 @@ the assistant as well, obviously". Mac first, then iPhone.
 The Labor tab (`Ace/Labor/LaborView.swift`) took Quotes' place in the tab
 bar; Quotes now opens from the Calendar.
 
-- Four figures (hourly hours, hourly pay, working today, crew), the week
-  as seven day buttons, then the chosen day: everyone on the crew, salaried
-  first. Hourly crew have a box for the day's hours; salaried crew a box
+- The week as seven day buttons, then the chosen day: everyone on the
+  crew, salaried first (the boxes come first since the Oct 20 phone audit,
+  so Alex sees them without scrolling). Then four figures (hourly hours,
+  hourly pay, working today, crew). A Today button shows while another day
+  is chosen, and the page moves to the new day after a night in the
+  background. Hourly crew have a box for the day's hours; salaried crew a box
   with a check that a tap turns to "Off".
 - Tapping an hours box selects what is in it, so typing replaces it, and
   scrolls it clear of the keyboard. The number pad has a Done button.
+  Anything that is not hours, or more than 24 ("85" for 8.5), is not saved:
+  the old value comes back with a warning buzz. Typing still under way when
+  another day is picked is saved to the day it was typed for.
+- Someone retired mid-week still counts in that week's hours and pay, shown
+  as "Retired" in the week's totals.
+- Delete is offered only for someone added by mistake: no hours yet, and for
+  salaried crew only on the day they were added.
 - Under that, the week's totals per person, then people who have left.
 - Add person is the button at the top left. A person's page has their
   details, the last four weeks, Retire, and Delete (only for someone with

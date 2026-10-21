@@ -26,3 +26,9 @@ Packages/
 node_modules/
 demo/checks/shots/
 docs/review-2026-10-19/
+
+# The beta relay address: kept off the public repo (docs/beta-relay.md).
+Ace/Support/BetaRelay.txt
+
+# Zipped screenshots: copies of screenshots/ for sending.
+screenshots/*.zip

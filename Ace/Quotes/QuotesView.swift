@@ -17,11 +17,18 @@ struct QuotesView: View {
     /// "Quote marked lost." and the like, shown under the switch for a moment.
     @State private var notice: String?
     @State private var changed = 0
+    /// A quote swiped as lost, waiting for "Mark this quote lost?".
+    @State private var pendingLost: Quote?
 
     private var filtered: [Quote] { QuoteSearch.filter(quotes, searchText) }
     private var shown: [Quote] { QuoteList.shown(filtered, status: filter) }
     private var followUp: [Quote] { QuoteList.followUp(shown) }
     private var waiting: [Quote] { QuoteList.waiting(shown) }
+    /// Lost quotes are on no list, but a search finds them, as the Mark lost
+    /// question promises (Oct 20 phone audit: the phone never showed them).
+    private var lostMatches: [Quote] {
+        searchText.trimmingCharacters(in: .whitespaces).isEmpty ? [] : QuoteList.shown(filtered, status: .lost)
+    }
 
     var body: some View {
         List {
@@ -73,7 +80,15 @@ struct QuotesView: View {
                 }
             }
 
-            if shown.isEmpty {
+            if !lostMatches.isEmpty {
+                Section("Lost") {
+                    ForEach(lostMatches) { quote in
+                        row(quote)
+                    }
+                }
+            }
+
+            if shown.isEmpty && lostMatches.isEmpty {
                 Section {
                     Text(emptyText)
                         .foregroundStyle(.secondary)
@@ -81,6 +96,16 @@ struct QuotesView: View {
             }
         }
         .navigationTitle("Quotes")
+        .confirmationDialog("Mark this quote lost?",
+                            isPresented: Binding(get: { pendingLost != nil }, set: { if !$0 { pendingLost = nil } }),
+                            titleVisibility: .visible, presenting: pendingLost) { quote in
+            Button("Mark lost") {
+                markLost(quote)
+                pendingLost = nil
+            }
+        } message: { _ in
+            Text("It leaves the Quotes list. Search still finds it, and Reopen brings it back.")
+        }
         .navigationDestination(for: Quote.self) { quote in
             QuoteEditView(quote: quote, onSaved: { _ in showNotice("Quote saved.") })
         }
@@ -117,7 +142,8 @@ struct QuotesView: View {
     /// when Mark Lost or Reopen moves the quote off this list.
     private func row(_ quote: Quote) -> some View {
         NavigationLink(value: quote) {
-            QuoteRow(quote: quote)
+            // The Booked list is all booked: no pill on every row.
+            QuoteRow(quote: quote, showStatus: filter != .booked)
         }
         .swipeActions(edge: .leading) {
             if quote.status == .open {
@@ -136,10 +162,10 @@ struct QuotesView: View {
                 .tint(.blue)
             }
         }
-        .swipeActions(edge: .trailing) {
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             if quote.status == .open {
                 Button {
-                    markLost(quote)
+                    pendingLost = quote
                 } label: {
                     Label("Lost", systemImage: "xmark")
                 }

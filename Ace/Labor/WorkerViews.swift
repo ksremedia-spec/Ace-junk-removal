@@ -14,13 +14,16 @@ struct NewWorkerSheet: View {
     @State private var payType: PayType = .hourly
     @State private var rateText = ""
     @State private var saved = false
+    @State private var confirmDiscard = false
 
     private var trimmedName: String { name.trimmingCharacters(in: .whitespaces) }
+    private var hasChanges: Bool { !trimmedName.isEmpty || !rateText.isEmpty }
 
     var body: some View {
         Form {
             Section {
                 TextField("Name", text: $name, prompt: Text("First and last name"))
+                    .wordsCapitalized()
                 Picker("Paid", selection: $payType) {
                     ForEach(PayType.allCases) { type in
                         Text(type.rawValue).tag(type)
@@ -28,8 +31,11 @@ struct NewWorkerSheet: View {
                 }
                 .pickerStyle(.segmented)
                 if payType == .hourly {
-                    TextField("Rate", text: $rateText, prompt: Text("Dollars an hour (optional)"))
-                        .decimalKeyboard()
+                    LabeledContent("Rate, $ an hour") {
+                        TextField("Rate", text: $rateText, prompt: Text("Optional"))
+                            .multilineTextAlignment(.trailing)
+                            .decimalKeyboard()
+                    }
                 }
             } footer: {
                 Text(payType == .salary
@@ -41,12 +47,19 @@ struct NewWorkerSheet: View {
         .navigationTitle("New person")
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
-                Button("Cancel") { dismiss() }
+                Button("Cancel") {
+                    if hasChanges { confirmDiscard = true } else { dismiss() }
+                }
             }
             ToolbarItem(placement: .confirmationAction) {
                 Button("Add") { add() }
                     .disabled(trimmedName.isEmpty)
             }
+        }
+        .interactiveDismissDisabled(hasChanges)
+        .confirmationDialog("Discard this person?", isPresented: $confirmDiscard, titleVisibility: .visible) {
+            Button("Discard changes", role: .destructive) { dismiss() }
+            Button("Keep editing", role: .cancel) {}
         }
         .sensoryFeedback(.success, trigger: saved)
     }
@@ -103,21 +116,34 @@ struct WorkerPage: View {
                 .bareRow()
             }
             Section {
-                TextField("Name", text: $worker.name, prompt: Text("First and last name"))
-                TextField("Phone", text: $worker.phone, prompt: Text("508-555-0123"))
-                    .phoneKeyboard()
+                // Labelled rows: on the iPhone a bare "20" said nothing.
+                LabeledContent("Name") {
+                    TextField("Name", text: $worker.name, prompt: Text("First and last name"))
+                        .multilineTextAlignment(.trailing)
+                        .wordsCapitalized()
+                }
+                LabeledContent("Phone") {
+                    TextField("Phone", text: $worker.phone, prompt: Text("Phone number"))
+                        .multilineTextAlignment(.trailing)
+                        .phoneKeyboard()
+                }
                 Picker("Paid", selection: payBinding) {
                     ForEach(PayType.allCases) { type in
                         Text(type.rawValue).tag(type)
                     }
                 }
                 if !worker.isSalaried {
-                    TextField("Rate", text: $rateText, prompt: Text("Dollars an hour"))
-                        .decimalKeyboard()
-                        .onChange(of: rateText) { _, text in
-                            worker.hourlyRate = Parse.money(text)
-                            touch()
-                        }
+                    LabeledContent("Rate, $ an hour") {
+                        TextField("Rate", text: $rateText, prompt: Text("Not set"))
+                            .multilineTextAlignment(.trailing)
+                            .decimalKeyboard()
+                            .onChange(of: rateText) { _, text in
+                                let rate = Parse.money(text)
+                                guard rate != worker.hourlyRate else { return }
+                                worker.hourlyRate = rate
+                                touch()
+                            }
+                    }
                 }
             }
             Section("Last four weeks") {
@@ -139,7 +165,10 @@ struct WorkerPage: View {
                     touch()
                 }
                 .help(worker.isActive ? "Off the timesheet; past hours are kept." : "Back on the timesheet.")
-                if worker.entries.isEmpty {
+                // A salaried person has no hours typed, but months of days
+                // worked: Delete would wipe them. Only someone added by
+                // mistake (no entries, or salaried and added today) can go.
+                if worker.entries.isEmpty && (!worker.isSalaried || Calendar.current.isDateInToday(worker.createdAt)) {
                     Button(role: .destructive) {
                         confirmDelete = true
                     } label: {
@@ -174,6 +203,7 @@ struct WorkerPage: View {
         .readableWidth()
         #if os(iOS)
         .navigationTitle("Person")
+        .navigationBarTitleDisplayMode(.inline)
         #endif
         .onAppear {
             rateText = worker.hourlyRate.map { Parse.moneyText($0) } ?? ""

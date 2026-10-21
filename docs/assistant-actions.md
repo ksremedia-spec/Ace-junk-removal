@@ -398,10 +398,11 @@ for. The app never talks back out loud (Kyle: "I don't want it to talk
 back, maybe it asks questions back on screen").
 
 - **One question on screen.** The first missing item is asked as a
-  question ("No house number. What's the number?") with three buttons:
+  question ("No house number. What's the house number?") with three buttons:
   **Hold to answer**, **Type it** (the cursor goes to that field) and
-  **Skip**. Filling the field by any means moves on to the next question.
-  Skipped items stay below as buttons.
+  **Not now**. Filling the field by any means moves on to the next question.
+  Items passed over stay below as buttons, and Save does not ask about them
+  again (Oct 20 phone audit; the step bar's own button is "Skip step").
 - **Click to type.** Under the question, every missing item is a button
   that puts the cursor in its field. A missing house number gets its own
   small field above the address, and the number goes in front of the

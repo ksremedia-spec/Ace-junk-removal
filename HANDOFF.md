@@ -34,6 +34,17 @@ not checked), **Unknown** (with how to find out).
 
 ## 2. Where things stand
 
+- **Oct 20, late night: iPhone audit and its safe fixes.** The full audit
+  (638 agents, 191 confirmed findings, score 6 of 10) is in
+  `docs/review-2026-10-20-iphone/audit.md`, with the screenshots it used.
+  About 25 of the 29 "fix now" items are done; what changed is listed in
+  `docs/decisions.md`. Built for iPhone and Mac; checked in the iOS Simulator
+  (big iPhone and the small 17e, light, dark, largest text). Not run on a
+  real iPhone. Not done from the list: a Mark-paid-asks-how-paid flow and
+  other items that need Kyle (the audit's "Needs Kyle's decision" list), the
+  audio interruption handling (a phone call mid-note needs a real iPhone to
+  test), and the Assistant dumpster screens' preselect changes. Not committed.
+
 - **Oct 20, late night: everything from today is on the iPhone.** Kyle:
   "pour all the changes we've made today over to the iOS app".
   `docs/decisions.md` has the why; specs in `docs/calendar-tab.md` and

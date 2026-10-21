@@ -25,12 +25,14 @@ struct WeekStrip: View {
                 Spacer()
                 Button { step(-1) } label: {
                     Image(systemName: "chevron.left")
-                        .frame(width: 32, height: 32)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .accessibilityLabel("Previous week")
                 Button { step(1) } label: {
                     Image(systemName: "chevron.right")
-                        .frame(width: 32, height: 32)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .accessibilityLabel("Next week")
             }

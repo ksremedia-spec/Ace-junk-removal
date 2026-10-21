@@ -27,7 +27,7 @@ struct SettingsView: View {
         Form {
             Section {
                 NavigationLink(value: MainView.Screen.apikey) {
-                    LabeledContent("API key", value: hasKey ? "Stored" : "Not set")
+                    LabeledContent("API key", value: Beta.relayURL != nil ? "Provided for this test" : (hasKey ? "Stored" : "Not set"))
                 }
                 Picker("Claude model", selection: $claudeModelRaw) {
                     ForEach(ClaudeModel.allCases) { model in
@@ -53,7 +53,7 @@ struct SettingsView: View {
             Section {
                 // The field's own label used to show again mid-row ("Rate per
                 // ton over  Dollars  125"); the row now reads as one line.
-                LabeledContent("Overweight charge, $ per ton") {
+                LabeledContent("Overweight rate, $ a ton") {
                     TextField("", text: $rateText, prompt: Text("125"))
                         .labelsHidden()
                         .multilineTextAlignment(.trailing)
@@ -112,11 +112,13 @@ struct SettingsView: View {
                 done += 1
             }
         }
-        .confirmationDialog("Delete every customer, job and dumpster record?", isPresented: $confirmClear, titleVisibility: .visible) {
+        .confirmationDialog("Delete all customers, jobs, quotes, dumpsters, people and hours on this device?", isPresented: $confirmClear, titleVisibility: .visible) {
             Button("Delete everything", role: .destructive) {
                 SampleData.clear(context: context)
                 done += 1
             }
+        } message: {
+            Text("This cannot be undone.")
         }
         .sensoryFeedback(.success, trigger: done)
     }

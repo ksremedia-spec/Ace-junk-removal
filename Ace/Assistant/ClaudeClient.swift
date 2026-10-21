@@ -1,7 +1,8 @@
 import Foundation
 
 /// Talks to the Anthropic Messages API directly from the device. The API key
-/// comes from the Keychain and is sent only to api.anthropic.com.
+/// comes from the Keychain and is sent only to api.anthropic.com. The beta
+/// sends through Kyle's Cloudflare relay instead, with no key (Beta.relayURL).
 enum ClaudeModel: String, CaseIterable, Identifiable {
     case haiku = "claude-haiku-5-5"
     case sonnet = "claude-sonnet-5-5"
@@ -33,14 +34,20 @@ enum ClaudeError: LocalizedError {
         switch self {
         case .missingKey:
             return "No API key. Add it in Settings › API key."
+        // Plain words Alex can act on, with the code at the end so Kyle can
+        // still tell what happened (Oct 20 phone audit).
+        case .badStatus(let code, _) where code == 401 || code == 403:
+            return "The Assistant key on this device isn't working. Check it in Settings › API key. (\(code))"
+        case .badStatus(let code, _) where code == 429 || code >= 500:
+            return "The Assistant is busy. Tap Send again in a minute. (\(code))"
         case .badStatus(let code, let message):
-            return "The Anthropic service answered with error \(code). \(message)"
-        case .refused(let reason):
-            return "Claude declined this request. \(reason)"
+            return "The Assistant could not take this note. (\(code)) \(message)"
+        case .refused:
+            return "This note could not be handled. Try saying it another way."
         case .cutOff:
-            return "The answer was cut off before it finished."
-        case .unreadable(let detail):
-            return "The answer could not be read. \(detail)"
+            return "The answer was cut off before it finished. Send again."
+        case .unreadable:
+            return "The answer could not be read. Send again."
         }
     }
 }
@@ -56,9 +63,7 @@ struct ClaudeClient {
     /// first, in its own block marked for caching, so a second note within a
     /// few minutes does not pay for 600 customers again.
     static func plan(note: String, directory: String, records: String, model: ClaudeModel, effort: ClaudeEffort) async throws -> (plan: AssistantPlan, seconds: Double, inputTokens: Int, outputTokens: Int) {
-        guard let apiKey = Keychain.read(Keychain.anthropicAPIKey), !apiKey.isEmpty else {
-            throw ClaudeError.missingKey
-        }
+        let apiKey = try currentKey()
 
         let userText = "Spoken note:\n\(note)\n\nRecords:\n\(records)"
         var userContent: [[String: Any]] = []
@@ -126,9 +131,7 @@ struct ClaudeClient {
     /// Empty when the answer does not give it. Haiku at low effort: the
     /// task is small and the person is waiting with the phone in hand.
     static func fill(_ field: String, question: String, answer: String, form: String) async throws -> String {
-        guard let apiKey = Keychain.read(Keychain.anthropicAPIKey), !apiKey.isEmpty else {
-            throw ClaudeError.missingKey
-        }
+        let apiKey = try currentKey()
         let body: [String: Any] = [
             "model": ClaudeModel.haiku.rawValue,
             "max_tokens": 2000,
@@ -155,12 +158,23 @@ struct ClaudeClient {
     /// Posts one Messages request and returns the reply's text, the whole
     /// response and how long it took. Throws on an error status, a refusal
     /// or a cut-off answer.
+    /// The device's key, or "" when the beta relay holds it.
+    private static func currentKey() throws -> String {
+        if Beta.relayURL != nil { return "" }
+        guard let apiKey = Keychain.read(Keychain.anthropicAPIKey), !apiKey.isEmpty else {
+            throw ClaudeError.missingKey
+        }
+        return apiKey
+    }
+
     private static func send(_ body: [String: Any], apiKey: String, timeout: TimeInterval) async throws -> (text: String, json: [String: Any], seconds: Double) {
-        var request = URLRequest(url: endpoint)
+        var request = URLRequest(url: Beta.relayURL?.appendingPathComponent("v1/messages") ?? endpoint)
         request.httpMethod = "POST"
         request.timeoutInterval = timeout
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+        if !apiKey.isEmpty {
+            request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+        }
         request.setValue(apiVersion, forHTTPHeaderField: "anthropic-version")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         #if DEBUG

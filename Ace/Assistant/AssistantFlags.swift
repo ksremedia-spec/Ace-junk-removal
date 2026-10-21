@@ -46,10 +46,10 @@ struct FlaggedRow<Content: View>: View {
     var body: some View {
         if let note {
             content
-                .foregroundStyle(Color.orange)
+                .foregroundStyle(Tint.warning)
             Text(note)
                 .font(.footnote)
-                .foregroundStyle(.orange)
+                .foregroundStyle(Tint.warning)
         } else {
             content
         }

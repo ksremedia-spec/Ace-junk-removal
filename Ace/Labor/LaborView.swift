@@ -11,7 +11,11 @@ struct LaborView: View {
     @Query(sort: \Worker.name) private var workers: [Worker]
     @Environment(\.dynamicTypeSize) private var typeSize
 
+    @Environment(\.scenePhase) private var scenePhase
     @State private var day = Dates.startOfToday()
+    /// See MainView: after a night in the background, Labor opens on the
+    /// new day, so today's hours never go into yesterday's boxes.
+    @State private var lastActiveDay = Dates.startOfToday()
     @State private var showingNewWorker = false
 
     private var calendar: Calendar { .current }
@@ -27,6 +31,11 @@ struct LaborView: View {
 
     private var retired: [Worker] { workers.filter { !$0.isActive } }
 
+    /// People who have left but have hours in the week on show.
+    private var retiredWithHours: [Worker] {
+        retired.filter { worker in !worker.isSalaried && Labor.hours(worker, over: days) > 0 }
+    }
+
     /// Days in the week on show with hourly hours logged, for the dots.
     private var loggedDays: Set<Date> {
         Set(days.filter { date in crew.contains { $0.hours(on: date) != nil } })
@@ -39,11 +48,13 @@ struct LaborView: View {
                     if crew.isEmpty {
                         emptyCrew
                     } else {
-                        LaborFigures(crew: crew, days: days)
+                        // The day's boxes come first, where Alex types; the
+                        // figures follow (Oct 20 phone audit).
                         WeekStrip(day: $day, marked: loggedDays)
                             .padding(Space.m)
                             .cardBackground()
                         dayCard(proxy)
+                        LaborFigures(crew: crew, days: days, retiredWithHours: retiredWithHours)
                         weekCard
                     }
                     if !retired.isEmpty {
@@ -58,7 +69,18 @@ struct LaborView: View {
         .background(Tint.boardPage)
         .environment(\.cardFill, Tint.boardCard)
         .navigationTitle("Labor")
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { rollToTodayIfDayChanged() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged).receive(on: RunLoop.main)) { _ in
+            rollToTodayIfDayChanged()
+        }
         .toolbar {
+            if !calendar.isDateInToday(day) {
+                ToolbarItem(placement: .navigation) {
+                    Button("Today") { day = Dates.startOfToday() }
+                }
+            }
             ToolbarItem(placement: .navigation) {
                 Button {
                     showingNewWorker = true
@@ -72,6 +94,13 @@ struct LaborView: View {
                 NewWorkerSheet()
             }
         }
+    }
+
+    private func rollToTodayIfDayChanged() {
+        let today = Dates.startOfToday()
+        guard lastActiveDay != today else { return }
+        lastActiveDay = today
+        day = today
     }
 
     // MARK: The chosen day
@@ -144,10 +173,17 @@ struct LaborView: View {
 
     private var weekCard: some View {
         BoardListCard(title: weekTitle, count: crew.count) {
-            ForEach(crew) { worker in
+            ForEach(crew + retiredWithHours) { worker in
                 HStack {
-                    Text(worker.name)
-                        .lineLimit(1)
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(worker.name)
+                            .lineLimit(1)
+                        if !worker.isActive {
+                            Text("Retired")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                     Spacer()
                     VStack(alignment: .trailing, spacing: 0) {
                         Text(worker.isSalaried

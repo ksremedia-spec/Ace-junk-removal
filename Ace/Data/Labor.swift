@@ -201,4 +201,22 @@ enum Labor {
         }
         return Parse.money(trimmed)
     }
+
+    /// What typed hours mean for the day: `.clear` for an empty box,
+    /// `.hours` for a real day's work, `.invalid` for text that is not a
+    /// number or is more than 24 hours ("85" for 8.5, a stray dot). An
+    /// invalid entry keeps what was there before (Oct 20 phone audit).
+    enum HoursInput: Equatable {
+        case clear
+        case hours(Double)
+        case invalid
+    }
+
+    static func validHours(_ text: String) -> HoursInput {
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty { return .clear }
+        guard let hours = parseHours(trimmed), hours >= 0 else { return .invalid }
+        if hours == 0 { return .clear }
+        return hours <= 24 ? .hours(hours) : .invalid
+    }
 }

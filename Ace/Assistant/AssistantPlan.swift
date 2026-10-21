@@ -92,19 +92,20 @@ struct AssistantAction: Codable, Identifiable {
         /// The screen title.
         var title: String {
             switch self {
-            case .newJob: return "New Job"
-            case .updateJob: return "Update Job"
-            case .cancelJob: return "Cancel Job"
-            case .newCustomer: return "New Customer"
-            case .updateCustomer: return "Update Customer"
-            case .contactCustomer: return "Contact Customer"
-            case .dumpsterDropoff: return "Dumpster Drop-off"
-            case .dumpsterPickup: return "Dumpster Pickup"
-            case .dumpsterSwap: return "Dumpster Swap"
-            case .updateRental: return "Update Rental"
-            case .dumpsterNote: return "Dumpster Note"
-            case .newQuote: return "New Quote"
-            case .updateQuote: return "Update Quote"
+            // Sentence case, like the rest of the app (Oct 20 phone audit).
+            case .newJob: return "New job"
+            case .updateJob: return "Update job"
+            case .cancelJob: return "Cancel job"
+            case .newCustomer: return "New customer"
+            case .updateCustomer: return "Update customer"
+            case .contactCustomer: return "Contact customer"
+            case .dumpsterDropoff: return "Dumpster drop-off"
+            case .dumpsterPickup: return "Dumpster pickup"
+            case .dumpsterSwap: return "Dumpster swap"
+            case .updateRental: return "Update rental"
+            case .dumpsterNote: return "Dumpster note"
+            case .newQuote: return "New quote"
+            case .updateQuote: return "Update quote"
             case .logHours: return "Hours"
             }
         }

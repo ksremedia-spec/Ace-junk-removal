@@ -45,6 +45,9 @@ extension Color {
 enum Tint {
     static let paid = Color(light: Color(red: 0.11, green: 0.50, blue: 0.22), dark: .green)
     static let owed = Color(light: Color(red: 0.72, green: 0.33, blue: 0.0), dark: .orange)
+    /// A field or question that needs attention: the same readable orange
+    /// as owed money (Apple's own orange is too pale in sunlight).
+    static let warning = owed
     static let overdue = Color(light: Color(red: 0.78, green: 0.16, blue: 0.11), dark: .red)
     static let done = Color.secondary
     /// The fill behind cards and tiles, right in light and dark. On iPhone
@@ -184,6 +187,7 @@ struct JobPills: View {
 
 /// A number with its label, in a card: "Owed  $19,550".
 struct StatTile: View {
+    @Environment(\.dynamicTypeSize) private var typeSize
     let title: String
     let value: String
     var detail: String? = nil
@@ -206,7 +210,8 @@ struct StatTile: View {
                 Text(detail)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    // Wraps at the largest sizes instead of cutting mid-word.
+                    .lineLimit(typeSize.isAccessibilitySize ? 3 : 1)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -269,8 +274,13 @@ struct ActionButtonStyle: ButtonStyle {
         configuration.label
             .font(.callout.weight(.semibold))
             .labelStyle(.titleAndIcon)
+            .lineLimit(1)
             .padding(.horizontal, Space.m)
             .padding(.vertical, 7)
+            #if os(iOS)
+            // Apple's smallest comfortable tap, for gloves in a truck.
+            .frame(minHeight: 44)
+            #endif
             .foregroundStyle(prominent ? Color.white : tint)
             .background(
                 Capsule().fill(prominent ? tint : tint.opacity(0.14))
@@ -338,6 +348,60 @@ extension View {
     }
 }
 
+/// Lays its views out left to right, starting a new line when one is full.
+/// The Missing chips and, on the iPhone, a detail page's buttons.
+struct FlowRow: Layout {
+    var spacing: CGFloat = Space.s
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let rows = arrange(width: proposal.width ?? .infinity, subviews: subviews)
+        let height = rows.last.map { $0.y + $0.height } ?? 0
+        let width = rows.map(\.width).max() ?? 0
+        return CGSize(width: width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let rows = arrange(width: bounds.width, subviews: subviews)
+        for row in rows {
+            var x = bounds.minX
+            for index in row.indices {
+                let size = subviews[index].sizeThatFits(.unspecified)
+                subviews[index].place(at: CGPoint(x: x, y: bounds.minY + row.y), proposal: ProposedViewSize(size))
+                x += size.width + spacing
+            }
+        }
+    }
+
+    private struct Row {
+        var indices: [Int] = []
+        var y: CGFloat = 0
+        var width: CGFloat = 0
+        var height: CGFloat = 0
+    }
+
+    private func arrange(width: CGFloat, subviews: Subviews) -> [Row] {
+        var rows: [Row] = []
+        var row = Row()
+        for index in subviews.indices {
+            let size = subviews[index].sizeThatFits(.unspecified)
+            let needed = row.indices.isEmpty ? size.width : row.width + spacing + size.width
+            if !row.indices.isEmpty, needed > width {
+                rows.append(row)
+                row = Row(y: row.y + row.height + spacing)
+                row.indices = [index]
+                row.width = size.width
+                row.height = size.height
+            } else {
+                row.indices.append(index)
+                row.width = needed
+                row.height = max(row.height, size.height)
+            }
+        }
+        if !row.indices.isEmpty { rows.append(row) }
+        return rows
+    }
+}
+
 /// The top of a detail page: a badge, a title and subtitle, a big value on
 /// the right, pills, and a row of actions.
 struct DetailHeader<Badge: View, Pills: View, Actions: View>: View {
@@ -385,12 +449,20 @@ struct DetailHeader<Badge: View, Pills: View, Actions: View>: View {
             }
             pills
             if hasActions {
+                #if os(iOS)
+                // Wrapped onto a second line rather than scrolled sideways:
+                // Directions sat off the edge with no hint (Oct 20 phone audit).
+                FlowRow(spacing: Space.s) {
+                    actions
+                }
+                #else
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: Space.s) {
                         actions
                     }
                 }
                 .scrollClipDisabled()
+                #endif
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

@@ -93,7 +93,8 @@ struct MacLaborBoard: View {
     }
 
     private var figures: some View {
-        LaborFigures(crew: crew, days: days, columns: 4)
+        LaborFigures(crew: crew, days: days, columns: 4,
+                     retiredWithHours: workers.filter { !$0.isActive && !$0.isSalaried && Labor.hours($0, over: days) > 0 })
     }
 
     // MARK: No one yet, and former crew

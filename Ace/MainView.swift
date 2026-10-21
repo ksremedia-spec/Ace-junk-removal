@@ -28,6 +28,9 @@ struct MainView: View {
     /// The day chosen on the Calendar tab. Not remembered: the app always
     /// opens on today.
     @State private var calendarDay = Dates.startOfToday()
+    /// Which day "today" was when the app was last in front. iOS keeps the
+    /// app in memory overnight; the next morning it moves to the new day.
+    @State private var lastActiveDay = Dates.startOfToday()
     @State private var handledLaunchArguments = false
 
     private var selectedTab: Binding<AppTab> {
@@ -78,8 +81,23 @@ struct MainView: View {
         .onAppear(perform: handleLaunchArguments)
         .onChange(of: scenePhase) { _, phase in
             // Calendar access may have been changed in Settings meanwhile.
-            if phase == .active { CalendarStore.shared.refresh() }
+            if phase == .active {
+                CalendarStore.shared.refresh()
+                rollToTodayIfDayChanged()
+            }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged).receive(on: RunLoop.main)) { _ in
+            rollToTodayIfDayChanged()
+        }
+    }
+
+    /// A new day has begun since the app was last used: the Calendar goes
+    /// to it. A day picked by hand earlier the same day stays picked.
+    private func rollToTodayIfDayChanged() {
+        let today = Dates.startOfToday()
+        guard lastActiveDay != today else { return }
+        lastActiveDay = today
+        calendarDay = today
     }
 
     private var calendarShowsToday: Bool {
@@ -108,8 +126,14 @@ struct MainView: View {
             Button {
                 showingAssistant = true
             } label: {
-                Label("Assistant", systemImage: "apple.intelligence")
-                    .labelStyle(.titleAndIcon)
+                // CLAUDE.md: the button is labelled "Assistant". iOS 26 shows a
+                // toolbar Label as its icon only, so the word is spelled out.
+                HStack(spacing: 4) {
+                    Image(systemName: "apple.intelligence")
+                    Text("Assistant")
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Assistant")
             }
         }
     }

@@ -42,7 +42,11 @@ struct AssistantView: View {
     /// file and transcribes afterwards, as before.
     @State private var listeningLive = false
     @FocusState private var typing: Bool
-    private var hasKey: Bool { Keychain.read(Keychain.anthropicAPIKey) != nil }
+    /// A note not yet answered, kept if the sheet closes (no signal in the
+    /// truck), and put back next time with "Not sent yet." (Oct 20 phone audit).
+    @AppStorage("assistant.unsentNote") private var unsentNote = ""
+    @State private var restoredUnsent = false
+    private var hasKey: Bool { Beta.assistantReady }
 
     // The plan being stepped through.
     @State private var reply = ""
@@ -68,6 +72,15 @@ struct AssistantView: View {
                 .safeAreaInset(edge: .top) { stepBanner }
         }
         .onAppear(perform: loadEngine)
+        // However the sheet closes (Cancel, a swipe down, the app sent
+        // away), the microphone goes off and no half-heard note lingers.
+        .onDisappear(perform: stopMicrophone)
+        #if os(iOS)
+        // Auto-Lock would cut a hands-free note short.
+        .onChange(of: phase) { _, phase in
+            UIApplication.shared.isIdleTimerDisabled = phase == .recording
+        }
+        #endif
         .sensoryFeedback(.success, trigger: savedCount)
     }
 
@@ -83,6 +96,15 @@ struct AssistantView: View {
         default:
             recordView
         }
+    }
+
+    private func stopMicrophone() {
+        #if os(iOS)
+        UIApplication.shared.isIdleTimerDisabled = false
+        #endif
+        if recorder.isRecording { _ = recorder.stop() }
+        listeningLive = false
+        Task { await engine.cancelListening() }
     }
 
     private func loadEngine() {
@@ -119,17 +141,13 @@ struct AssistantView: View {
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .cancellationAction) {
             Button("Cancel") {
-                if recorder.isRecording { _ = recorder.stop() }
-                if listeningLive {
-                    listeningLive = false
-                    Task { _ = try? await engine.stopListening() }
-                }
+                stopMicrophone()
                 dismiss()
             }
         }
         if stepCounter != nil {
             ToolbarItem(placement: skipPlacement) {
-                Button("Skip") { advance() }
+                Button("Skip step") { advance() }
             }
         }
         #if os(iOS)
@@ -163,7 +181,7 @@ struct AssistantView: View {
                 }
                 ForEach(unshownQuestions, id: \.self) { question in
                     Text(question)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(Tint.warning)
                 }
             }
             .font(.subheadline)
@@ -286,6 +304,20 @@ struct AssistantView: View {
             Section {
                 switch phase {
                 case .idle, .recording:
+                    #if os(iOS)
+                    VStack(spacing: Space.s) {
+                        HoldToTalkButton(
+                            large: true,
+                            isListening: phase == .recording,
+                            onStart: startRecording,
+                            onEnd: stopRecording
+                        )
+                        Text(phase == .recording ? "Listening." : "or type it below")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, Space.xs)
+                    #else
                     HStack(spacing: Space.m) {
                         HoldToTalkButton(
                             isListening: phase == .recording,
@@ -295,6 +327,7 @@ struct AssistantView: View {
                         Text(phase == .recording ? "Listening." : "or type it below")
                             .foregroundStyle(.secondary)
                     }
+                    #endif
                     if phase == .recording, listeningLive {
                         LiveWords(engine: engine, placeholder: "Start talking. The words show up here.", minHeight: 60)
                             .font(.title3)
@@ -349,9 +382,13 @@ struct AssistantView: View {
                     // so the keyboard's Return key sends the note instead of
                     // starting a new line.
                     .submitLabel(.send)
-                    .onChange(of: typedNote) { _, text in
+                    .onChange(of: typedNote) { old, text in
                         guard text.contains("\n") else { return }
+                        let added = text.filter { $0 == "\n" }.count - old.filter { $0 == "\n" }.count
                         typedNote = text.replacingOccurrences(of: "\n", with: " ")
+                        // One Return is Send; pasted text with line breaks
+                        // just stays in the box.
+                        guard added == 1, text.count == old.count + 1 else { return }
                         typing = false
                         sendTyped()
                     }
@@ -370,6 +407,10 @@ struct AssistantView: View {
                 }
             } header: {
                 Text("Type it")
+            } footer: {
+                if restoredUnsent {
+                    Text("Not sent yet.")
+                }
             }
 
             Section {
@@ -403,6 +444,10 @@ struct AssistantView: View {
         }
         .formStyle(.grouped)
         .onAppear {
+            if typedNote.isEmpty, !unsentNote.isEmpty {
+                typedNote = unsentNote
+                restoredUnsent = true
+            }
             #if os(macOS)
             typing = true
             #endif
@@ -509,6 +554,7 @@ struct AssistantView: View {
 
     /// Sends a note, spoken or typed, to Claude with the records.
     private func ask(_ note: String) async {
+        unsentNote = note
         do {
             phase = .asking
             let records = AssistantRecords.build(
@@ -562,9 +608,26 @@ struct AssistantView: View {
                 confirmations = []
                 phase = .steps
             }
+            unsentNote = ""
+            restoredUnsent = false
         } catch {
-            phase = .failed(error.localizedDescription)
+            // The note stays in the box, so it can be sent again or fixed.
+            if typedNote.isEmpty { typedNote = note }
+            phase = .failed(Self.failureText(error))
         }
+    }
+
+    /// No signal reads as no signal, not as a raw network error.
+    private static func failureText(_ error: Error) -> String {
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .notConnectedToInternet, .networkConnectionLost, .timedOut, .cannotFindHost, .cannotConnectToHost, .dataNotAllowed:
+                return "No signal. The note is kept. Send again when there is signal."
+            default:
+                break
+            }
+        }
+        return error.localizedDescription
     }
 
     /// Debug builds only: `-debug.plan answer.json` answers every note with
@@ -602,6 +665,8 @@ struct AssistantView: View {
     }
 
     private func reset() {
+        unsentNote = ""
+        restoredUnsent = false
         phase = .idle
         transcript = ""
         typedNote = ""

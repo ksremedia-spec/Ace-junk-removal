@@ -26,6 +26,7 @@ struct HoursCell: View {
     var onFocus: (() -> Void)? = nil
 
     @State private var text = ""
+    @State private var rejected = 0
     @FocusState private var focused: Bool
 
     private var stored: String {
@@ -38,7 +39,7 @@ struct HoursCell: View {
             .monospacedDigit()
             .textFieldStyle(.plain)
             .font(.callout.weight(.medium))
-            .decimalKeyboard()
+            .decimalKeyboard(focus: $focused)
             .frame(maxWidth: .infinity, minHeight: LaborCellSize.height)
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -62,6 +63,14 @@ struct HoursCell: View {
             .onChange(of: stored) { _, value in
                 if !focused { text = value }
             }
+            // The iPhone reuses this box when another day is picked in the
+            // week strip: typing still under way belongs to the day it was
+            // typed for, not the newly picked one.
+            .onChange(of: day) { oldDay, _ in
+                if focused { commit(on: oldDay) }
+                text = stored
+            }
+            .sensoryFeedback(.warning, trigger: rejected)
             .accessibilityLabel("\(worker.name), \(Dates.longDay(day)), hours")
     }
 
@@ -75,8 +84,20 @@ struct HoursCell: View {
     }
 
     private func commit() {
-        let hours = Labor.parseHours(text)
-        Labor.setHours(hours, for: worker, on: day, in: context)
+        commit(on: day)
+    }
+
+    /// Saves the typed hours to `target`. Text that is not hours (or more
+    /// than 24) is not saved: the old value comes back with a warning buzz.
+    private func commit(on target: Date) {
+        switch Labor.validHours(text) {
+        case .clear:
+            Labor.setHours(nil, for: worker, on: target, in: context)
+        case .hours(let hours):
+            Labor.setHours(hours, for: worker, on: target, in: context)
+        case .invalid:
+            rejected += 1
+        }
         text = stored
     }
 }

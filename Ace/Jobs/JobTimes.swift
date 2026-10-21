@@ -163,7 +163,7 @@ struct OverlapNote: View {
         if let note = JobOverlap.note(overlapping) {
             Text(note)
                 .font(.footnote)
-                .foregroundStyle(.orange)
+                .foregroundStyle(Tint.warning)
         }
     }
 }

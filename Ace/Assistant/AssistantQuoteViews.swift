@@ -34,6 +34,8 @@ struct NewQuoteView: View {
     /// Typed or said separately when the address came without one.
     @State private var houseNumber = ""
     @FocusState private var focus: Gap?
+    /// Questions passed over in the Missing card.
+    @State private var skippedGaps: Set<Gap> = []
     /// A Missing button's field, scrolled to before it is typed in (see
     /// JobReviewView).
     @State private var scrollTarget: Gap?
@@ -103,7 +105,8 @@ struct NewQuoteView: View {
                     engine: engine,
                     formSummary: { formSummary },
                     onPick: pick,
-                    onFill: fill
+                    onFill: fill,
+                    skipped: $skippedGaps
                 )
 
                 Section {
@@ -119,11 +122,11 @@ struct NewQuoteView: View {
                             .id(Gap.phone)
                     }
                     if gaps.contains(.houseNumber) || !houseNumber.isEmpty {
-                        TextField("House number", text: $houseNumber, prompt: Text("Number"))
+                        TextField("House number", text: $houseNumber, prompt: Text("House number"))
                             .houseNumberKeyboard()
                             .focused($focus, equals: .houseNumber)
                             .id(Gap.houseNumber)
-                            .foregroundStyle(houseNumber.isEmpty ? Color.orange : Color.primary)
+                            .foregroundStyle(houseNumber.isEmpty ? Tint.warning : Color.primary)
                     }
                     FlaggedRow(SpokenAddress(fullAddress).houseNumber == nil ? flags["address"] : nil) {
                         TextField("Address", text: $address, prompt: Text("Street and town"), axis: .vertical)
@@ -567,7 +570,7 @@ private struct BookQuoteForm: View {
         .formStyle(.grouped)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button("Book Job") { trySave() }
+                Button("Book job") { trySave() }
                     .disabled(!endIsValid)
             }
         }

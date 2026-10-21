@@ -59,19 +59,35 @@ struct CalendarView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Space.l) {
-                TodayFigures(jobs: jobs, dumpsters: dumpsters, quotes: quotes, onShowQuotes: onShowQuotes)
-                calendarCard
-                dayCard
-                yard
-                if !slippedJobs.isEmpty {
-                    slippedCard
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: Space.l) {
+                    TodayFigures(jobs: jobs, dumpsters: dumpsters, quotes: quotes, onShowQuotes: {
+                        // The Quotes figure counts open quotes, so it opens on Open.
+                        quotesFilter = .open
+                        onShowQuotes?()
+                    })
+                    calendarCard
+                    dayCard
+                    yard
+                    if !slippedJobs.isEmpty {
+                        slippedCard
+                    }
+                    quotesCard
                 }
-                quotesCard
+                .padding(.horizontal, Space.l)
+                .padding(.vertical, Space.m)
             }
-            .padding(.horizontal, Space.l)
-            .padding(.vertical, Space.m)
+            // Month view: picking a day tucks the figures away, so the month
+            // and the chosen day's jobs show together (Oct 20 phone audit).
+            .onChange(of: selectedDay) { _, _ in
+                guard mode == .month else { return }
+                withAnimation { proxy.scrollTo("calendar", anchor: .top) }
+            }
+            .onChange(of: modeRaw) { _, _ in
+                guard mode == .month else { return }
+                withAnimation { proxy.scrollTo("calendar", anchor: .top) }
+            }
         }
         .background(Tint.boardPage)
         .environment(\.cardFill, Tint.boardCard)
@@ -116,6 +132,7 @@ struct CalendarView: View {
         }
         .padding(Space.m)
         .cardBackground()
+        .id("calendar")
     }
 
     // MARK: The chosen day

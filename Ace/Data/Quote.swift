@@ -144,17 +144,11 @@ enum QuoteSearch {
     /// Quotes whose customer name, phone or address, or whose details,
     /// contain `text`. Empty text keeps everything.
     static func filter(_ quotes: [Quote], _ text: String) -> [Quote] {
-        let query = text.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !query.isEmpty else { return quotes }
-        let digits = query.filter(\.isNumber)
+        let search = SearchText(text)
+        guard !search.isEmpty else { return quotes }
         return quotes.filter { quote in
-            let name = quote.customer?.name.lowercased() ?? ""
-            let address = quote.customer?.address.lowercased() ?? ""
-            let phone = quote.customer?.phoneDigits ?? ""
-            return name.contains(query)
-                || address.contains(query)
-                || (!digits.isEmpty && phone.contains(digits))
-                || quote.details.lowercased().contains(query)
+            search.matches(texts: [quote.customer?.name ?? "", quote.customer?.address ?? "", quote.details, quote.notes],
+                           phoneDigits: quote.customer?.phoneDigits ?? "")
         }
     }
 }

@@ -3,6 +3,33 @@
 Short log of decisions and why, newest first. Written in plain English so it
 can be read later without the conversation.
 
+## 2026-10-20 (late night) · Fixes from the iPhone audit
+
+- Kyle asked for the same audit as Oct 19 (reviewers, two skeptics per
+  finding, five judges, a summary and a critic), aimed at the phone. Results:
+  `review-2026-10-20-iphone/audit.md`. Kyle said to start on the safe fixes.
+- Done: swipe-to-delete (jobs, customers) and swipe-to-lost (quotes) ask
+  first and never fire on a full swipe; search finds lost quotes; the
+  microphone turns off however the Assistant closes, and the audio is handed
+  back; Calendar and Labor move to the new day after a night in the
+  background; a deleted job or quote is not written back to; a half-typed
+  new job, quote, customer or person is not lost to a swipe, and Cancel asks;
+  Back from a job whose new time clashes asks the overlap question first
+  (leaving a job page still saves, as decided Oct 19); detail page buttons
+  wrap instead of running off the screen and are at least 44 points; one
+  search rule everywhere (every word must match, accents ignored, digits
+  search phones only when the search is a phone number); the dumpster page
+  puts the pickup first with Call and Directions; Directions starts driving
+  directions; hours over 24 or not a number are refused; many smaller label,
+  wording and large-text fixes.
+- Decided along the way: a saved job's Paid switch is gone (Mark paid in the
+  header saves at once; two controls could disagree). The Labor day comes
+  before the figures. The Assistant's toolbar button shows the word
+  "Assistant" again (CLAUDE.md). The two Skip buttons are now "Skip step"
+  and "Not now". Warning text uses Ace's darker orange everywhere.
+- Left for Kyle: the 17 proposals in the audit file (overweight charge on the
+  bill, linking dumpster jobs to dumpsters, hiding Debug, and more).
+
 ## 2026-10-20 (late night) · iPhone gets the boards and a Labor tab; Quotes moves under Calendar
 
 - Kyle: "pour all the changes we've made today over to the iOS app".

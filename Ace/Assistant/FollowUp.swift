@@ -50,8 +50,8 @@ enum Gap: String, CaseIterable, Identifiable {
         switch self {
         case .name: return "No name. What's the customer's name?"
         case .address: return "No address. What's the address?"
-        case .houseNumber: return "No house number. What's the number?"
-        case .phone: return "No phone number. What's the number?"
+        case .houseNumber: return "No house number. What's the house number?"
+        case .phone: return "No phone number. What's the phone number?"
         case .date: return "No date. What day?"
         case .price: return "No price. How much?"
         }
@@ -273,8 +273,10 @@ struct MissingSection: View {
     var onPick: (Gap) -> Void
     /// A spoken answer, into its field.
     var onFill: (Gap, String) -> Void
+    /// Gaps passed over with Skip. Held by the form, so Save does not ask
+    /// about them again (Oct 20 phone audit).
+    @Binding var skipped: Set<Gap>
 
-    @State private var skipped: Set<Gap> = []
     @State private var listener = FollowUpListener()
     @State private var answered = 0
 
@@ -314,8 +316,8 @@ struct MissingSection: View {
                                 .disabled(listener.phase == .working(question))
                             }
                             Button("Type it") { onPick(question) }
-                                .buttonStyle(.action(.orange))
-                            Button("Skip") { skipped.insert(question) }
+                                .buttonStyle(.action(Tint.warning))
+                            Button("Not now") { skipped.insert(question) }
                                 .buttonStyle(.action(.secondary))
                         }
                     }
@@ -333,7 +335,7 @@ struct MissingSection: View {
                         } label: {
                             Label(gap.label, systemImage: gap.symbol)
                         }
-                        .buttonStyle(.action(.orange))
+                        .buttonStyle(.action(Tint.warning))
                         .help("Type the \(gap.inSentence)")
                     }
                 }
@@ -358,58 +360,5 @@ struct MissingSection: View {
                 break
             }
         }
-    }
-}
-
-/// Lays its views out left to right, starting a new line when one is full.
-struct FlowRow: Layout {
-    var spacing: CGFloat = Space.s
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let rows = arrange(width: proposal.width ?? .infinity, subviews: subviews)
-        let height = rows.last.map { $0.y + $0.height } ?? 0
-        let width = rows.map(\.width).max() ?? 0
-        return CGSize(width: width, height: height)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let rows = arrange(width: bounds.width, subviews: subviews)
-        for row in rows {
-            var x = bounds.minX
-            for index in row.indices {
-                let size = subviews[index].sizeThatFits(.unspecified)
-                subviews[index].place(at: CGPoint(x: x, y: bounds.minY + row.y), proposal: ProposedViewSize(size))
-                x += size.width + spacing
-            }
-        }
-    }
-
-    private struct Row {
-        var indices: [Int] = []
-        var y: CGFloat = 0
-        var width: CGFloat = 0
-        var height: CGFloat = 0
-    }
-
-    private func arrange(width: CGFloat, subviews: Subviews) -> [Row] {
-        var rows: [Row] = []
-        var row = Row()
-        for index in subviews.indices {
-            let size = subviews[index].sizeThatFits(.unspecified)
-            let needed = row.indices.isEmpty ? size.width : row.width + spacing + size.width
-            if !row.indices.isEmpty, needed > width {
-                rows.append(row)
-                row = Row(y: row.y + row.height + spacing)
-                row.indices = [index]
-                row.width = size.width
-                row.height = size.height
-            } else {
-                row.indices.append(index)
-                row.width = needed
-                row.height = max(row.height, size.height)
-            }
-        }
-        if !row.indices.isEmpty { rows.append(row) }
-        return rows
     }
 }

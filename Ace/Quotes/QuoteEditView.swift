@@ -25,6 +25,11 @@ struct QuoteEditView: View {
     /// "Quote marked lost." and the like, shown under the buttons for a moment.
     @State private var confirmation: String?
     @State private var saved = 0
+    /// Set first when the quote is deleted, so the page closing does not
+    /// write onto it (Oct 20 phone audit).
+    @State private var deleted = false
+    @State private var confirmDiscard = false
+    @State private var confirmReopen = false
 
     private var isNew: Bool { quote == nil }
 
@@ -72,8 +77,11 @@ struct QuoteEditView: View {
                     }
                 }
                 TextField("What", text: $form.details, prompt: Text("What was quoted, e.g. garage cleanout"), axis: .vertical)
-                TextField("Price", text: $form.priceText, prompt: Text("Price in dollars"))
-                    .decimalKeyboard()
+                LabeledContent("Price") {
+                    TextField("Price", text: $form.priceText, prompt: Text("$0"))
+                        .multilineTextAlignment(.trailing)
+                        .decimalKeyboard()
+                }
                 DatePicker("Quoted", selection: $form.quotedOn, displayedComponents: .date)
                 if QuoteFeatures.followUps {
                     Toggle("Follow up", isOn: $form.hasFollowUp)
@@ -108,7 +116,9 @@ struct QuoteEditView: View {
         .toolbar {
             if isNew {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel") {
+                        if hasChanges { confirmDiscard = true } else { dismiss() }
+                    }
                 }
             }
             ToolbarItem(placement: .confirmationAction) {
@@ -132,14 +142,29 @@ struct QuoteEditView: View {
         .confirmationDialog("Delete this quote?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Delete", role: .destructive) { delete() }
         }
+        .confirmationDialog("Reopen this quote?", isPresented: $confirmReopen, titleVisibility: .visible) {
+            Button("Reopen") { if let quote { reopen(quote) } }
+        } message: {
+            if let job = quote?.job {
+                Text("The job on \(Dates.shortDay(job.scheduledAt)) stays on the schedule.")
+            }
+        }
         .confirmationDialog("Mark this quote lost?", isPresented: $confirmLost, titleVisibility: .visible) {
             Button("Mark lost") { if let quote { markLost(quote) } }
         } message: {
             Text("It leaves the Quotes list. Search still finds it, and Reopen brings it back.")
         }
+        .interactiveDismissDisabled(isNew && hasChanges)
+        .confirmationDialog("Discard this quote?", isPresented: $confirmDiscard, titleVisibility: .visible) {
+            Button("Discard changes", role: .destructive) { dismiss() }
+            Button("Keep editing", role: .cancel) {}
+        }
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
         // Clicking another quote kept nothing before; now changes are saved.
         .onDisappear {
-            if let quote, hasChanges, form.customer != nil {
+            if !deleted, let quote, hasChanges, form.customer != nil {
                 form.apply(to: quote)
                 try? context.save()
             }
@@ -186,7 +211,9 @@ struct QuoteEditView: View {
                     .buttonStyle(.action(.secondary))
                 case .booked, .lost:
                     Button {
-                        reopen(quote)
+                        // A booked quote's job stays on the schedule: say so,
+                        // so booking it again does not make a second job.
+                        if quote.job != nil { confirmReopen = true } else { reopen(quote) }
                     } label: {
                         Label("Reopen", systemImage: "arrow.uturn.backward")
                     }
@@ -278,11 +305,14 @@ struct QuoteEditView: View {
         form.apply(to: quote)
         quote.markBooked(with: job)
         try? context.save()
+        original = form
         confirm("Job saved.")
     }
 
     private func delete() {
         guard let quote else { return }
+        deleted = true
+        original = form
         // The Mac clears its selection first, so nothing shows a deleted quote.
         onDeleted?()
         context.delete(quote)

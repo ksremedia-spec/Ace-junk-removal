@@ -12,6 +12,7 @@ struct AceApp: App {
         } catch {
             fatalError("The app's database could not be opened: \(error.localizedDescription)")
         }
+        Beta.loadSampleDataIfEmpty(in: container.mainContext)
         #if os(macOS)
         // Screenshot workflow aid; does nothing without the -screenshot argument.
         WindowSnapshot.captureIfRequested()

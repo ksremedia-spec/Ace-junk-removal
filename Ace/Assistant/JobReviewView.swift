@@ -39,6 +39,8 @@ struct JobReviewView: View {
     /// A date picked or said after the note had none.
     @State private var dateSet = false
     @FocusState private var focus: Gap?
+    /// Questions passed over in the Missing card.
+    @State private var skippedGaps: Set<Gap> = []
     /// A Missing button's field, scrolled to before it is typed in: on the
     /// iPhone a field further down the form is not built until it is near.
     @State private var scrollTarget: Gap?
@@ -114,7 +116,8 @@ struct JobReviewView: View {
                     engine: engine,
                     formSummary: { formSummary },
                     onPick: pick,
-                    onFill: fill
+                    onFill: fill,
+                    skipped: $skippedGaps
                 )
 
                 Section {
@@ -132,11 +135,11 @@ struct JobReviewView: View {
                             .id(Gap.phone)
                     }
                     if gaps.contains(.houseNumber) || !houseNumber.isEmpty {
-                        TextField("House number", text: $houseNumber, prompt: Text("Number"))
+                        TextField("House number", text: $houseNumber, prompt: Text("House number"))
                             .houseNumberKeyboard()
                             .focused($focus, equals: .houseNumber)
                             .id(Gap.houseNumber)
-                            .foregroundStyle(houseNumber.isEmpty ? Color.orange : Color.primary)
+                            .foregroundStyle(houseNumber.isEmpty ? Tint.warning : Color.primary)
                     }
                     field("address") {
                         TextField("Address", text: $address, prompt: Text("Street and town"), axis: .vertical)
@@ -179,7 +182,7 @@ struct JobReviewView: View {
                     } else if let question = questions[Self.key("time")] {
                         Text(question)
                             .font(.footnote)
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(Tint.warning)
                     }
                 }
 
@@ -259,8 +262,10 @@ struct JobReviewView: View {
         .onAppear {
             if !draft.issues.isEmpty || !gaps.isEmpty { flagged += 1 }
         }
-        .onChange(of: date) { _, _ in
-            dateSet = true
+        .onChange(of: date) { old, new in
+            // Only picking a day answers "No date": changing just the time
+            // does not (Oct 20 phone audit).
+            if !Calendar.current.isDate(old, inSameDayAs: new) { dateSet = true }
         }
         .sensoryFeedback(.success, trigger: saved)
         .sensoryFeedback(.warning, trigger: flagged)
@@ -291,10 +296,10 @@ struct JobReviewView: View {
     private func field<Content: View>(_ name: String, @ViewBuilder content: () -> Content) -> some View {
         if let question = questions[Self.key(name)], !resolved(name) {
             content()
-                .foregroundStyle(Color.orange)
+                .foregroundStyle(Tint.warning)
             Text(question)
                 .font(.footnote)
-                .foregroundStyle(.orange)
+                .foregroundStyle(Tint.warning)
         } else {
             content()
         }
@@ -404,20 +409,22 @@ struct JobReviewView: View {
             covered.insert(Self.key(field))
         }
 
-        if name.trimmingCharacters(in: .whitespaces).isEmpty {
+        // A question already passed over with Skip is not asked again;
+        // the past-date and double-booking checks always are.
+        if name.trimmingCharacters(in: .whitespaces).isEmpty && !skippedGaps.contains(.name) {
             ask("customerName", "No name was given. Save as \"Unknown customer\"?")
         }
-        if phoneDigits.isEmpty && matchingCustomer == nil {
+        if phoneDigits.isEmpty && matchingCustomer == nil && !skippedGaps.contains(.phone) {
             ask("phone", "No phone number. Save without one?")
         }
         // A quote visit is booked to work out the price; there is none yet.
-        if Parse.money(priceText) == nil && jobType != .estimate {
+        if Parse.money(priceText) == nil && jobType != .estimate && !skippedGaps.contains(.price) {
             ask("price", "No price. Save without one?")
         }
         let scheduled = hasTime ? date : Calendar.current.startOfDay(for: date)
         if scheduled < Dates.startOfToday() {
             ask("date", "The date is in the past (\(Dates.shortDay(date))). Save anyway?")
-        } else if draft.date.isEmpty && !dateSet {
+        } else if draft.date.isEmpty && !dateSet && !skippedGaps.contains(.date) {
             ask("date", "No date was given. Save for today (\(Dates.shortDay(date)))?")
         }
         if let question = JobOverlap.question(overlapping) {
@@ -425,13 +432,21 @@ struct JobReviewView: View {
         }
         // Claude's own questions, except the ones the code just asked or that
         // Ashley has since changed.
-        for issue in draft.issues where !covered.contains(Self.key(issue.field)) && !resolved(issue.field) {
+        for issue in draft.issues where !covered.contains(Self.key(issue.field)) && !resolved(issue.field) && !skippedIssue(issue.field) {
             list.append(Question(field: issue.field, text: issue.question))
         }
 
         pending = list
         if !list.isEmpty { flagged += 1 }
         advance()
+    }
+
+    /// Claude's question about a gap skipped in the Missing card. A skipped
+    /// house number covers Claude's "address" question too.
+    private func skippedIssue(_ field: String) -> Bool {
+        guard let gap = Gap(field: field) else { return false }
+        if skippedGaps.contains(gap) { return true }
+        return gap == .address && skippedGaps.contains(.houseNumber)
     }
 
     /// True when Ashley changed the field away from what Claude filled in.
@@ -493,7 +508,7 @@ struct JobReviewView: View {
         if let field, let gap = Gap(field: field) {
             Task { @MainActor in
                 try? await Task.sleep(for: .milliseconds(350))
-                pick(gap == .address && !address.isEmpty ? .houseNumber : gap)
+                pick(gap == .address && gaps.contains(.houseNumber) ? .houseNumber : gap)
             }
         }
     }

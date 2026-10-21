@@ -26,6 +26,12 @@ struct AssistantLaborView: View {
         /// Someone not on the crew: add them when saving.
         var addNew: Bool
         var newPay: PayType
+        /// Two or more on the crew fit the name ("Chris"): one is picked
+        /// here instead of adding a duplicate (Oct 20 phone audit).
+        var candidates: [Worker] = []
+        /// The name fits someone who has left: bring them back instead.
+        var retired: Worker? = nil
+        var bringBack = false
     }
 
     @State private var lines: [Line]
@@ -42,18 +48,26 @@ struct AssistantLaborView: View {
         }
         self.questions = questions
         let crew = workers.filter(\.isActive)
+        let former = workers.filter { !$0.isActive }
         _lines = State(initialValue: actions.map { action in
-            let worker = refs.worker(action.ref) ?? Self.match(action.workerName, in: crew)
+            let said = action.workerName.trimmingCharacters(in: .whitespaces)
+            let worker = refs.worker(action.ref).flatMap { $0.isActive ? $0 : nil } ?? Self.match(said, in: crew)
+            let candidates = worker == nil ? Self.matches(said, in: crew) : []
+            let retired = worker == nil && candidates.isEmpty
+                ? (refs.worker(action.ref).flatMap { $0.isActive ? nil : $0 } ?? Self.match(said, in: former))
+                : nil
             let hours = Labor.parseHours(action.hours)
             return Line(
                 id: action.index,
                 worker: worker,
-                name: action.workerName.trimmingCharacters(in: .whitespaces),
+                name: said,
                 day: JobDraft.day(from: action.date) ?? Dates.startOfToday(),
                 hoursText: hours.map { $0 > 0 ? Labor.hoursText($0) : "" } ?? "",
                 worked: hours.map { $0 > 0 } ?? true,
-                addNew: worker == nil && !action.workerName.trimmingCharacters(in: .whitespaces).isEmpty,
-                newPay: .hourly
+                addNew: worker == nil && candidates.isEmpty && retired == nil && !said.isEmpty,
+                newPay: .hourly,
+                candidates: candidates,
+                retired: retired
             )
         })
     }
@@ -69,6 +83,16 @@ struct AssistantLaborView: View {
             return spoken.words.allSatisfy(words.contains)
         }
         return byPart.count == 1 ? byPart.first : nil
+    }
+
+    /// Everyone on the crew whose name fits what was said, for "which one?".
+    static func matches(_ said: String, in crew: [Worker]) -> [Worker] {
+        let spoken = SpokenName(said)
+        guard !spoken.words.isEmpty else { return [] }
+        return crew.filter { worker in
+            let words = SpokenName(worker.name).words
+            return spoken.words.allSatisfy(words.contains)
+        }
     }
 
     var body: some View {
@@ -111,6 +135,22 @@ struct AssistantLaborView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+        } else if value.candidates.count > 1 {
+            FlaggedRow("\(value.candidates.count) people named \(value.name). Which one?") {
+                Picker("Who", selection: Binding(
+                    get: { line.wrappedValue.worker?.persistentModelID },
+                    set: { id in line.wrappedValue.worker = value.candidates.first { $0.persistentModelID == id } }
+                )) {
+                    Text("Choose").tag(PersistentIdentifier?.none)
+                    ForEach(value.candidates) { worker in
+                        Text(worker.name).tag(Optional(worker.persistentModelID))
+                    }
+                }
+            }
+        } else if let retired = value.retired {
+            FlaggedRow("\(retired.name) is retired.") {
+                Toggle("Bring \(retired.name) back onto the crew", isOn: line.bringBack)
+            }
         } else {
             FlaggedRow(value.name.isEmpty ? "No name was said." : "\(value.name) is not on the crew.") {
                 TextField("Name", text: line.name, prompt: Text("Name"))
@@ -130,7 +170,7 @@ struct AssistantLaborView: View {
         if isSalaried(value) {
             Toggle("Worked", isOn: line.worked)
         } else {
-            FlaggedRow(Labor.parseHours(value.hoursText) == nil ? "No hours were said." : nil) {
+            FlaggedRow(hoursNote(value.hoursText)) {
                 // Labelled on the iPhone too, where a form hides a text
                 // box's own label and "8" alone said nothing.
                 LabeledContent("Hours") {
@@ -143,20 +183,33 @@ struct AssistantLaborView: View {
         if let question = questions[value.id] {
             Text(question)
                 .font(.footnote)
-                .foregroundStyle(.orange)
+                .foregroundStyle(Tint.warning)
+        }
+    }
+
+    private func hoursNote(_ text: String) -> String? {
+        switch Labor.validHours(text) {
+        case .hours: return nil
+        case .clear: return "No hours were said."
+        case .invalid: return "That is not a day's hours."
         }
     }
 
     private func isSalaried(_ line: Line) -> Bool {
-        line.worker?.isSalaried ?? (line.addNew && line.newPay == .salary)
+        if let worker = line.worker { return worker.isSalaried }
+        if line.bringBack, let retired = line.retired { return retired.isSalaried }
+        return line.addNew && line.newPay == .salary
     }
 
     /// Lines that will be written: on the crew (or being added), with
     /// hours for hourly people.
     private var ready: [Line] {
         lines.filter { line in
-            guard line.worker != nil || (line.addNew && !line.name.trimmingCharacters(in: .whitespaces).isEmpty) else { return false }
-            return isSalaried(line) || Labor.parseHours(line.hoursText) != nil
+            guard line.worker != nil || (line.bringBack && line.retired != nil)
+                    || (line.addNew && !line.name.trimmingCharacters(in: .whitespaces).isEmpty) else { return false }
+            if isSalaried(line) { return true }
+            if case .hours = Labor.validHours(line.hoursText) { return true }
+            return false
         }
     }
 
@@ -167,6 +220,10 @@ struct AssistantLaborView: View {
             let worker: Worker
             if let existing = line.worker {
                 worker = existing
+            } else if line.bringBack, let retired = line.retired {
+                retired.isActive = true
+                retired.updatedAt = Date()
+                worker = retired
             } else {
                 worker = Worker(name: line.name.trimmingCharacters(in: .whitespaces), payType: line.newPay)
                 // Counted from the day logged, so a new hire's first day counts.
@@ -176,11 +233,18 @@ struct AssistantLaborView: View {
             if worker.isSalaried {
                 Labor.setWorked(line.worked, for: worker, on: line.day, in: context)
             } else {
-                Labor.setHours(Labor.parseHours(line.hoursText), for: worker, on: line.day, in: context)
+                if case .hours(let hours) = Labor.validHours(line.hoursText) {
+                    Labor.setHours(hours, for: worker, on: line.day, in: context)
+                }
             }
         }
         try? context.save()
         saved.toggle()
-        onFinish(ready.count == 1 ? "Hours saved." : "Hours saved for \(ready.count) people.")
+        // Lines left out are named, so nothing is dropped without a word.
+        let readyIDs = Set(ready.map(\.id))
+        let skipped = lines.filter { !readyIDs.contains($0.id) }.map { $0.worker?.name ?? ($0.name.isEmpty ? "one line with no name" : $0.name) }
+        var text = ready.count == 1 ? "Hours saved." : "Hours saved for \(ready.count) people."
+        if !skipped.isEmpty { text += " Not saved: " + skipped.joined(separator: ", ") + "." }
+        onFinish(text)
     }
 }

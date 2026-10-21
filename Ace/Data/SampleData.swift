@@ -153,7 +153,12 @@ enum SampleData {
     /// Removes everything. Used before loading samples and by "Clear all data".
     /// Deletes record by record (not as a batch), so relationships are
     /// cleaned up and nothing is left behind without its customer.
-    static func clear(context: ModelContext) {
+    @MainActor static func clear(context: ModelContext) {
+        // The jobs' events in the shared calendar go too, or every job would
+        // be left behind in Google Calendar (Oct 20 phone audit).
+        for job in (try? context.fetch(FetchDescriptor<Job>())) ?? [] {
+            CalendarStore.shared.jobDeleting(job)
+        }
         deleteAll(LaborEntry.self, in: context)
         deleteAll(Worker.self, in: context)
         deleteAll(Quote.self, in: context)

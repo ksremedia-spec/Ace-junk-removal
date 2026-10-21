@@ -13,23 +13,39 @@ struct CustomerEditView: View {
     var onDelete: (() -> Void)? = nil
 
     @State private var form: CustomerFormData
+    /// The form as opened, to tell whether Cancel would lose typing.
+    @State private var original: CustomerFormData
     @State private var confirmDelete = false
+    @State private var confirmDiscard = false
     @State private var saved = false
 
-    init(customer: Customer?, onSave: ((Customer) -> Void)? = nil, onDelete: (() -> Void)? = nil) {
+    /// `prefill`: a new customer started from a search ("Souza" or a phone
+    /// number), so it is not typed twice.
+    init(customer: Customer?, prefill: CustomerFormData? = nil, onSave: ((Customer) -> Void)? = nil, onDelete: (() -> Void)? = nil) {
         self.customer = customer
         self.onSave = onSave
         self.onDelete = onDelete
-        _form = State(initialValue: CustomerFormData(customer: customer))
+        let start = prefill ?? CustomerFormData(customer: customer)
+        _form = State(initialValue: start)
+        _original = State(initialValue: CustomerFormData(customer: customer))
     }
+
+    private var hasChanges: Bool { form != original }
 
     var body: some View {
         Form {
             Section {
                 TextField("Name", text: $form.name, prompt: Text("Full name or business"))
-                TextField("Phone", text: $form.phone, prompt: Text("508-555-0123"))
+                    .wordsCapitalized()
+                TextField("Phone", text: $form.phone, prompt: Text("Phone number"))
                     .phoneKeyboard()
                 TextField("Address", text: $form.address, prompt: Text("Street and town"), axis: .vertical)
+                    .wordsCapitalized()
+            } footer: {
+                if let problem = PhoneFormat.problem(form.phone) {
+                    Text(problem)
+                        .foregroundStyle(Tint.owed)
+                }
             }
             Section("Notes") {
                 TextEditor(text: $form.notes)
@@ -52,12 +68,19 @@ struct CustomerEditView: View {
         .navigationTitle(customer == nil ? "New customer" : "Edit customer")
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
-                Button("Cancel") { dismiss() }
+                Button("Cancel") {
+                    if hasChanges { confirmDiscard = true } else { dismiss() }
+                }
             }
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save") { save() }
                     .disabled(!form.isValid)
             }
+        }
+        .interactiveDismissDisabled(hasChanges)
+        .confirmationDialog(customer == nil ? "Discard this customer?" : "Discard your changes?", isPresented: $confirmDiscard, titleVisibility: .visible) {
+            Button("Discard changes", role: .destructive) { dismiss() }
+            Button("Keep editing", role: .cancel) {}
         }
         .confirmationDialog("Delete this customer? Their jobs are kept without a customer.", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Delete", role: .destructive) { delete() }

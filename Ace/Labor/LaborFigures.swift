@@ -8,15 +8,20 @@ struct LaborFigures: View {
     /// The week on show.
     let days: [Date]
     var columns = 2
+    /// Someone retired mid-week still has hours and pay owed for it: they
+    /// count in the hours and pay, not in the crew (Oct 20 phone audit).
+    var retiredWithHours: [Worker] = []
+
+    private var paidPeople: [Worker] { crew + retiredWithHours }
 
     private var isThisWeek: Bool { days.contains { Calendar.current.isDateInToday($0) } }
 
     private var hourlyHours: Double {
-        crew.filter { !$0.isSalaried }.reduce(0) { $0 + Labor.hours($1, over: days) }
+        paidPeople.filter { !$0.isSalaried }.reduce(0) { $0 + Labor.hours($1, over: days) }
     }
 
     private var pay: Double {
-        crew.reduce(0) { $0 + (Labor.pay($1, over: days) ?? 0) }
+        paidPeople.reduce(0) { $0 + (Labor.pay($1, over: days) ?? 0) }
     }
 
     private var workingToday: Int {

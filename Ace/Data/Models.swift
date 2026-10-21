@@ -41,9 +41,15 @@ final class Customer {
         self.updatedAt = Date()
     }
 
-    /// Phone number reduced to digits, for matching "508-555-0147" to "5085550147".
+    /// Phone number reduced to digits, for matching "508-555-0147" to
+    /// "5085550147" (and "+1 508..." to the same).
     var phoneDigits: String {
-        phone.filter(\.isNumber)
+        PhoneFormat.digits(phone)
+    }
+
+    /// Whether this customer fits a search: see `SearchText`.
+    func matches(_ search: SearchText) -> Bool {
+        search.matches(texts: [name, address], phoneDigits: phoneDigits)
     }
 }
 
@@ -315,7 +321,8 @@ enum Overweight {
     /// Rate per ton over the agreed weight. Partial tons are charged in proportion.
     static func charge(agreedTons: Double?, actualTons: Double?, ratePerTon: Double) -> Double {
         guard let agreedTons, let actualTons, actualTons > agreedTons else { return 0 }
-        return (actualTons - agreedTons) * ratePerTon
+        // To the cent, so $100.0000001 never shows as "$100.00".
+        return ((actualTons - agreedTons) * ratePerTon * 100).rounded() / 100
     }
 }
 
@@ -374,13 +381,9 @@ extension Customer {
         return URL(string: "tel:\(digits)")
     }
 
-    /// An Apple Maps search for the address. Nil without an address.
-    var directionsURL: URL? {
-        guard !address.isEmpty else { return nil }
-        var components = URLComponents(string: "https://maps.apple.com/")
-        components?.queryItems = [URLQueryItem(name: "q", value: address)]
-        return components?.url
-    }
+    /// Driving directions to the address in Apple Maps. Nil without an
+    /// address.
+    var directionsURL: URL? { Maps.directions(to: address) }
 
     /// Deletes the customer and saves. Their jobs, quotes, dumpsters and
     /// rental records stay and lose the customer (the `.nullify` rules above).

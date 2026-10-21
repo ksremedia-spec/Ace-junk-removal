@@ -9,6 +9,11 @@ struct JobsView: View {
     @State private var searchText = ""
     @State private var showingNewJob = false
     @State private var filter: JobsFilter = .upcoming
+    /// A job swiped for deletion, waiting for "Delete this job?".
+    @State private var pendingDelete: Job?
+    @State private var paidTick = 0
+
+    private var isSearching: Bool { !searchText.trimmingCharacters(in: .whitespaces).isEmpty }
 
     private var filtered: [Job] { JobSearch.filter(jobs, searchText) }
     private var shown: [Job] { filter.apply(to: filtered) }
@@ -22,26 +27,41 @@ struct JobsView: View {
 
     var body: some View {
         List {
-            Section {
-                Picker("Show", selection: $filter) {
-                    ForEach(JobsFilter.allCases) { choice in
-                        Text(choice.rawValue).tag(choice)
+            // While searching, every job is searched (a past customer is
+            // found too), so the Upcoming / Unpaid / Done switch steps aside.
+            if isSearching {
+                searchSections
+            } else {
+                Section {
+                    Picker("Show", selection: $filter) {
+                        ForEach(JobsFilter.allCases) { choice in
+                            Text(choice.rawValue).tag(choice)
+                        }
                     }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-            }
-            switch filter {
-            case .upcoming:
-                upcomingSections
-            case .unpaid:
-                flatSection(header: unpaidHeader, empty: searchText.isEmpty ? "Nothing owed." : "No matching jobs.")
-            case .done:
-                flatSection(header: doneHeader, empty: searchText.isEmpty ? "No done jobs yet." : "No matching jobs.")
+                switch filter {
+                case .upcoming:
+                    upcomingSections
+                case .unpaid:
+                    flatSection(header: unpaidHeader, empty: "Nothing owed.")
+                case .done:
+                    flatSection(header: doneHeader, empty: "No done jobs yet.")
+                }
             }
         }
         .navigationTitle("Jobs")
-        .searchable(text: $searchText, prompt: "Customer, address or notes")
+        .searchable(text: $searchText, prompt: "Name, phone, address or notes")
+        .confirmationDialog("Delete this job?", isPresented: deleteAsked, titleVisibility: .visible, presenting: pendingDelete) { job in
+            Button("Delete", role: .destructive) {
+                job.remove(from: context)
+                pendingDelete = nil
+            }
+        } message: { job in
+            Text(job.customer.map { "\($0.name), \(Dates.shortDay(job.scheduledAt))" } ?? Dates.shortDay(job.scheduledAt))
+        }
+        .sensoryFeedback(.success, trigger: paidTick)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -76,7 +96,36 @@ struct JobsView: View {
         if asked { showingNewJob = true }
     }
 
+    private var deleteAsked: Binding<Bool> {
+        Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } })
+    }
+
     // MARK: Sections
+
+    /// Search results: jobs from today on, soonest first, then past jobs,
+    /// newest first.
+    @ViewBuilder
+    private var searchSections: some View {
+        let today = Dates.startOfToday()
+        let coming = filtered.filter { $0.scheduledAt >= today }
+        let past = filtered.filter { $0.scheduledAt < today }.reversed()
+        if filtered.isEmpty {
+            Section {
+                Text("No matching jobs.")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        if !coming.isEmpty {
+            Section("Upcoming") {
+                ForEach(coming) { job in row(job) }
+            }
+        }
+        if !past.isEmpty {
+            Section("Past") {
+                ForEach(Array(past)) { job in row(job) }
+            }
+        }
+    }
 
     @ViewBuilder
     private var upcomingSections: some View {
@@ -126,44 +175,77 @@ struct JobsView: View {
         NavigationLink {
             JobEditView(job: job)
         } label: {
-            JobRow(job: job, showDate: showDate)
+            // The list's own name tells the row which pills to leave out.
+            JobRow(job: job, showDate: showDate, context: isSearching ? nil : filter)
         }
-        .jobSwipeActions(job)
+        .jobSwipeActions(job, filter: isSearching ? nil : filter,
+                         onDelete: { pendingDelete = $0 },
+                         onPaid: { paidTick += 1 })
+        .contextMenu { JobQuickMenu(job: job) }
     }
 }
 
-/// Swipe right to mark a job done (or not done), left to delete it. The
-/// same on every iPhone list of jobs (Jobs and Calendar).
+/// Swipe right to mark a job done (or not done) or paid, left to delete
+/// it. Delete never happens on a full swipe: it asks first through
+/// `onDelete` (Oct 20 phone audit: a gloved slip deleted a job at once).
 @MainActor
 struct JobSwipeActions: ViewModifier {
     @Environment(\.modelContext) private var context
     let job: Job
+    /// The list the row is in; Unpaid puts Paid first.
+    var filter: JobsFilter?
+    var onDelete: (Job) -> Void
+    var onPaid: () -> Void
 
     func body(content: Content) -> some View {
         content
             .swipeActions(edge: .leading) {
-                Button {
-                    job.isDone.toggle()
-                    job.updatedAt = Date()
-                    try? context.save()
-                    CalendarStore.shared.jobSaved(job)
-                } label: {
-                    Label(job.isDone ? "Not done" : "Done", systemImage: job.isDone ? "arrow.uturn.backward" : "checkmark")
+                if filter == .unpaid {
+                    paidButton
+                    doneButton
+                } else {
+                    doneButton
+                    if job.price != nil { paidButton }
                 }
-                .tint(.green)
             }
-            .swipeActions(edge: .trailing) {
-                Button(role: .destructive) {
-                    job.remove(from: context)
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                Button {
+                    onDelete(job)
                 } label: {
                     Label("Delete", systemImage: "trash")
                 }
+                .tint(.red)
             }
+    }
+
+    private var doneButton: some View {
+        Button {
+            job.isDone.toggle()
+            job.updatedAt = Date()
+            try? context.save()
+            CalendarStore.shared.jobSaved(job)
+        } label: {
+            Label(job.isDone ? "Not done" : "Done", systemImage: job.isDone ? "arrow.uturn.backward" : "checkmark")
+        }
+        .tint(.blue)
+    }
+
+    private var paidButton: some View {
+        Button {
+            job.isPaid.toggle()
+            job.updatedAt = Date()
+            try? context.save()
+            CalendarStore.shared.jobSaved(job)
+            if job.isPaid { onPaid() }
+        } label: {
+            Label(job.isPaid ? "Unpaid" : "Paid", systemImage: "dollarsign.circle")
+        }
+        .tint(Tint.paid)
     }
 }
 
 extension View {
-    func jobSwipeActions(_ job: Job) -> some View {
-        modifier(JobSwipeActions(job: job))
+    func jobSwipeActions(_ job: Job, filter: JobsFilter? = nil, onDelete: @escaping (Job) -> Void, onPaid: @escaping () -> Void = {}) -> some View {
+        modifier(JobSwipeActions(job: job, filter: filter, onDelete: onDelete, onPaid: onPaid))
     }
 }

@@ -19,7 +19,7 @@ struct OverweightRows: View {
                 LabeledContent("Over by", value: Tons.text(actualTons - agreedTons))
                 LabeledContent("Overweight charge") {
                     Text(Money.text(charge))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(Tint.warning)
                 }
             } else {
                 Text("Within the agreed weight. No extra charge.")
@@ -209,7 +209,7 @@ private struct DumpsterSwapForm: View {
                 if let note = leaving?.conditionNote, !note.isEmpty {
                     Text(note)
                         .font(.footnote)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(Tint.warning)
                 }
             }
             FlaggedRow(flags["dueBack"]) {

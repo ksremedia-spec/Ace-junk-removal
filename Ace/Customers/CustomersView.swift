@@ -8,16 +8,13 @@ struct CustomersView: View {
 
     @State private var searchText = ""
     @State private var showingNew = false
+    /// A customer swiped for deletion, waiting for the question.
+    @State private var pendingDelete: Customer?
 
     private var filtered: [Customer] {
-        let query = searchText.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !query.isEmpty else { return customers }
-        let digits = query.filter(\.isNumber)
-        return customers.filter {
-            $0.name.lowercased().contains(query)
-                || $0.address.lowercased().contains(query)
-                || (!digits.isEmpty && $0.phoneDigits.contains(digits))
-        }
+        let search = SearchText(searchText)
+        guard !search.isEmpty else { return customers }
+        return customers.filter { $0.matches(search) }
     }
 
     var body: some View {
@@ -32,12 +29,23 @@ struct CustomersView: View {
                 } label: {
                     CustomerRow(customer: customer)
                 }
-            }
-            .onDelete { offsets in
-                let doomed = offsets.map { filtered[$0] }
-                for customer in doomed {
-                    customer.remove(from: context)
+                // Asks first, never on a full swipe (Oct 20 phone audit).
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    Button {
+                        pendingDelete = customer
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                    .tint(.red)
                 }
+            }
+        }
+        .confirmationDialog("Delete this customer? Their jobs are kept without a customer.",
+                            isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
+                            titleVisibility: .visible, presenting: pendingDelete) { customer in
+            Button("Delete \(customer.name)", role: .destructive) {
+                customer.remove(from: context)
+                pendingDelete = nil
             }
         }
         .navigationTitle("Customers")
