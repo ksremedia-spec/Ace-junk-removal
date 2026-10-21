@@ -27,7 +27,7 @@ struct JobDraft: Codable, Equatable {
     var time: String        // HH:MM (24-hour) or ""
     var endTime: String = "" // HH:MM (24-hour) when the job ends, or ""
     var price: String       // digits only, e.g. "300", or ""
-    var paymentType: String // cash, check, card, unknown
+    var paymentType: String // cash, check, card, venmo, cash app, unknown
     var paid: String        // paid, unpaid, unknown
     var notes: String
     // Updates to an existing job.
@@ -71,10 +71,12 @@ struct JobDraft: Codable, Equatable {
     }
 
     static func paymentType(from text: String) -> PaymentType? {
-        switch text.lowercased() {
+        switch text.lowercased().filter { $0.isLetter } {
         case "cash": return .cash
-        case "check": return .check
-        case "card": return .card
+        case "check", "cheque": return .check
+        case "card", "credit", "creditcard", "debit": return .card
+        case "venmo": return .venmo
+        case "cashapp": return .cashApp
         default: return nil
         }
     }

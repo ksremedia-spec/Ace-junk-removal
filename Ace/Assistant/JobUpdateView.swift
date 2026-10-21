@@ -295,7 +295,7 @@ private struct JobUpdateForm: View {
             FlaggedRow(flags["paymentType"]) {
                 Picker("Payment", selection: $paymentType) {
                     ForEach(PaymentType.allCases) { type in
-                        Text(type.rawValue).tag(type)
+                        Label(type.rawValue, systemImage: type.symbol).tag(type)
                     }
                 }
             }

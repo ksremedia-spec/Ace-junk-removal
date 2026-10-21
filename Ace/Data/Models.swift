@@ -81,10 +81,14 @@ enum JobType: String, CaseIterable, Codable, Identifiable {
     }
 }
 
+/// How a job was paid. Venmo and Cash App added Oct 21, 2026: Ashley's sheet
+/// uses both. Stored by name, so adding one leaves saved jobs as they were.
 enum PaymentType: String, CaseIterable, Codable, Identifiable {
     case cash = "Cash"
     case check = "Check"
     case card = "Card"
+    case venmo = "Venmo"
+    case cashApp = "Cash App"
     case unknown = "Not set"
 
     var id: String { rawValue }

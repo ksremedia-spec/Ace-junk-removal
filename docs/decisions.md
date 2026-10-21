@@ -3,6 +3,19 @@
 Short log of decisions and why, newest first. Written in plain English so it
 can be read later without the conversation.
 
+## 2026-10-21 · Venmo and Cash App payment types, with their logos
+
+- Ashley's real sheet uses Venmo and Cash App (`ashley-spreadsheet.md`).
+  Kyle: add both. They are new payment types next to Cash, Check and Card,
+  stored by name, so saved jobs are unchanged. The Assistant reads "venmo"
+  and "cash app" too (the instructions and docs/assistant-actions.md match).
+- Logos: Kyle asked for the real ones ("it's a personal app, not for
+  sale"). From the official sources: Venmo's brand kit
+  (venmo.com/about/brand) and Cash App's payment badge (Cash App developer
+  site). Venmo's guidelines reserve the "V" monogram for social media and
+  ask for the full wordmark, so the wordmark is shown. They appear beside
+  "Paid" on job rows; cash, check and card use Apple icons.
+
 ## 2026-10-20 (late night) · Fixes from the iPhone audit
 
 - Kyle asked for the same audit as Oct 19 (reviewers, two skeptics per

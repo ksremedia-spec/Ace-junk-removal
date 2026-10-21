@@ -146,6 +146,57 @@ struct StatusPill: View {
     }
 }
 
+// MARK: - Payment
+
+extension PaymentType {
+    /// The icon in pickers and menus.
+    var symbol: String {
+        switch self {
+        case .cash: return "banknote"
+        case .check: return "signature"
+        case .card: return "creditcard"
+        case .venmo: return "v.square"
+        case .cashApp: return "dollarsign.square"
+        case .unknown: return "questionmark.circle"
+        }
+    }
+}
+
+/// How a job was paid, beside "Paid": the real Venmo wordmark and Cash App
+/// badge (Kyle, Oct 21: "download the actual logos"; files from
+/// venmo.com/about/brand and Cash App's developer site), and the plain
+/// Apple icon for cash, check and card. Venmo's guidelines ask for the
+/// full wordmark rather than the "V" alone, so the wordmark is used.
+struct PaymentMark: View {
+    let type: PaymentType
+    /// The height of the mark.
+    var size: CGFloat = 18
+
+    var body: some View {
+        Group {
+            switch type {
+            case .venmo:
+                Image("VenmoLogo")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(height: size * 0.62)
+            case .cashApp:
+                Image("CashAppBadge")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(height: size)
+                    .clipShape(RoundedRectangle(cornerRadius: size * 0.22, style: .continuous))
+            default:
+                Image(systemName: type.symbol)
+                    .font(.system(size: size * 0.7, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(height: size)
+            }
+        }
+        .accessibilityLabel(type.rawValue)
+    }
+}
+
 /// A colour for text on a row that turns plain when the row is selected.
 struct RowTint: ViewModifier {
     @Environment(\.backgroundProminence) private var prominence
@@ -175,6 +226,9 @@ struct JobPills: View {
                 StatusPill(text: "Done", tint: Tint.done, symbol: "checkmark")
             }
             if job.isPaid {
+                if job.paymentType != .unknown {
+                    PaymentMark(type: job.paymentType, size: 16)
+                }
                 StatusPill(text: "Paid", tint: Tint.paid)
             } else if job.isUnpaid() {
                 StatusPill(text: "Unpaid", tint: Tint.owed)

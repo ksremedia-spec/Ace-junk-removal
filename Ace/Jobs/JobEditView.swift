@@ -135,7 +135,7 @@ struct JobEditView: View {
                 }
                 Picker("Payment", selection: $form.paymentType) {
                     ForEach(PaymentType.allCases) { type in
-                        Text(type.rawValue).tag(type)
+                        Label(type.rawValue, systemImage: type.symbol).tag(type)
                     }
                 }
                 // A saved job has Mark paid in its header, which saves at

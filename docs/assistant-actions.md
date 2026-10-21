@@ -142,7 +142,7 @@ allow other properties.
           "time": { "type": "string", "description": "HH:MM, 24-hour, or empty." },
           "endTime": { "type": "string", "description": "HH:MM, 24-hour: when the job ends, or empty." },
           "price": { "type": "string", "description": "Dollars as digits, like 300, or empty." },
-          "paymentType": { "type": "string", "enum": ["cash", "check", "card", ""] },
+          "paymentType": { "type": "string", "enum": ["cash", "check", "card", "venmo", "cash app", ""] },
           "paid": { "type": "string", "enum": ["yes", "no", ""] },
           "done": { "type": "string", "enum": ["yes", "no", ""] },
           "newDate": { "type": "string", "description": "YYYY-MM-DD when a job moves, or empty." },
@@ -236,7 +236,7 @@ Rules for fields:
 - Dates as YYYY-MM-DD, worked out from today: "tomorrow", "Friday" (the next Friday, or today if today is Friday), "next week". Times as HH:MM in 24-hour time. "This morning", "just now", "just finished" and "on site" mean today.
 - Money as digits: "three hundred" is 300. Weights in tons as digits: "two point eight" is 2.8. An end time is worked out from what was said: "till noon" is 12:00; "about three hours" from a 9:00 start is 12:00. With no end or length said, leave endTime empty; never guess one. A day said without a time ("tomorrow", "Friday") still fills date; leave time empty and do not ask about it. Speech recognition sometimes writes a time as money: "tomorrow at $10" is 10:00, not a price.
 - jobType from the work described; nobody says "junk removal" out loud. Junk removal: clearing, emptying or cleaning out a garage, basement, attic, shed, house, estate or office, or hauling away furniture, appliances, debris or a hot tub. Demolition: tearing down or taking out a shed, deck, pool, fence, wall, kitchen, bathroom or flooring, or any mention of "demo". Dumpster drop-off, Dumpster pickup and Dumpster swap: booking those for a later day. Quote visit: going to look and give a price; the office calls this a quote, never an estimate. Other: anything else. Leave it empty only when nothing says what the work is.
-- paymentType is cash, check or card. "PD cash 300" means paid, cash, 300.
+- paymentType is cash, check, card, venmo or cash app. "PD cash 300" means paid, cash, 300. "Venmo'd me" is venmo; "Cash App", "cashapp" or "sent it on cash app" is cash app.
 
 Issues: list what the person should confirm before saving, each tied to an action by its position in the list (0 for the first), naming the field and asking one short yes/no question. For a new job: no date, no price (except a quote visit, which is booked to work out the price), no phone number for a new customer, a date in the past, an address with no house number, a name or address that sounds misheard, two values said for one field, and the kind of work only when nothing in the note hints at it. A name that is not in the directory is a new customer: never ask whether it is new or in the records. A time not said is fine: never ask about it. For a new quote: no price, no phone number for someone not in the records, an address with no house number. For log_hours: a name that is not on the crew list (the app asks before adding a new person), and no hours said for someone hourly. For any other action: only when it is unclear which record is meant or what should change, and for a pickup or swap when no weight was said.
 
