@@ -41,11 +41,24 @@ struct DumpsterDropoffView: View {
         self.onSaved = onSaved
         self.onStartOver = onStartOver
 
-        let inYard = matchDumpster(draft, dumpsters: dumpsters, wantOut: false)
+        let yard = dumpsters.filter { !$0.isOut }.sorted { $0.number < $1.number }
         let spokenNumber = Int(draft.dumpsterNumber.filter(\.isNumber))
-        _selectedNumber = State(initialValue: inYard.first?.number ?? 0)
+        // Only the dumpster that was said, and only if it is in the yard (or
+        // the one dumpster in the yard). Anything else starts on "Choose":
+        // a different dumpster was quietly picked before (Oct 20 phone audit).
+        let preset: Int
+        if let spokenNumber, yard.contains(where: { $0.number == spokenNumber }) {
+            preset = spokenNumber
+        } else if spokenNumber == nil, yard.count == 1 {
+            preset = yard[0].number
+        } else {
+            preset = 0
+        }
+        _selectedNumber = State(initialValue: preset)
 
-        let match = refCustomer ?? matchCustomers(draft, in: customers).first
+        // A customer is filled in only when exactly one fits the note.
+        let candidates = matchCustomers(draft, in: customers)
+        let match = refCustomer ?? (candidates.count == 1 ? candidates.first : nil)
         _customer = State(initialValue: match)
         _name = State(initialValue: draft.customerName.trimmingCharacters(in: .whitespaces))
         _phone = State(initialValue: PhoneFormat.formatted(draft.phone))
@@ -60,13 +73,20 @@ struct DumpsterDropoffView: View {
         _notes = State(initialValue: draft.notes)
 
         var flags = AssistantFlags(draft: draft)
-        if let spokenNumber, inYard.first?.number != spokenNumber {
-            flags.add("dumpsterNumber", "Dumpster \(spokenNumber) is out. Is this the right one?")
-        } else if spokenNumber == nil {
-            flags.add("dumpsterNumber", "No dumpster number was said.")
+        if let spokenNumber, preset != spokenNumber {
+            if let out = dumpsters.first(where: { $0.number == spokenNumber }) {
+                let place = out.customer?.name ?? (out.location.isEmpty ? "a customer" : out.location)
+                flags.add("dumpsterNumber", "Dumpster \(spokenNumber) is still out at \(place). Mark it picked up first, or choose another.")
+            } else {
+                flags.add("dumpsterNumber", "There is no Dumpster \(spokenNumber).")
+            }
+        } else if spokenNumber == nil, preset == 0 {
+            flags.add("dumpsterNumber", "No dumpster number was said. Which one went?")
         }
         if match == nil && draft.customerName.trimmingCharacters(in: .whitespaces).isEmpty {
             flags.add("customerName", "No customer was said.")
+        } else if match == nil && candidates.count > 1 {
+            flags.add("customerName", "\(candidates.count) customers fit that name. Choose the right one.")
         }
         if draft.dueBack.isEmpty {
             flags.add("dueBack", "No due-back day was said. A week from today?")
@@ -145,6 +165,9 @@ struct DumpsterDropoffView: View {
             } else {
                 FlaggedRow(flags["dumpsterNumber"]) {
                     Picker("Dumpster", selection: $selectedNumber) {
+                        if selectedNumber == 0 {
+                            Text("Choose").tag(0)
+                        }
                         ForEach(inYard) { dumpster in
                             Text(dumpster.displayName).tag(dumpster.number)
                         }
@@ -207,12 +230,18 @@ struct DumpsterDropoffView: View {
                 DatePicker("Due back", selection: $dueBackDate, displayedComponents: .date)
             }
             FlaggedRow(flags["price"]) {
-                TextField("Price", text: $priceText, prompt: Text("Price in dollars"))
-                    .decimalKeyboard()
+                LabeledContent("Price") {
+                    TextField("Price", text: $priceText, prompt: Text("$0"))
+                        .multilineTextAlignment(.trailing)
+                        .decimalKeyboard()
+                }
             }
             FlaggedRow(flags["agreedTons"]) {
-                TextField("Agreed weight", text: $agreedTonsText, prompt: Text("Agreed weight in tons"))
-                    .decimalKeyboard()
+                LabeledContent("Agreed weight, tons") {
+                    TextField("Agreed weight", text: $agreedTonsText, prompt: Text("e.g. 2"))
+                        .multilineTextAlignment(.trailing)
+                        .decimalKeyboard()
+                }
             }
             TextField("Notes", text: $notes, axis: .vertical)
         }

@@ -105,7 +105,9 @@ private struct DumpsterSwapForm: View {
         let inYard = dumpsters.filter { !$0.isOut }.sorted { $0.number < $1.number }
         let said = Int(action.otherDumpsterNumber.filter(\.isNumber))
         let saidInYard = inYard.first(where: { $0.number == said })
-        _leaveNumber = State(initialValue: saidInYard?.number ?? inYard.first?.number ?? 0)
+        // The dumpster said, or the only one in the yard; otherwise "Choose"
+        // (Oct 20 phone audit: the first in the yard was picked silently).
+        _leaveNumber = State(initialValue: saidInYard?.number ?? (said == nil && inYard.count == 1 ? inYard[0].number : 0))
         _actualTonsText = State(initialValue: action.actualTons)
 
         let today = Dates.startOfToday()
@@ -120,8 +122,8 @@ private struct DumpsterSwapForm: View {
         var flags = AssistantFlags(issues: issues)
         if let said, saidInYard == nil {
             flags.add("otherDumpsterNumber", "Dumpster \(said) is not in the yard. Is this the right one?")
-        } else if said == nil {
-            flags.add("otherDumpsterNumber", "No dumpster to leave was said.")
+        } else if said == nil, inYard.count != 1 {
+            flags.add("otherDumpsterNumber", "No dumpster to leave was said. Which one went?")
         }
         if action.dueBack.isEmpty {
             flags.add("dueBack", "No due-back day was said. A week from today?")
@@ -182,8 +184,11 @@ private struct DumpsterSwapForm: View {
             }
             LabeledContent("Agreed weight", value: out.agreedWeightTons.map { Tons.text($0) } ?? "—")
             FlaggedRow(weightNote) {
-                TextField("Actual weight in tons", text: $actualTonsText, prompt: Text("Actual weight in tons"))
-                    .decimalKeyboard()
+                LabeledContent("Actual weight, tons") {
+                    TextField("Actual weight in tons", text: $actualTonsText, prompt: Text("e.g. 2.8"))
+                        .multilineTextAlignment(.trailing)
+                        .decimalKeyboard()
+                }
             }
             OverweightRows(actualTons: actualTons, agreedTons: out.agreedWeightTons, charge: charge)
         } header: {
@@ -201,6 +206,9 @@ private struct DumpsterSwapForm: View {
             } else {
                 FlaggedRow(flags["otherDumpsterNumber"]) {
                     Picker("Dumpster", selection: $leaveNumber) {
+                        if leaveNumber == 0 {
+                            Text("Choose").tag(0)
+                        }
                         ForEach(inYard) { dumpster in
                             Text(dumpster.displayName).tag(dumpster.number)
                         }
@@ -216,12 +224,18 @@ private struct DumpsterSwapForm: View {
                 DatePicker("Due back", selection: $dueBackDate, displayedComponents: .date)
             }
             FlaggedRow(flags["price"]) {
-                TextField("Price", text: $priceText, prompt: Text("Price in dollars"))
-                    .decimalKeyboard()
+                LabeledContent("Price") {
+                    TextField("Price", text: $priceText, prompt: Text("$0"))
+                        .multilineTextAlignment(.trailing)
+                        .decimalKeyboard()
+                }
             }
             FlaggedRow(flags["agreedTons"]) {
-                TextField("Agreed weight", text: $agreedTonsText, prompt: Text("Agreed weight in tons"))
-                    .decimalKeyboard()
+                LabeledContent("Agreed weight, tons") {
+                    TextField("Agreed weight", text: $agreedTonsText, prompt: Text("e.g. 2"))
+                        .multilineTextAlignment(.trailing)
+                        .decimalKeyboard()
+                }
             }
             FlaggedRow(flags["note"]) {
                 TextField("Notes", text: $notes, axis: .vertical)
@@ -371,12 +385,18 @@ private struct UpdateRentalForm: View {
                 DatePicker("Due back", selection: $dueBackDate, displayedComponents: .date)
             }
             FlaggedRow(flags["price"]) {
-                TextField("Price", text: $priceText, prompt: Text("Price in dollars"))
-                    .decimalKeyboard()
+                LabeledContent("Price") {
+                    TextField("Price", text: $priceText, prompt: Text("$0"))
+                        .multilineTextAlignment(.trailing)
+                        .decimalKeyboard()
+                }
             }
             FlaggedRow(flags["agreedTons"]) {
-                TextField("Agreed weight", text: $agreedTonsText, prompt: Text("Agreed weight in tons"))
-                    .decimalKeyboard()
+                LabeledContent("Agreed weight, tons") {
+                    TextField("Agreed weight", text: $agreedTonsText, prompt: Text("e.g. 2"))
+                        .multilineTextAlignment(.trailing)
+                        .decimalKeyboard()
+                }
             }
             FlaggedRow(flags["newAddress"]) {
                 TextField("Location", text: $location, axis: .vertical)

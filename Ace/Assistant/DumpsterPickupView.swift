@@ -114,6 +114,9 @@ private struct DumpsterPickupForm: View {
 
     @State private var actualTonsText: String
     @State private var markJobDone = true
+    /// "No weight entered…?" before a pickup without one, which would lose
+    /// the overweight charge (Oct 20 phone audit).
+    @State private var confirmNoWeight = false
     @State private var saved = false
     @State private var flagged = 0
 
@@ -150,8 +153,9 @@ private struct DumpsterPickupForm: View {
 
     var body: some View {
         Form {
-            rentalSection
+            // The weight first: it is what is typed at the curb.
             pickupSection
+            rentalSection
             linkedJobSection
             Section {
                 Button("Start over") { onStartOver() }
@@ -160,8 +164,15 @@ private struct DumpsterPickupForm: View {
         .formStyle(.grouped)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button("Mark picked up") { markPickedUp() }
+                Button("Mark picked up") {
+                    if actualTons == nil { confirmNoWeight = true } else { markPickedUp() }
+                }
             }
+        }
+        .confirmationDialog("No weight entered. Mark Dumpster \(dumpster.number) as picked up without one?",
+                            isPresented: $confirmNoWeight, titleVisibility: .visible) {
+            Button("Mark picked up") { markPickedUp() }
+            Button("Add the weight", role: .cancel) {}
         }
         .onAppear {
             if !flags.isEmpty { flagged += 1 }
@@ -192,8 +203,11 @@ private struct DumpsterPickupForm: View {
     private var pickupSection: some View {
         Section {
             FlaggedRow(weightNote) {
-                TextField("Actual weight in tons", text: $actualTonsText, prompt: Text("Actual weight in tons"))
-                    .decimalKeyboard()
+                LabeledContent("Actual weight, tons") {
+                    TextField("Actual weight in tons", text: $actualTonsText, prompt: Text("e.g. 2.8"))
+                        .multilineTextAlignment(.trailing)
+                        .decimalKeyboard()
+                }
             }
             if let actualTons, let agreed = dumpster.agreedWeightTons {
                 if actualTons > agreed {

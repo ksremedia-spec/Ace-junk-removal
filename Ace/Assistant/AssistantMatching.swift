@@ -11,7 +11,7 @@ import SwiftData
 /// Customers the note could mean: by phone first, then by name, then by
 /// address. Best match first.
 func matchCustomers(_ draft: JobDraft, in customers: [Customer]) -> [Customer] {
-    let digits = draft.phone.filter(\.isNumber)
+    let digits = PhoneFormat.digits(draft.phone)
     if digits.count >= 7 {
         let byPhone = customers.filter { $0.phoneDigits == digits || $0.phoneDigits.hasSuffix(digits) }
         if !byPhone.isEmpty { return byPhone }
@@ -21,8 +21,14 @@ func matchCustomers(_ draft: JobDraft, in customers: [Customer]) -> [Customer] {
     if !spoken.words.isEmpty {
         let exact = customers.filter { SpokenName($0.name).text == spoken.text }
         if !exact.isEmpty { return exact }
-        let contains = customers.filter { SpokenName($0.name).text.contains(spoken.text) }
-        if !contains.isEmpty { return contains }
+        // Every word said is a whole word of the name ("Al Souza" finds
+        // "Al & Lisa Souza"); a bare letter match ("Al" in "Sal") no longer
+        // counts (Oct 20 phone audit).
+        let byWords = customers.filter { customer in
+            let words = SpokenName(customer.name).words
+            return spoken.words.allSatisfy(words.contains)
+        }
+        if !byWords.isEmpty { return byWords }
         if let last = spoken.words.last {
             let byLastWord = customers.filter { SpokenName($0.name).words.last == last }
             if !byLastWord.isEmpty { return byLastWord }

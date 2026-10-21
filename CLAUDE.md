@@ -72,7 +72,10 @@ Kyle works in the Claude desktop app (Code tab, local session, with computer use
    ("Found 614 customers, 12 rows have no phone number") before saving. Mostly
    column mapping in code; use Claude only to clean messy cells
    ("pd cash 300" → paid, cash, $300).
-   Column headings: [PASTE HEADINGS HERE WHEN KNOWN].
+   Column headings (Oct 21, from the real sheet, a Google Sheet "2026 ACE
+   Books", tab "Client Job List"): Date, Customer Name, # and Street Name,
+   City State & Zip, Price, Form of Payment, Check #, Not Mailing Address.
+   Details and what it means for the import: `docs/ashley-spreadsheet.md`.
 
 Not in version 1: QuickBooks sync, card processing, customer-facing anything,
 call recording, extra-day charges (notes field only).

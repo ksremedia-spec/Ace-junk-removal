@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftData
 import SwiftUI
 
@@ -79,6 +80,18 @@ struct AssistantView: View {
         // Auto-Lock would cut a hands-free note short.
         .onChange(of: phase) { _, phase in
             UIApplication.shared.isIdleTimerDisabled = phase == .recording
+        }
+        #endif
+        #if os(iOS)
+        // A phone call (or Siri, or an alarm) takes the microphone: the note
+        // ends there, keeping what was heard, instead of the screen saying
+        // "Listening." with nothing recorded (Oct 20 phone audit). To be
+        // checked on a real iPhone.
+        .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)) { note in
+            guard let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+                  AVAudioSession.InterruptionType(rawValue: raw) == .began,
+                  phase == .recording else { return }
+            stopRecording()
         }
         #endif
         .sensoryFeedback(.success, trigger: savedCount)

@@ -81,11 +81,31 @@ struct JobEditView: View {
                 }
                 #endif
                 if let customer = form.customer {
+                    // Tap to call or get directions; long press to copy.
                     if !customer.phone.isEmpty {
-                        LabeledContent("Phone", value: customer.phone)
+                        LabeledContent("Phone") {
+                            if let url = customer.phoneURL {
+                                Link(customer.phone, destination: url)
+                            } else {
+                                Text(customer.phone)
+                            }
+                        }
+                        .contextMenu {
+                            Button("Copy", systemImage: "doc.on.doc") { Clipboard.copy(customer.phone) }
+                        }
                     }
                     if !customer.address.isEmpty {
-                        LabeledContent("Address", value: customer.address)
+                        LabeledContent("Address") {
+                            if let url = customer.directionsURL {
+                                Link(customer.address, destination: url)
+                                    .multilineTextAlignment(.trailing)
+                            } else {
+                                Text(customer.address)
+                            }
+                        }
+                        .contextMenu {
+                            Button("Copy", systemImage: "doc.on.doc") { Clipboard.copy(customer.address) }
+                        }
                     }
                 }
             }

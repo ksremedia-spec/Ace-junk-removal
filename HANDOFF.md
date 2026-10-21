@@ -34,6 +34,27 @@ not checked), **Unknown** (with how to find out).
 
 ## 2. Where things stand
 
+- **Oct 21: the Mac beta went out; the rest of the audit fixes; the real
+  spreadsheet.**
+  - Beta: "Ace Beta.dmg" (signed and notarized by Apple, drag-to-Applications
+    window) sent to one tester through a Google Drive link (Gmail blocks app
+    files). It opens on the sample data; the Assistant goes through Kyle's
+    Cloudflare relay `ace-beta-relay` (docs/beta-relay.md). The relay
+    address lives in `Ace/Support/BetaRelay.txt`, kept off the public repo.
+    Before the real build: `Beta.isBeta = false`, delete that file, and
+    delete the Worker in Cloudflare when testing ends.
+  - Audit fixes finished today: a phone call ends a voice note cleanly; the
+    Assistant's drop-off and swap screens no longer pre-pick a dumpster or
+    customer they are unsure of, and say why; its pickup asks before saving
+    with no weight; price and weight boxes there are labelled; spoken names
+    match whole words; the job page's phone and address are tappable.
+    Built for iPhone and Mac; checked in the Simulator. The phone-call
+    handling needs a real iPhone to confirm.
+  - Ashley's real sheet: a Google Sheet, layout in
+    `docs/ashley-spreadsheet.md` (no customer data copied). It has no phone
+    numbers, and uses Venmo and Cash App, which Ace has no payment type for
+    yet: a decision for Kyle.
+
 - **Oct 20, late night: iPhone audit and its safe fixes.** The full audit
   (638 agents, 191 confirmed findings, score 6 of 10) is in
   `docs/review-2026-10-20-iphone/audit.md`, with the screenshots it used.
