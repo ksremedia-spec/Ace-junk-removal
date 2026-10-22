@@ -47,6 +47,12 @@ final class Quote {
     var createdAt: Date = Date()
     var updatedAt: Date = Date()
 
+    /// The record's permanent ID, the same on every device (sync,
+    /// docs/device-sync.md). Given when the record is made; records from
+    /// before it existed get one on the first sync. Optional with no default,
+    /// like `Job.jobID`, so an upgraded database does not give them all one value.
+    var syncID: UUID? = nil
+
     init(customer: Customer? = nil,
          jobType: JobType = .junkRemoval,
          details: String = "",
@@ -65,6 +71,7 @@ final class Quote {
         self.notes = notes
         self.createdAt = Date()
         self.updatedAt = Date()
+        self.syncID = UUID()
     }
 
     var jobType: JobType {

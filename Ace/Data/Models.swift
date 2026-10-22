@@ -17,6 +17,12 @@ final class Customer {
     var createdAt: Date
     var updatedAt: Date
 
+    /// The record's permanent ID, the same on every device (sync,
+    /// docs/device-sync.md). Given when the record is made; records from
+    /// before it existed get one on the first sync. Optional with no default,
+    /// like `Job.jobID`, so an upgraded database does not give them all one value.
+    var syncID: UUID? = nil
+
     @Relationship(deleteRule: .nullify, inverse: \Job.customer)
     var jobs: [Job] = []
 
@@ -39,6 +45,7 @@ final class Customer {
         self.notes = notes
         self.createdAt = Date()
         self.updatedAt = Date()
+        self.syncID = UUID()
     }
 
     /// Phone number reduced to digits, for matching "508-555-0147" to
@@ -202,6 +209,11 @@ final class Dumpster {
     var conditionNote: String = ""
     var updatedAt: Date
 
+    /// The dumpster's permanent ID for the sync. Worked out from its
+    /// number on the first sync (`SyncIDs.dumpster`), not random, so two
+    /// devices that each set up six dumpsters end up with the same six.
+    var syncID: UUID? = nil
+
     @Relationship(deleteRule: .cascade, inverse: \RentalRecord.dumpster)
     var history: [RentalRecord] = []
 
@@ -294,6 +306,12 @@ final class RentalRecord {
     var actualWeightTons: Double?
     var ratePerTon: Double
 
+    /// The record's permanent ID, the same on every device (sync). Given
+    /// when the record is made; older records get one on the first sync.
+    var syncID: UUID? = nil
+    /// When the record last changed, for the sync. Older records have none.
+    var updatedAt: Date? = nil
+
     init(dumpster: Dumpster?,
          customer: Customer?,
          location: String,
@@ -312,6 +330,8 @@ final class RentalRecord {
         self.agreedWeightTons = agreedWeightTons
         self.actualWeightTons = actualWeightTons
         self.ratePerTon = ratePerTon
+        self.syncID = UUID()
+        self.updatedAt = Date()
     }
 
     var overweightCharge: Double {

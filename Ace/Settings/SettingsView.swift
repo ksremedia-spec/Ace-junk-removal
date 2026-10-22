@@ -72,6 +72,8 @@ struct SettingsView: View {
                 Text("Charged for each ton over the agreed weight at pickup. Partial tons are charged in proportion.")
             }
 
+            SyncSettingsSection()
+
             CalendarSettingsSection()
 
             Section {

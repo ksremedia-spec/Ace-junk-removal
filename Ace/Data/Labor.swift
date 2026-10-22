@@ -29,6 +29,12 @@ final class Worker {
     var createdAt: Date
     var updatedAt: Date
 
+    /// The record's permanent ID, the same on every device (sync,
+    /// docs/device-sync.md). Given when the record is made; records from
+    /// before it existed get one on the first sync. Optional with no default,
+    /// like `Job.jobID`, so an upgraded database does not give them all one value.
+    var syncID: UUID? = nil
+
     @Relationship(deleteRule: .cascade, inverse: \LaborEntry.worker)
     var entries: [LaborEntry] = []
 
@@ -38,6 +44,7 @@ final class Worker {
         self.hourlyRate = hourlyRate
         self.createdAt = Date()
         self.updatedAt = Date()
+        self.syncID = UUID()
     }
 
     var payType: PayType {
@@ -93,6 +100,11 @@ final class LaborEntry {
     var isOff: Bool = false
     var note: String = ""
     var updatedAt: Date
+
+    /// The entry's permanent ID for the sync. Worked out from the person
+    /// and the day on the first sync (`SyncIDs.labor`), so hours typed for
+    /// the same person and day on two devices are one entry, not two.
+    var syncID: UUID? = nil
 
     init(worker: Worker?, day: Date, hours: Double? = nil, isOff: Bool = false) {
         self.worker = worker

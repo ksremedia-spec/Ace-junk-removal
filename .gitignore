@@ -32,3 +32,7 @@ Ace/Support/BetaRelay.txt
 
 # Zipped screenshots: copies of screenshots/ for sending.
 screenshots/*.zip
+
+# Cloudflare developer tool: local database and local secrets
+.wrangler/
+.dev.vars

@@ -5,6 +5,7 @@ import SwiftUI
 struct AceApp: App {
     /// One on-device database shared by every window.
     private let container: ModelContainer
+    @Environment(\.scenePhase) private var scenePhase
 
     init() {
         do {
@@ -13,6 +14,7 @@ struct AceApp: App {
             fatalError("The app's database could not be opened: \(error.localizedDescription)")
         }
         Beta.loadSampleDataIfEmpty(in: container.mainContext)
+        SyncEngine.shared.start(container.mainContext)
         #if os(macOS)
         // Screenshot workflow aid; does nothing without the -screenshot argument.
         WindowSnapshot.captureIfRequested()
@@ -21,11 +23,17 @@ struct AceApp: App {
 
     var body: some Scene {
         WindowGroup(id: "main") {
-            #if os(macOS)
-            MacMainView()
-            #else
-            MainView()
-            #endif
+            Group {
+                #if os(macOS)
+                MacMainView()
+                #else
+                MainView()
+                #endif
+            }
+            // Back in front: bring in what changed elsewhere meanwhile.
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { SyncEngine.shared.syncSoon() }
+            }
         }
         .modelContainer(container)
         #if os(macOS)

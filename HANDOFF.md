@@ -34,6 +34,21 @@ not checked), **Unknown** (with how to find out).
 
 ## 2. Where things stand
 
+- **Oct 21, late night: sync between devices (build step 5), first
+  version, running on Kyle's Mac.** Not committed. Server in
+  `cloudflare/ace-sync` (Worker + D1; `npm run dev`, with Node.js 24.21.0
+  in `~/.ace-tools/` and Wrangler 4.148.0, both downloaded with Kyle's
+  OK). App side in `Ace/Sync/` plus a Sync section in Settings (server
+  address, sync code in the Keychain). Every record now has a permanent
+  ID (`syncID`; jobs keep `jobID`). Design and test results:
+  `docs/device-sync.md`. Verified with two iPhone Simulators: 1,716
+  example records copied across exactly, an edit and a deletion followed
+  within 40 seconds, the later of two changes won both ways. Then the Mac
+  app (erased with Kyle's OK): it received everything, a click on Mark
+  paid reached the phone, and a phone edit showed on the Mac's open page
+  in about 22 seconds. Not yet: tapping on the iPhone, a real iPhone
+  (needs a local-network setting), Cloudflare's real servers.
+
 - **Oct 21, night: plan for keeping Ashley's Google Sheet and Ace in step**
   (Kyle promised them both stay in step while she keeps using the sheet).
   Researched with two agents from Google's and Cloudflare's docs; plan in

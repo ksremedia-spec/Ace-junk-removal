@@ -167,6 +167,9 @@ enum SampleData {
         deleteAll(Dumpster.self, in: context)
         deleteAll(Customer.self, in: context)
         try? context.save()
+        // Starts this device's sync afresh, so clearing it does not delete
+        // the records on every other device.
+        SyncEngine.shared.forget()
     }
 
     /// Removes the example records before a real import, leaving six empty
