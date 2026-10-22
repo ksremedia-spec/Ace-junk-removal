@@ -169,6 +169,16 @@ enum SampleData {
         try? context.save()
     }
 
+    /// Removes the example records before a real import, leaving six empty
+    /// dumpsters in the yard so the board is not blank.
+    @MainActor static func clearForImport(context: ModelContext) {
+        clear(context: context)
+        for number in 1...6 {
+            context.insert(Dumpster(number: number))
+        }
+        try? context.save()
+    }
+
     private static func deleteAll<T: PersistentModel>(_ type: T.Type, in context: ModelContext) {
         let everything = (try? context.fetch(FetchDescriptor<T>())) ?? []
         for record in everything {

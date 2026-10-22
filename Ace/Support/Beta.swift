@@ -27,13 +27,23 @@ enum Beta {
         relayURL != nil || Keychain.read(Keychain.anthropicAPIKey) != nil
     }
 
+    /// Set once the example records were loaded, so the guide and the import
+    /// mention them only when they are there.
+    static let examplesKey = "examplesLoaded"
+
     /// Loads the sample records the first time the app opens with an empty
     /// database. A database that already has customers is left alone.
     @MainActor
     static func loadSampleDataIfEmpty(in context: ModelContext) {
         guard isBeta else { return }
+        #if DEBUG
+        // `-debug.empty`: start with nothing, the way the finished app opens
+        // for Ashley and Alex. A normal launch never carries the argument.
+        if ProcessInfo.processInfo.arguments.contains("-debug.empty") { return }
+        #endif
         let count = (try? context.fetchCount(FetchDescriptor<Customer>())) ?? 0
         guard count == 0 else { return }
         SampleData.load(into: context)
+        UserDefaults.standard.set(true, forKey: examplesKey)
     }
 }

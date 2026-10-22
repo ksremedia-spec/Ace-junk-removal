@@ -321,3 +321,38 @@ own repository with its own rules file (`CLAUDE.md`).
 - A job with a start but no end time goes to Google as an event with no
   length, following Kyle's "no defaults"; to be checked on a real device.
 - Spec: `calendar-tab.md`.
+
+## A first-time guide on the Mac, and Excel import in Ashley's layout (2026-10-21)
+
+- CLAUDE.md said "no onboarding beyond the microphone permission". Kyle,
+  Oct 21: "i would like a first time guide when they first open the mac app
+  alos that guides them to input excell, etc." So the Mac shows a one-page
+  checklist on the first launch only, reopenable from Help › Getting
+  Started. No tour, no slides, nothing on iPhone.
+- The import reads Ashley's columns as they are (Date, Customer Name,
+  # and Street Name, City State & Zip, Price, Form of Payment, Check #,
+  Not Mailing Address). Column mapping is plain code; Claude is not used,
+  since her cells are already clean.
+- Red price = not paid is an assumption until Ashley confirms it.
+- A row already in Ace (same customer, day and price) is skipped, so a
+  second import of the same file is harmless; identical rows within one
+  sheet are both kept, since Ashley entered both.
+
+## Ashley's Google Sheet stays in step with Ace (2026-10-21, direction agreed, details open)
+
+- Kyle: "i promised them that evrything would stay in step. her sheet and
+  the ace app". Ashley keeps using the sheet until she trusts Ace, so the
+  sync goes both ways, not a one-time import only.
+- Plan and research: `google-sheet-sync.md`. Recommended route (not yet
+  approved in detail): a Google service account used by the Cloudflare
+  server, polling every minute; OAuth refresh tokens avoided (7-day expiry
+  in testing, more silent failures).
+- Same night, Kyle: no robot account ("These are not tech savvy people").
+  **Chosen: "Sign in with Google" where Ashley picks her one sheet**
+  (scope `drive.file` only, published "In production"), so Google's
+  "unverified app" warning should not appear and nothing expires weekly.
+  The Google Cloud project belongs to the business's Gmail account.
+  Other answers: a regular @gmail.com account; when both sides change a
+  job the latest change wins; deletions copy across automatically (with
+  a pause if more than 10 go at once, and 30 days to restore).
+

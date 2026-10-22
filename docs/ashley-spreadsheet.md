@@ -7,6 +7,10 @@ repository is public, so no names, addresses or amounts are copied in.
 ## Where it lives
 
 - A **Google Sheet** named "2026 ACE Books", not an Excel file on her Mac.
+  Kyle, Oct 21: "they use google sheets." (Confirmed; the guide's step 1
+  is written for that.) Menu path checked in Google Sheets on Oct 21,
+  2026: File › Download › Microsoft Excel (.xlsx). The download includes
+  every tab.
   Version 1's import reads `.xlsx`, so the step is File → Download →
   Microsoft Excel (.xlsx) in Google Sheets, then File → Import in Ace.
   (Assumption to check with Ashley: one sheet per year.)

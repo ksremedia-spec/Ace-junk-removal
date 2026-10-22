@@ -34,6 +34,55 @@ not checked), **Unknown** (with how to find out).
 
 ## 2. Where things stand
 
+- **Oct 21, night: plan for keeping Ashley's Google Sheet and Ace in step**
+  (Kyle promised them both stay in step while she keeps using the sheet).
+  Researched with two agents from Google's and Cloudflare's docs; plan in
+  `docs/google-sheet-sync.md`. Nothing built. Plan: Ashley connects the
+  sheet once with "Sign in with Google" and picks it (chosen by Kyle; the
+  robot-account route was the first recommendation and is the fallback),
+  the Cloudflare server checks every minute, hidden row tags to tie rows
+  to jobs, read-only first, then writing on a copy, then the real sheet.
+  Needs device sync (step 5) first; realistically after Oct 31. Six
+  decisions for Kyle are listed in that file; the first is answered
+  (a regular @gmail.com account), and so is the second (the Google
+  setup belongs to the business's
+  Google account; setting it up needs that account signed in once),
+  and the third (when both sides change a job, the latest change wins),
+  and the fourth (deletions copy across automatically, kept 30 days on
+  the server).
+  Kyle asked for a route without the robot: "Sign in with Google" and
+  pick the one sheet (scope `drive.file`) was researched the same night
+  and should avoid Google's "unverified app" warning; the catch is that
+  the business name shows on Google's screen only with a website the
+  business owns. **Kyle chose the sign-in route.** Still open: does the
+  business have a website address, and the red/one-sheet-a-year questions.
+  The Google Sheets menu path in the welcome guide was checked in a live
+  sheet: File › Download › Microsoft Excel (.xlsx).
+
+- **Oct 21, evening: Excel import and the Mac welcome guide.** Built for
+  iPhone and Mac; run on Kyle's Mac with fake sheets only. Not committed.
+  - File › Import Customers from Excel… (⇧⌘I), Mac only. Reads .xlsx (and
+    .csv) in Ashley's layout (`docs/ashley-spreadsheet.md`), shows a
+    preview first (customers, jobs, red-price unpaid total, rows with no
+    house number or address, first six rows), then imports. Customers are
+    matched by name and address; jobs come in as Junk removal, no time,
+    past ones marked done, nothing written to the calendar. Importing the
+    same file twice adds nothing; two identical rows inside one sheet both
+    come in. Code: `Ace/Import/`.
+  - Still assumed: red price = not paid. Phones, job types and times are
+    not in her sheet. The "Contracted Labor" tab is not imported.
+  - Welcome guide (`Ace/Mac/WelcomeView.swift`): opens once on the first
+    launch, Help › Getting Started opens it again. Steps: import the
+    sheet (with how to download it from Google Sheets), set up the
+    dumpsters, add the crew, Assistant (checked when a key or the beta
+    relay is there), plus the shortcuts. The example-data notes in the
+    guide and the import appear only when the beta loaded examples.
+  - Test sheets: `test-data/make_ashley_layout_sheet.py` (573 rows, or
+    `... 600` for exactly 600 jobs and 480 customers). Debug-only launch
+    switches: `-debug.empty` (start with nothing; the beta otherwise loads
+    examples into an empty app) and `-debug.import <file in the app's tmp>`
+    (open the preview without the Open panel, which Claude cannot click).
+
 - **Oct 21: the Mac beta went out; the rest of the audit fixes; the real
   spreadsheet.**
   - Beta: "Ace Beta.dmg" (signed and notarized by Apple, drag-to-Applications

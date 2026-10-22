@@ -86,6 +86,9 @@ struct MacMainView: View {
     /// moved on after midnight without moving a day Ashley picked.
     @State private var knownToday = Dates.startOfToday()
     @State private var showingAssistant = false
+    @State private var showingImport = false
+    @State private var showingWelcome = false
+    @AppStorage("welcomeSeen") private var welcomeSeen = false
     @State private var showingNewJob = false
     @State private var showingNewCustomer = false
     @State private var showingNewQuote = false
@@ -171,6 +174,22 @@ struct MacMainView: View {
         .onReceive(NotificationCenter.default.publisher(for: .aceAssistant)) { _ in showingAssistant = true }
         .onReceive(NotificationCenter.default.publisher(for: .aceFind)) { _ in searchFocused = true }
         .onReceive(NotificationCenter.default.publisher(for: .aceGoToToday)) { _ in goToToday() }
+        .onReceive(NotificationCenter.default.publisher(for: .aceImport)) { _ in showingImport = true }
+        .onReceive(NotificationCenter.default.publisher(for: .aceWelcome)) { _ in showingWelcome = true }
+        .sheet(isPresented: $showingWelcome) {
+            WelcomeView(
+                go: { item in
+                    showingWelcome = false
+                    sidebarRaw = item.rawValue
+                },
+                importSheet: {
+                    showingWelcome = false
+                    // The file picker cannot open while the guide is closing.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { showingImport = true }
+                }
+            )
+        }
+        .spreadsheetImport(isPresented: $showingImport)
         .onChange(of: calendarDay) { _, _ in
             // The chosen job or event belongs to the day that was showing.
             selectedCalendarItem = nil
@@ -190,6 +209,11 @@ struct MacMainView: View {
         .onAppear {
             handleLaunchArguments()
             WindowSnapshot.captureIfRequested()
+            // The first launch opens the guide; it is not shown again.
+            if !welcomeSeen {
+                welcomeSeen = true
+                showingWelcome = true
+            }
         }
         // Checking light and dark without changing the Mac's own setting:
         // `-debug.light` or `-debug.dark`. A normal launch carries neither.

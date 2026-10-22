@@ -10,6 +10,8 @@ extension Notification.Name {
     static let aceAssistant = Notification.Name("aceAssistant")
     static let aceFind = Notification.Name("aceFind")
     static let aceGoToToday = Notification.Name("aceGoToToday")
+    static let aceImport = Notification.Name("aceImport")
+    static let aceWelcome = Notification.Name("aceWelcome")
 }
 
 struct AceCommands: Commands {
@@ -46,9 +48,10 @@ struct AceCommands: Commands {
 
             Divider()
 
-            // Step 7 of the build order. Shown now so the menu is complete.
-            Button("Import Customers from Excel…") {}
-                .disabled(true)
+            Button("Import Customers from Excel…") {
+                NotificationCenter.default.post(name: .aceImport, object: nil)
+            }
+            .keyboardShortcut("i", modifiers: [.command, .shift])
         }
 
         CommandGroup(after: .textEditing) {
@@ -56,6 +59,12 @@ struct AceCommands: Commands {
                 NotificationCenter.default.post(name: .aceFind, object: nil)
             }
             .keyboardShortcut("f", modifiers: .command)
+        }
+
+        CommandGroup(replacing: .help) {
+            Button("Getting Started") {
+                NotificationCenter.default.post(name: .aceWelcome, object: nil)
+            }
         }
 
         // View menu, as in Apple's Calendar app.
