@@ -8,6 +8,8 @@
 // An incoming record replaces the stored one only when it is newer. Every
 // accepted change gets the next running number (seq).
 
+import { disconnect, finishConnect, resume, runSheetSync, startConnect, status } from "./google.js";
+
 const TYPES = new Set(["customer", "job", "dumpster", "rental", "quote", "worker", "labor"]);
 // The free plan allows 50 database queries per request and 10 ms of CPU,
 // so a device sends at most 40 changes and gets at most 200 back at a time.
@@ -18,10 +20,23 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname === "/v1/health") return json({ ok: true });
-    if (url.pathname !== "/v1/sync") return json({ error: "Not found." }, 404);
+    // Google sends the browser back here after the sign-in (no sync code:
+    // it is checked against the sign-in Ace started).
+    if (url.pathname === "/google/callback") return finishConnect(request, env);
     if (request.method !== "POST") return json({ error: "Use POST." }, 405);
     if (!env.SYNC_KEY || request.headers.get("Authorization") !== `Bearer ${env.SYNC_KEY}`) {
       return json({ error: "Wrong sync code." }, 401);
+    }
+    switch (url.pathname) {
+      case "/v1/google/start": return json(await startConnect(env));
+      case "/v1/google/status": return json(await status(env));
+      case "/v1/google/disconnect": return json(await disconnect(env));
+      case "/v1/google/resume": return json(await resume(env));
+      case "/v1/google/run":
+        await runSheetSync(env);
+        return json(await status(env));
+      case "/v1/sync": break;
+      default: return json({ error: "Not found." }, 404);
     }
 
     let body;
@@ -55,13 +70,17 @@ export default {
     // get the same running number.
     if (statements.length) await env.DB.batch(statements);
 
+    // A device that is further along than this server has ever been is
+    // talking to a reset or replaced server: tell it to start afresh.
+    const top = await env.DB.prepare("SELECT COALESCE(MAX(seq), 0) AS top, (SELECT value FROM meta WHERE key = 'server_id') AS server FROM records").first();
+    if (since > top.top) return json({ changes: [], latest: 0, more: false, reset: true, server: top.server });
+
     const { results } = await env.DB.prepare(
       `SELECT type, id, updated_at, deleted, data, seq FROM records
        WHERE seq > ?1 ORDER BY seq LIMIT ?2`
     ).bind(since, PAGE + 1).all();
     const more = results.length > PAGE;
     const page = more ? results.slice(0, PAGE) : results;
-    const latestRow = await env.DB.prepare(`SELECT COALESCE(MAX(seq), 0) AS latest FROM records`).first();
 
     return json({
       changes: page.map((row) => ({
@@ -72,9 +91,18 @@ export default {
         data: JSON.parse(row.data),
         seq: row.seq,
       })),
-      latest: more ? page[page.length - 1].seq : latestRow.latest,
+      // Only as far as what was actually sent: a save landing between the
+      // page query and a separate "highest number" query would otherwise be
+      // counted as seen and never sent (audit Oct 21, M6).
+      latest: page.length ? page[page.length - 1].seq : since,
       more,
+      server: top.server,
     });
+  },
+
+  // Every minute: the Google Sheet check.
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(runSheetSync(env));
   },
 };
 

@@ -163,8 +163,10 @@ struct CustomerDetailView: View {
                 }
             }
             ForEach(rentals) { record in
-                Text(record.customerLine)
-                    .font(.subheadline)
+                NavigationLink { RentalRecordView(record: record) } label: {
+                    Text(record.customerLine)
+                        .font(.subheadline)
+                }
             }
         }
     }

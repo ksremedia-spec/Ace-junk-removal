@@ -110,7 +110,7 @@ struct HoldToTalkButton: View {
 /// What WhisperKit has heard so far while listening: settled words in full
 /// colour, words still being worked out in grey.
 struct LiveWords: View {
-    let engine: WhisperKitEngine
+    let engine: SpeechEngine
     var placeholder: String
     var minHeight: CGFloat = 24
 

@@ -114,6 +114,14 @@ func matchJobs(_ draft: JobDraft, customers: [Customer], allJobs: [Job], today: 
         }
     }
 
+    // "Johnson paid": the money is for work already done and owed, not for
+    // their next booking (audit Oct 21, fix-now 14). Owed jobs first,
+    // oldest first; then the usual order.
+    if draft.paid.lowercased() == "paid", draft.done.lowercased() != "no" {
+        let owed = theirs.filter { $0.isDone && !$0.isPaid }
+        if !owed.isEmpty { return owed.sorted { $0.scheduledAt < $1.scheduledAt } }
+    }
+
     let notDone = theirs.filter { !$0.isDone }
     let todayJobs = notDone.filter { calendar.isDate($0.scheduledAt, inSameDayAs: today) }
     if !todayJobs.isEmpty { return todayJobs.sorted { $0.scheduledAt < $1.scheduledAt } }
@@ -300,5 +308,20 @@ struct SpokenAddress {
     var streetWord: String? {
         guard let index = words.indices.first(where: isHouseNumber) else { return nil }
         return words.dropFirst(index + 1).first { !$0.allSatisfy(\.isNumber) }
+    }
+}
+
+/// A job said for a known customer at a different address (a realtor's
+/// listing, a landlord's other house): jobs have no address of their own
+/// yet, so the said address leads the notes and the crew sees it (audit
+/// Oct 21, M9). A per-job site address is a decision for Kyle.
+enum CustomerAddress {
+    static func notes(_ notes: String, saidAddress: String, onFile: String) -> String {
+        let trimmed = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        func squash(_ s: String) -> String { s.lowercased().filter { $0.isLetter || $0.isNumber } }
+        let said = saidAddress.trimmingCharacters(in: .whitespaces)
+        guard !said.isEmpty, !onFile.isEmpty, squash(said) != squash(onFile),
+              !squash(trimmed).contains(squash(said)) else { return trimmed }
+        return "Job address: " + said + (trimmed.isEmpty ? "" : "\n" + trimmed)
     }
 }

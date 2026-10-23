@@ -8,7 +8,6 @@ struct SettingsView: View {
 
     @AppStorage(AppSettings.claudeModelKey) private var claudeModelRaw = ClaudeModel.haiku.rawValue
     @AppStorage(AppSettings.effortKey) private var effortRaw = ClaudeEffort.medium.rawValue
-    @AppStorage(AppSettings.speechModelKey) private var speechModel = AppSettings.defaultSpeechModel
     @AppStorage(AppSettings.overweightRateKey) private var ratePerTon = AppSettings.defaultOverweightRate
 
     @State private var hasKey = Keychain.read(Keychain.anthropicAPIKey) != nil
@@ -39,15 +38,10 @@ struct SettingsView: View {
                         Text(effort.rawValue.capitalized).tag(effort.rawValue)
                     }
                 }
-                Picker("Speech model", selection: $speechModel) {
-                    ForEach(WhisperKitEngine.modelChoices) { choice in
-                        Text(choice.shortName).tag(choice.name)
-                    }
-                }
             } header: {
                 Text("Assistant")
             } footer: {
-                Text("Haiku is quicker and cheaper; Sonnet is the switch for testing. The speech model downloads once, the first time the Assistant is used.")
+                Text("Haiku is quicker and cheaper; Sonnet is the switch for testing. Voice uses Apple's own speech recognition, on this device.")
             }
 
             Section {
@@ -73,9 +67,11 @@ struct SettingsView: View {
             }
 
             SyncSettingsSection()
+            SheetLinkSection()
 
             CalendarSettingsSection()
 
+            if !SyncEngine.shared.isLive {
             Section {
                 NavigationLink("Speech test", value: MainView.Screen.speech)
                 NavigationLink("Claude test", value: MainView.Screen.claude)
@@ -85,6 +81,7 @@ struct SettingsView: View {
                 Text("Debug")
             } footer: {
                 Text("Sample data replaces everything with example customers, jobs and dumpsters, for showing the app, and sets Calendar for Jobs to None.")
+            }
             }
 
             Section("About") {

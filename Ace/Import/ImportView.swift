@@ -131,7 +131,7 @@ private struct ImportPreviewSheet: View {
 
             Spacer(minLength: 0)
 
-            if examplesLoaded {
+            if examplesLoaded && !SyncEngine.shared.isSetUp {
                 Toggle("Remove the example data first", isOn: $clearExamples)
             }
             HStack {
@@ -200,7 +200,7 @@ private struct ImportPreviewSheet: View {
     }
 
     private func runImport() {
-        if examplesLoaded && clearExamples {
+        if examplesLoaded && clearExamples && !SyncEngine.shared.isSetUp {
             SampleData.clearForImport(context: context)
             examplesLoaded = false
         }

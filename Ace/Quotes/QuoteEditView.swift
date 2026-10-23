@@ -163,6 +163,13 @@ struct QuoteEditView: View {
         .navigationBarTitleDisplayMode(.inline)
         #endif
         // Clicking another quote kept nothing before; now changes are saved.
+        // Changed elsewhere while open: untouched fields follow (audit M8).
+        .onChange(of: quote?.updatedAt) { _, _ in
+            guard !deleted, let quote else { return }
+            let fresh = QuoteFormData(quote: quote)
+            form = form.merging(fresh: fresh, base: original)
+            original = fresh
+        }
         .onDisappear {
             if !deleted, let quote, hasChanges, form.customer != nil {
                 form.apply(to: quote)
@@ -271,7 +278,7 @@ struct QuoteEditView: View {
             context.insert(target)
         }
         // Set after the insert, so the customer link is made on a stored record.
-        form.apply(to: target)
+        form.apply(to: target, changedSince: quote == nil ? nil : original)
         try? context.save()
         original = form
         saved += 1
@@ -302,7 +309,7 @@ struct QuoteEditView: View {
     private func booked(with job: Job) {
         guard let quote else { return }
         if form.customer == nil { form.customer = job.customer }
-        form.apply(to: quote)
+        form.apply(to: quote, changedSince: original)
         quote.markBooked(with: job)
         try? context.save()
         original = form

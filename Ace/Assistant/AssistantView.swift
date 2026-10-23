@@ -17,7 +17,7 @@ struct AssistantView: View {
     @Query(sort: \Quote.quotedOn) private var quotes: [Quote]
     @Query(sort: \Worker.name) private var workers: [Worker]
 
-    let engine: WhisperKitEngine
+    let engine: SpeechEngine
 
     enum Phase: Equatable {
         case idle
@@ -64,6 +64,9 @@ struct AssistantView: View {
     var body: some View {
         NavigationStack {
             content
+                // A swipe down must not throw away a note being worked on or
+                // a filled-in job (audit Oct 21, fix-now 9).
+                .interactiveDismissDisabled(phase == .steps || phase == .asking || phase == .transcribing)
                 .navigationTitle(title)
                 #if os(iOS)
                 // The title and "1 of 3" sit together in the bar.
@@ -125,9 +128,7 @@ struct AssistantView: View {
         // model download that is halfway through.
         switch engine.state {
         case .notLoaded, .failed:
-            Task { await engine.load(model: AppSettings.speechModel) }
-        case .ready where engine.loadedModel != AppSettings.speechModel:
-            Task { await engine.load(model: AppSettings.speechModel) }
+            Task { await engine.load() }
         default:
             break
         }
@@ -274,6 +275,7 @@ struct AssistantView: View {
     /// "Job saved." or "3 changes saved.", briefly, then the sheet closes.
     /// With nothing saved it just closes.
     private func finishAll() {
+        if !confirmations.isEmpty { unsentNote = "" }
         guard let last = confirmations.last else {
             dismiss()
             return
@@ -433,14 +435,14 @@ struct AssistantView: View {
                         .foregroundStyle(.secondary)
                 case .downloading(let fraction):
                     ProgressView(value: fraction) {
-                        Text("Downloading the voice model (first time only)")
+                        Text("Downloading Apple's English speech model (first time only)")
                     } currentValueLabel: {
                         Text(fraction.formatted(.percent.precision(.fractionLength(0))))
                     }
                 case .loading:
                     HStack {
                         ProgressView()
-                        Text("Getting voice ready. The first time can take a few minutes; typing works now.")
+                        Text("Getting voice ready. Typing works now.")
                             .foregroundStyle(.secondary)
                     }
                 case .ready:
@@ -450,7 +452,7 @@ struct AssistantView: View {
                     Label(message, systemImage: "exclamationmark.triangle")
                         .foregroundStyle(.secondary)
                     Button("Try loading again") {
-                        Task { await engine.load(model: AppSettings.speechModel) }
+                        Task { await engine.load() }
                     }
                 }
             }
@@ -621,7 +623,8 @@ struct AssistantView: View {
                 confirmations = []
                 phase = .steps
             }
-            unsentNote = ""
+            // The note stays saved until its changes are saved (finishAll),
+            // so closing the steps does not lose it.
             restoredUnsent = false
         } catch {
             // The note stays in the box, so it can be sent again or fixed.
@@ -670,7 +673,7 @@ struct AssistantView: View {
             case .failed(let message):
                 throw AssistantError.speechModel(message)
             case .notLoaded:
-                await engine.load(model: AppSettings.speechModel)
+                await engine.load()
             default:
                 try await Task.sleep(for: .milliseconds(300))
             }
@@ -715,7 +718,7 @@ struct AssistantView: View {
 
         var errorDescription: String? {
             switch self {
-            case .speechModel(let message): return "The speech model could not be loaded. \(message)"
+            case .speechModel(let message): return "Voice couldn't get ready. \(message)"
             }
         }
     }

@@ -69,6 +69,7 @@ struct LaborView: View {
         .background(Tint.boardPage)
         .environment(\.cardFill, Tint.boardCard)
         .navigationTitle("Labor")
+        .refreshable { await SyncEngine.shared.syncNow(manual: true) }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { rollToTodayIfDayChanged() }
         }

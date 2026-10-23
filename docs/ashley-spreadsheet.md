@@ -8,7 +8,13 @@ repository is public, so no names, addresses or amounts are copied in.
 
 - A **Google Sheet** named "2026 ACE Books", not an Excel file on her Mac.
   Kyle, Oct 21: "they use google sheets." (Confirmed; the guide's step 1
-  is written for that.) Menu path checked in Google Sheets on Oct 21,
+  is written for that.) Alex confirmed the same (Oct 21), and that they
+  both use one shared Google (Gmail) account: the sheet is in that
+  account, and it is the one to sign in with when connecting and to own
+  the Google Cloud setup. Not yet known: whether
+  it is a native Google Sheet or an .xlsx kept in Drive (a ".XLSX" tag by
+  the name). If it is the .xlsx kind, Ace's Connect says "That file is
+  not a Google Sheet"; File › Save as Google Sheets fixes it. Menu path checked in Google Sheets on Oct 21,
   2026: File › Download › Microsoft Excel (.xlsx). The download includes
   every tab.
   Version 1's import reads `.xlsx`, so the step is File → Download →

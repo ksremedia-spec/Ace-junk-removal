@@ -98,6 +98,9 @@ struct SheetImport {
         let calendar = Calendar.current
         var year = fallbackYear
         var lastDate: Date?
+        let nameHeading = header.columns[.name]
+            .flatMap { tab.rows[header.index][$0]?.text }
+            .map { clean($0).lowercased() } ?? "customer name"
 
         for (offset, row) in tab.rows.enumerated() where offset > header.index {
             func cell(_ c: Column) -> SheetCell? { header.columns[c].flatMap { row[$0] } }
@@ -113,7 +116,9 @@ struct SheetImport {
                 if !row.isEmpty { result.skipped += 1 }
                 continue
             }
-            if Column.name.matches(name) || name.lowercased().hasPrefix("total") {
+            // A repeated heading row says exactly what the heading says, so a
+            // customer called "Customer First Plumbing" is not skipped.
+            if name.lowercased() == nameHeading || ["total", "totals", "total:", "totals:"].contains(name.lowercased()) {
                 result.skipped += 1
                 continue
             }

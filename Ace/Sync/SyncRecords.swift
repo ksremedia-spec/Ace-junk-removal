@@ -96,6 +96,10 @@ enum SyncIDs {
         named("dumpster-\(number)")
     }
 
+    static func rental(dumpster: Int, droppedOff: Date) -> UUID {
+        named("rental-\(dumpster)-\(Int(droppedOff.timeIntervalSince1970 / 60))")
+    }
+
     static func labor(worker: UUID, day: Date, calendar: Calendar = .current) -> UUID {
         let parts = calendar.dateComponents([.year, .month, .day], from: day)
         return named("labor-\(worker.uuidString)-\(parts.year ?? 0)-\(parts.month ?? 0)-\(parts.day ?? 0)")

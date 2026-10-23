@@ -9,6 +9,9 @@ struct JobsView: View {
     @State private var searchText = ""
     @State private var showingNewJob = false
     @State private var filter: JobsFilter = .upcoming
+    /// Set by the Calendar's Owed figure: open on Unpaid once.
+    static let openOnUnpaidKey = "jobs.openOnUnpaid"
+    @AppStorage(JobsView.openOnUnpaidKey) private var openOnUnpaid = false
     /// A job swiped for deletion, waiting for "Delete this job?".
     @State private var pendingDelete: Job?
     @State private var paidTick = 0
@@ -52,6 +55,9 @@ struct JobsView: View {
             }
         }
         .navigationTitle("Jobs")
+        .refreshable { await SyncEngine.shared.syncNow(manual: true) }
+        .onAppear { if openOnUnpaid { filter = .unpaid; openOnUnpaid = false } }
+        .onChange(of: openOnUnpaid) { _, on in if on { filter = .unpaid; openOnUnpaid = false } }
         .searchable(text: $searchText, prompt: "Name, phone, address or notes")
         .confirmationDialog("Delete this job?", isPresented: deleteAsked, titleVisibility: .visible, presenting: pendingDelete) { job in
             Button("Delete", role: .destructive) {
@@ -220,10 +226,7 @@ struct JobSwipeActions: ViewModifier {
 
     private var doneButton: some View {
         Button {
-            job.isDone.toggle()
-            job.updatedAt = Date()
-            try? context.save()
-            CalendarStore.shared.jobSaved(job)
+            JobActions.shared.setDone(!job.isDone, job, in: context)
         } label: {
             Label(job.isDone ? "Not done" : "Done", systemImage: job.isDone ? "arrow.uturn.backward" : "checkmark")
         }
@@ -232,11 +235,8 @@ struct JobSwipeActions: ViewModifier {
 
     private var paidButton: some View {
         Button {
-            job.isPaid.toggle()
-            job.updatedAt = Date()
-            try? context.save()
-            CalendarStore.shared.jobSaved(job)
-            if job.isPaid { onPaid() }
+            if !job.isPaid { onPaid() }
+            JobActions.shared.setPaid(!job.isPaid, job, in: context)
         } label: {
             Label(job.isPaid ? "Unpaid" : "Paid", systemImage: "dollarsign.circle")
         }

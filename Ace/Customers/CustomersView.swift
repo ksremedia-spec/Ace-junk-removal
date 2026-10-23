@@ -50,6 +50,7 @@ struct CustomersView: View {
         }
         .navigationTitle("Customers")
         .searchable(text: $searchText, prompt: "Name, phone or address")
+        .refreshable { await SyncEngine.shared.syncNow(manual: true) }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {

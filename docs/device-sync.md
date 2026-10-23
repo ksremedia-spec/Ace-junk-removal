@@ -35,6 +35,17 @@ crew hours: the seven record types in `Ace/Data`. Not synced:
   are in use. Today, whichever device saves the job writes it.
 - Later: the overweight rate in Settings (a shared business setting).
 
+## The sync icon (Kyle, Oct 21)
+
+A small icon in the toolbar (Mac: next to Settings; iPhone: top left of
+every tab): a check mark when everything is sent and received, turning
+arrows while sending, an orange warning sign when the server cannot be
+reached or the sync code is wrong. Click or tap for one line ("Up to
+date", "Last synced 20 seconds ago") and Sync Now. Hidden until sync is
+set up. Code: `Ace/Sync/SyncStatusButton.swift`. Seen Oct 21 on the Mac
+and the iPhone Simulator (check mark, the detail, the warning with a
+wrong code).
+
 ## How it works
 
 **Server** (`cloudflare/ace-sync`, a Cloudflare Worker with a D1
@@ -130,7 +141,30 @@ his OK):
 - Once, Ace was found not running on Simulator A (no crash report);
   bringing it back to the front synced at once. Cause unknown.
 
-**Not tested yet:**
+**Real devices on the live server (Oct 21–22, night, verified):** the
+server runs on Kyle's Cloudflare account (Worker `ace-sync` with its D1
+database), with the address and sync code built into the app
+(`Ace/Support/SyncServer.txt`, git-ignored). Kyle's real Mac and real
+iPhone 16 Pro Max, plus the real Google test sheet connected to the live
+server:
+- the first sheet check on Cloudflare read all 613 rows in under half a
+  second with no error (the free plan was enough at this size);
+- the Mac and the iPhone each filled with 613 jobs and 493 customers and
+  matched job for job (same fingerprint);
+- Mark paid tapped on the real iPhone reached the Mac at once and cleared
+  the red in the sheet;
+- a price typed in the Google Sheet reached the Mac in about 40 s and the
+  iPhone shortly after;
+- three new customers' jobs typed into the sheet reached both in about
+  2 minutes; both copies matched again (616 jobs).
+- Bug found and fixed on the real iPhone: a first download cut short left
+  the phone sure it had records it never saved; the "caught up" mark is
+  now saved only after the records are.
+
+**Not tested yet (live):** two devices syncing at the very same moment,
+a long stretch with no signal, Alex's iPhone, Ashley's MacBook.
+
+**Earlier, not tested at the time:**
 - An edit made by tapping on the iPhone (the Simulator was waiting for
   Kyle's permission to be tapped); phone-side edits were written straight
   into its database, which also tested the "changed without a new time"

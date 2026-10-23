@@ -11,7 +11,10 @@ import SwiftData
 /// with a seeded random number generator, so they come out the same every
 /// time too.
 enum SampleData {
-    static func load(into context: ModelContext) {
+    @MainActor static func load(into context: ModelContext) {
+        // Never on the live server: they would go to every device and into
+        // Ashley's sheet (audit Oct 21, M2).
+        if SyncEngine.shared.isLive { return }
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
         func day(_ offset: Int, hour: Int? = nil) -> Date {
@@ -156,9 +159,14 @@ enum SampleData {
     @MainActor static func clear(context: ModelContext) {
         // The jobs' events in the shared calendar go too, or every job would
         // be left behind in Google Calendar (Oct 20 phone audit).
-        for job in (try? context.fetch(FetchDescriptor<Job>())) ?? [] {
-            CalendarStore.shared.jobDeleting(job)
+        // A synced device gets everything back from the others, so the
+        // shared calendar's events stay (audit Oct 21, fix-now 7).
+        if !SyncEngine.shared.isSetUp {
+            for job in (try? context.fetch(FetchDescriptor<Job>())) ?? [] {
+                CalendarStore.shared.jobDeleting(job)
+            }
         }
+        UserDefaults.standard.set(false, forKey: Beta.examplesKey)
         deleteAll(LaborEntry.self, in: context)
         deleteAll(Worker.self, in: context)
         deleteAll(Quote.self, in: context)

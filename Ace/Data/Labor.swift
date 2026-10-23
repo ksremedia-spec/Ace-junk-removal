@@ -131,6 +131,9 @@ enum Labor {
     /// Sets an hourly person's hours for a day; nil or 0 clears them.
     static func setHours(_ hours: Double?, for worker: Worker, on day: Date, in context: ModelContext) {
         let value = (hours ?? 0) > 0 ? hours : nil
+        // Nothing changed: no new stamp, so a real change from another
+        // device is not overruled (audit Oct 21, fix-now 2).
+        if worker.entry(on: day)?.hours == value, value != nil || worker.entry(on: day) == nil { return }
         if let entry = worker.entry(on: day) {
             if value == nil, entry.note.isEmpty {
                 context.delete(entry)
@@ -143,7 +146,6 @@ enum Labor {
             context.insert(entry)
             entry.worker = worker
         }
-        worker.updatedAt = Date()
         try? context.save()
     }
 
@@ -170,7 +172,6 @@ enum Labor {
             context.insert(entry)
             entry.worker = worker
         }
-        worker.updatedAt = Date()
         try? context.save()
     }
 

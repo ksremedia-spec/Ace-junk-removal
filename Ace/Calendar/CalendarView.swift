@@ -54,6 +54,13 @@ struct CalendarView: View {
         jobs.filter { !$0.isDone && $0.scheduledAt < Dates.startOfToday() }
     }
 
+    /// Today's next job not done yet, for the run-sheet card at the top
+    /// (audit Oct 21, design idea 3).
+    private var nextJob: Job? {
+        DaySchedule(day: Dates.startOfToday(), jobs: jobs, dumpsters: dumpsters, rentals: rentals, quotes: quotes)
+            .jobs.first { !$0.isDone }
+    }
+
     private var openQuotes: [Quote] {
         quotes.filter { $0.status == .open }
     }
@@ -62,10 +69,17 @@ struct CalendarView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: Space.l) {
+                    if isToday, let next = nextJob {
+                        NextJobCard(job: next)
+                    }
                     TodayFigures(jobs: jobs, dumpsters: dumpsters, quotes: quotes, onShowQuotes: {
                         // The Quotes figure counts open quotes, so it opens on Open.
                         quotesFilter = .open
                         onShowQuotes?()
+                    }, onShowOwed: {
+                        NotificationCenter.default.post(name: .aceShowUnpaid, object: nil)
+                    }, onShowDumpsters: {
+                        NotificationCenter.default.post(name: .aceShowDumpsters, object: nil)
                     })
                     calendarCard
                     dayCard
@@ -74,6 +88,8 @@ struct CalendarView: View {
                         slippedCard
                     }
                     quotesCard
+                    SyncFootnote()
+                        .frame(maxWidth: .infinity)
                 }
                 .padding(.horizontal, Space.l)
                 .padding(.vertical, Space.m)
@@ -92,6 +108,7 @@ struct CalendarView: View {
         .background(Tint.boardPage)
         .environment(\.cardFill, Tint.boardCard)
         .navigationTitle("Calendar")
+        .refreshable { await SyncEngine.shared.syncNow(manual: true) }
         .navigationDestination(for: Quote.self) { quote in
             QuoteEditView(quote: quote)
         }
@@ -156,7 +173,7 @@ struct CalendarView: View {
                 NavigationLink {
                     JobEditView(job: job)
                 } label: {
-                    JobCard(job: job, isSelected: false)
+                    JobCard(job: job, isSelected: false, showsAddress: true)
                 }
                 .buttonStyle(.plain)
                 .contextMenu { JobQuickMenu(job: job) }
@@ -222,6 +239,7 @@ struct CalendarView: View {
                         DumpsterTile(dumpster: dumpster, isSelected: false)
                     }
                     .buttonStyle(.plain)
+                    .contextMenu { DumpsterQuickMenu(dumpster: dumpster) }
                 }
             }
             if dumpsters.isEmpty {
@@ -286,18 +304,12 @@ struct JobQuickMenu: View {
 
     var body: some View {
         Button {
-            job.isDone.toggle()
-            job.updatedAt = Date()
-            try? context.save()
-            CalendarStore.shared.jobSaved(job)
+            JobActions.shared.setDone(!job.isDone, job, in: context)
         } label: {
             Label(job.isDone ? "Mark not done" : "Mark done", systemImage: job.isDone ? "arrow.uturn.backward" : "checkmark.circle")
         }
         Button {
-            job.isPaid.toggle()
-            job.updatedAt = Date()
-            try? context.save()
-            CalendarStore.shared.jobSaved(job)
+            JobActions.shared.setPaid(!job.isPaid, job, in: context)
         } label: {
             Label(job.isPaid ? "Mark unpaid" : "Mark paid", systemImage: "dollarsign.circle")
         }

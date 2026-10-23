@@ -356,3 +356,40 @@ own repository with its own rules file (`CLAUDE.md`).
   job the latest change wins; deletions copy across automatically (with
   a pause if more than 10 go at once, and 30 days to restore).
 
+## The server and the Google setup stay on Kyle's accounts (2026-10-21)
+
+- Kyle, after setting up the live server: worried Ashley and Alex (and he,
+  live on setup day) could not get through the Cloudflare and Google
+  Cloud steps. Proposed: keep both on Kyle's accounts; Kyle: "most
+  definietly."
+- So: the sync server runs on Kyle's Cloudflare account
+  (Worker `ace-sync`, D1 `ace-sync`; address kept out of this public
+  repository), and Google sign-in uses Kyle's Google Cloud project.
+  Ashley still signs in with the business's own Gmail and picks the
+  business's sheet; the project does not need to be in that account.
+- Setup day for them is then one step: Connect Google Sheet → sign in →
+  Allow → pick the sheet. The sync code will be built into their copy of
+  Ace (a git-ignored file, like the beta relay), so nobody types it.
+- This replaces "the backend is owned by the client" (CLAUDE.md) and the
+  Oct 21 answer "the business's Google account owns the setup". Either
+  can be moved to the business later.
+- Before real use: the Google project must leave "Testing" (access there
+  ends after 7 days), which needs a homepage and privacy policy link.
+
+## Speech: Apple's SpeechTranscriber, WhisperKit removed (2026-10-23)
+
+- Kyle: "Through my own testing, on my own phone ... WhisperKit is very heavy
+  and it makes things run like shit. So let's switch everything over to the
+  built-in transcriber. On both Mac and iPhone."
+- Now: `Ace/Speech/SpeechEngine.swift` uses SpeechAnalyzer + SpeechTranscriber
+  (en-US, volatile results for the live words), iOS 26 / macOS 26. The English
+  model is part of the system; a device without it downloads it once through
+  AssetInventory. The WhisperKit package is gone from the project, and the
+  Settings speech-model picker with it. The app is about 15–18 MB.
+- Checked on Kyle's Mac with spoken test notes (the Mac's own voice): an 8 s
+  note in 0.29 s, a 12 s note in 0.25 s, words and numbers right; unusual
+  local names came out phonetically ("Fatimarigo", "Akushnet", "Matapoisit").
+  Live listening (hold to talk) not yet tried on a real iPhone.
+- Possible next step, not built: give the engine the customer, street and town
+  names as hints (AnalysisContext.contextualStrings).
+

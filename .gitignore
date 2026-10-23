@@ -36,3 +36,9 @@ screenshots/*.zip
 # Cloudflare developer tool: local database and local secrets
 .wrangler/
 .dev.vars
+
+# The live sync server's sync code (Kyle pastes it into Cloudflare and each device)
+cloudflare/ace-sync/live-sync-code.txt
+
+# The business's sync server address and code, built into its copy of Ace
+Ace/Support/SyncServer.txt

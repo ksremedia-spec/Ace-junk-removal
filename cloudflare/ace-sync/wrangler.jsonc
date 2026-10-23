@@ -1,14 +1,17 @@
 // Ace's sync server. Runs locally with `npm run dev` (no Cloudflare account
-// needed); `database_id` is filled in when it is first deployed.
+// needed). Deployed to Kyle's Cloudflare account Oct 21, 2026 (test, fake
+// data only); the server address stays out of this public repository.
 {
   "name": "ace-sync",
   "main": "src/index.js",
   "compatibility_date": "2026-10-01",
+  // The Google Sheet check runs every minute (locally: npm run sheet).
+  "triggers": { "crons": ["* * * * *"] },
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "ace-sync",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "3f0937f6-a3b3-462f-8bb7-3a696671bc98",
       "migrations_dir": "migrations"
     }
   ]

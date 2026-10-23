@@ -7,6 +7,7 @@ struct SyncSettingsSection: View {
     @State private var address = UserDefaults.standard.string(forKey: SyncEngine.urlKey) ?? ""
     @State private var code = ""
     @State private var hasCode = Keychain.read(SyncEngine.codeAccount) != nil
+    @State private var confirmDeletions = false
 
     var body: some View {
         Section {
@@ -20,10 +21,18 @@ struct SyncSettingsSection: View {
             SecureField("Sync code", text: $code, prompt: Text(hasCode ? "Stored" : "Not set"))
                 .onSubmit(saveCode)
             LabeledContent("Status", value: status)
+            if sync.heldDeletions > 0 {
+                Button("Delete \(sync.heldDeletions) records on every device…", role: .destructive) { confirmDeletions = true }
+                    .confirmationDialog("Delete \(sync.heldDeletions) records on every device?", isPresented: $confirmDeletions, titleVisibility: .visible) {
+                        Button("Delete on Every Device", role: .destructive) { Task { await sync.sendHeldDeletions() } }
+                    } message: {
+                        Text("They were deleted on this device. Ace held them back because that many at once can mean something went wrong.")
+                    }
+            }
             Button(sync.isSyncing ? "Syncing…" : "Sync Now") {
                 saveAddress()
                 saveCode()
-                Task { await sync.syncNow() }
+                Task { await sync.syncNow(manual: true) }
             }
             .disabled(sync.isSyncing)
         } header: {

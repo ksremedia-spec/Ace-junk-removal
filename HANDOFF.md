@@ -34,6 +34,49 @@ not checked), **Unknown** (with how to find out).
 
 ## 2. Where things stand
 
+- **Oct 23, evening: pre-Monday safety fixes** (sync, sheet link, money,
+  Assistant; see the end of docs/review-2026-10-21-full/fixes.md). Server
+  live; Mac updated; new iPhone not yet (it was asleep). Not committed.
+  Next: Google out of Testing (Branding page app name looked blank), then
+  the real version and the wipe, last.
+
+- **Oct 23, afternoon: speech switched to Apple's SpeechTranscriber** on
+  iPhone and Mac, WhisperKit removed (decisions.md). Fast and accurate in Mac
+  tests with spoken files; live listening not yet tried on a real phone.
+  Installed on the new iPhone. Not committed.
+
+- **Oct 23: installed on Kyle's new iPhone** (iPhone19,4, device ID
+  00008160-001E15AC11300036; the old 16 Pro Max is still paired as "Kyle's
+  iPhone (2)"). Latest build with the live server built in; it filled from
+  the live server and matched the Mac job for job (616 jobs, 56 unpaid).
+  Still not committed.
+
+- **Oct 22, 1 AM: the audit's 14 must-fix items and design ideas 1–7**,
+  done while Kyle slept; status of each in
+  `docs/review-2026-10-21-full/fixes.md`. Server fixes tested (32 automatic
+  checks) and live; app changes built for iPhone and Mac and partly seen in
+  the Simulator; not yet installed on Kyle's iPhone (it was asleep). Not
+  committed. Waiting on Kyle: Ashley's MacBook model/macOS, and how
+  overweight charges get billed.
+
+- **Oct 21–22, overnight: everything live.** Sync server on Kyle's
+  Cloudflare account; Google sign-in on his Google Cloud project "Ace test"
+  (Testing mode, scjewleryshowcase@gmail.com as test user; access expires
+  7 days after sign-in). Real Mac + real iPhone + real test sheet stayed in
+  step (docs/device-sync.md). New iPhone month view with "Go to month" and
+  Done. Full 326-agent audit: docs/review-2026-10-21-full/audit.md (6.5/10,
+  14 must-fix items). Nothing from Oct 21 committed yet.
+
+- **Oct 21, later still: the Google Sheet link, built and tested against a
+  stand-in Google** (not committed). See the status at the top of
+  `docs/google-sheet-sync.md`: 24 automatic checks pass, and with the real
+  apps the sheet filled the Mac and a phone Simulator and edits went both
+  ways. Next: Kyle sets up Google in his own Gmail
+  (`docs/google-cloud-setup.md`) with a copy of the fake sheet, and we try
+  the real sign-in. Also fixed: the Mac import (and server) skipped any
+  customer whose name contained "customer"; now only a row saying exactly
+  the heading is skipped. The sync icon from earlier is also uncommitted.
+
 - **Oct 21, late night: sync between devices (build step 5), first
   version, running on Kyle's Mac.** Not committed. Server in
   `cloudflare/ace-sync` (Worker + D1; `npm run dev`, with Node.js 24.21.0
@@ -46,7 +89,8 @@ not checked), **Unknown** (with how to find out).
   within 40 seconds, the later of two changes won both ways. Then the Mac
   app (erased with Kyle's OK): it received everything, a click on Mark
   paid reached the phone, and a phone edit showed on the Mac's open page
-  in about 22 seconds. Not yet: tapping on the iPhone, a real iPhone
+  in about 22 seconds. Added after: a sync icon in the toolbar (check
+  mark, turning arrows, orange warning; not committed). Not yet: tapping on the iPhone, a real iPhone
   (needs a local-network setting), Cloudflare's real servers.
 
 - **Oct 21, night: plan for keeping Ashley's Google Sheet and Ace in step**

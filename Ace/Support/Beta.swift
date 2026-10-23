@@ -41,6 +41,9 @@ enum Beta {
         // for Ashley and Alex. A normal launch never carries the argument.
         if ProcessInfo.processInfo.arguments.contains("-debug.empty") { return }
         #endif
+        // A copy that syncs gets its records from the server; examples here
+        // would be sent to every other device.
+        if SyncEngine.builtIn != nil { return }
         let count = (try? context.fetchCount(FetchDescriptor<Customer>())) ?? 0
         guard count == 0 else { return }
         SampleData.load(into: context)

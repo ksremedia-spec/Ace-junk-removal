@@ -22,7 +22,7 @@ struct AssistantStepView: View {
     /// Turns this step into a new job, for "Start a new job instead".
     var onStartNewJob: () -> Void
     /// The voice model, for answering the forms' questions by voice.
-    var engine: WhisperKitEngine? = nil
+    var engine: SpeechEngine? = nil
     /// Every log_hours action in the plan, shown together on the first one's
     /// screen, and the crew to match them to.
     var laborActions: [AssistantAction] = []

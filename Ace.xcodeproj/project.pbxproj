@@ -6,10 +6,6 @@
 	objectVersion = 77;
 	objects = {
 
-/* Begin PBXBuildFile section */
-		1A0000000000000000000012 /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = 1A0000000000000000000011 /* WhisperKit */; };
-/* End PBXBuildFile section */
-
 /* Begin PBXFileReference section */
 		1A0000000000000000000004 /* Ace.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Ace.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -27,7 +23,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				1A0000000000000000000012 /* WhisperKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -70,7 +65,6 @@
 			);
 			name = Ace;
 			packageProductDependencies = (
-				1A0000000000000000000011 /* WhisperKit */,
 			);
 			productName = Ace;
 			productReference = 1A0000000000000000000004 /* Ace.app */;
@@ -101,7 +95,6 @@
 			mainGroup = 1A0000000000000000000002;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				1A0000000000000000000010 /* XCRemoteSwiftPackageReference "argmax-oss-swift" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 1A0000000000000000000003 /* Products */;
@@ -366,24 +359,7 @@
 		};
 /* End XCConfigurationList section */
 
-/* Begin XCRemoteSwiftPackageReference section */
-		1A0000000000000000000010 /* XCRemoteSwiftPackageReference "argmax-oss-swift" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/argmaxinc/argmax-oss-swift";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 1.1.1;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
 
-/* Begin XCSwiftPackageProductDependency section */
-		1A0000000000000000000011 /* WhisperKit */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 1A0000000000000000000010 /* XCRemoteSwiftPackageReference "argmax-oss-swift" */;
-			productName = WhisperKit;
-		};
-/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 1A0000000000000000000001 /* Project object */;
 }

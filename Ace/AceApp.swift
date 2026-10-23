@@ -33,6 +33,7 @@ struct AceApp: App {
             // Back in front: bring in what changed elsewhere meanwhile.
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active { SyncEngine.shared.syncSoon() }
+                if phase == .background { SyncEngine.shared.syncBeforeBackground() }
             }
         }
         .modelContainer(container)

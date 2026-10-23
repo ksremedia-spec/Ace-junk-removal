@@ -66,6 +66,45 @@ struct JobFormData: Equatable {
         notes = job.notes
     }
 
+    /// Writes only what was changed since `base` (the form as it was
+    /// opened), so a page left open on one device never puts back fields
+    /// another device changed meanwhile (audit Oct 21, M8). With no base,
+    /// writes everything (a new job).
+    func apply(to job: Job, changedSince base: JobFormData?) {
+        guard let base else { return apply(to: job) }
+        if customer != base.customer { job.customer = customer }
+        if jobType != base.jobType { job.jobType = jobType }
+        if date != base.date || hasTime != base.hasTime || hasEnd != base.hasEnd || endTime != base.endTime {
+            job.scheduledAt = hasTime ? date : Calendar.current.startOfDay(for: date)
+            job.hasTime = hasTime
+            job.endsAt = endDate
+        }
+        if priceText != base.priceText { job.price = Parse.money(priceText) }
+        if paymentType != base.paymentType { job.paymentType = paymentType }
+        if isPaid != base.isPaid { job.isPaid = isPaid }
+        if isDone != base.isDone { job.isDone = isDone }
+        if notes != base.notes { job.notes = notes.trimmingCharacters(in: .whitespacesAndNewlines) }
+        job.updatedAt = Date()
+    }
+
+    /// This form after the job changed elsewhere: fields not touched here
+    /// take the job's new values; fields typed here are kept.
+    func merging(fresh: JobFormData, base: JobFormData) -> JobFormData {
+        var merged = self
+        if customer == base.customer { merged.customer = fresh.customer }
+        if jobType == base.jobType { merged.jobType = fresh.jobType }
+        if date == base.date && hasTime == base.hasTime && hasEnd == base.hasEnd && endTime == base.endTime {
+            merged.date = fresh.date; merged.hasTime = fresh.hasTime
+            merged.hasEnd = fresh.hasEnd; merged.endTime = fresh.endTime
+        }
+        if priceText == base.priceText { merged.priceText = fresh.priceText }
+        if paymentType == base.paymentType { merged.paymentType = fresh.paymentType }
+        if isPaid == base.isPaid { merged.isPaid = fresh.isPaid }
+        if isDone == base.isDone { merged.isDone = fresh.isDone }
+        if notes == base.notes { merged.notes = fresh.notes }
+        return merged
+    }
+
     func apply(to job: Job) {
         job.customer = customer
         job.jobType = jobType

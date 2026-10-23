@@ -26,7 +26,12 @@ struct DumpstersView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Space.m) {
-                if dumpsters.isEmpty {
+                if dumpsters.isEmpty && SyncEngine.shared.isWaitingForFirstSync {
+                    // The real ones are on their way; blank ones set up now
+                    // would only get in the way (audit Oct 21, M5).
+                    Label("Getting the dumpsters from the other devices…", systemImage: "arrow.triangle.2.circlepath")
+                        .foregroundStyle(.secondary)
+                } else if dumpsters.isEmpty {
                     Text("No dumpsters set up yet.")
                         .foregroundStyle(.secondary)
                     Button("Set up 6 dumpsters") {
@@ -50,6 +55,7 @@ struct DumpstersView: View {
                                 DumpsterTile(dumpster: dumpster, isSelected: false, showsPlace: true)
                             }
                             .buttonStyle(.plain)
+                            .contextMenu { DumpsterQuickMenu(dumpster: dumpster) }
                         }
                     }
                 }
@@ -60,5 +66,6 @@ struct DumpstersView: View {
         .background(Tint.boardPage)
         .environment(\.cardFill, Tint.boardCard)
         .navigationTitle("Dumpsters")
+        .refreshable { await SyncEngine.shared.syncNow(manual: true) }
     }
 }

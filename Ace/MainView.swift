@@ -22,7 +22,7 @@ struct MainView: View {
 
     /// A stored "today" (from before Calendar replaced Today) opens Calendar.
     @AppStorage(AppSettings.lastTabKey) private var lastTabRaw = AppTab.calendar.rawValue
-    @State private var engine = WhisperKitEngine()
+    @State private var engine = SpeechEngine()
     @State private var showingAssistant = false
     @State private var calendarPath = NavigationPath()
     /// The day chosen on the Calendar tab. Not remembered: the app always
@@ -49,31 +49,44 @@ struct MainView: View {
                         .toolbar { toolbarItems(showSettings: true, showToday: !calendarShowsToday) }
                         .navigationDestination(for: Screen.self, destination: screen)
                 }
+                .undoBar()
             }
             Tab("Jobs", systemImage: "list.bullet", value: AppTab.jobs) {
                 NavigationStack {
                     JobsView()
                         .toolbar { toolbarItems(showSettings: false) }
                 }
+                .undoBar()
             }
             Tab("Customers", systemImage: "person.2", value: AppTab.customers) {
                 NavigationStack {
                     CustomersView()
                         .toolbar { toolbarItems(showSettings: false) }
                 }
+                .undoBar()
             }
             Tab("Dumpsters", systemImage: "shippingbox", value: AppTab.dumpsters) {
                 NavigationStack {
                     DumpstersView()
                         .toolbar { toolbarItems(showSettings: false) }
                 }
+                .undoBar()
             }
             Tab("Labor", systemImage: "clock", value: AppTab.labor) {
                 NavigationStack {
                     LaborView()
                         .toolbar { toolbarItems(showSettings: false) }
                 }
+                .undoBar()
             }
+        }
+        .jobActionsHost()
+        .onReceive(NotificationCenter.default.publisher(for: .aceShowUnpaid)) { _ in
+            UserDefaults.standard.set(true, forKey: JobsView.openOnUnpaidKey)
+            lastTabRaw = AppTab.jobs.rawValue
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .aceShowDumpsters)) { _ in
+            lastTabRaw = AppTab.dumpsters.rawValue
         }
         .sheet(isPresented: $showingAssistant) {
             AssistantView(engine: engine)
@@ -108,6 +121,9 @@ struct MainView: View {
     /// while another day is chosen. It goes back to today and its month.
     @ToolbarContentBuilder
     private func toolbarItems(showSettings: Bool, showToday: Bool = false) -> some ToolbarContent {
+        ToolbarItem(placement: .navigation) {
+            SyncStatusButton()
+        }
         if showSettings {
             ToolbarItem(placement: .navigation) {
                 NavigationLink(value: Screen.settings) {

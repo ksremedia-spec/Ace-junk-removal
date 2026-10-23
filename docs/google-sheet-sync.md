@@ -1,6 +1,52 @@
 # Keeping Ashley's Google Sheet and Ace in step
 
-Plan only. Nothing here is built. Researched Oct 21, 2026 from Google's and
+**Status, Oct 21 (night): built and tested against a stand-in for Google
+on Kyle's Mac; not yet tried with real Google.** Server code:
+`cloudflare/ace-sync/src/google.js` (sign-in, the minute-by-minute check)
+and `src/sheet.js` (reading and writing Ashley's columns, the same rules as
+the Mac import). Mac: Settings › Google Sheet (`Ace/Sync/SheetLinkSection.swift`).
+Google setup steps: `google-cloud-setup.md`.
+
+Tested with `test/run-sheet-test.sh` (stand-in Google `test/fake-google.mjs`,
+separate test database), all 24 checks passing: connecting, matching a job
+already in Ace instead of doubling it, red = not paid, payment types,
+check number / not mailing / unknown house number into notes, edits both
+ways, a new Ace job placed as a row in date order, a typed row becoming a
+job, a customer renamed in Ace renaming the row, deletions both ways, and
+12 rows vanishing at once pausing the link with nothing deleted. A
+600-row first connection: 600 jobs, 480 customers, every row tagged.
+Then with the real apps: the Mac app and a phone Simulator started empty,
+Connect Google Sheet… was clicked on the Mac, and the 40-row sheet filled
+both; Mark paid on the Mac took the red off the row in about 12 seconds;
+a price typed in the sheet reached the Mac and the phone in about 70
+seconds and showed on the Mac's Unpaid list.
+
+**With real Google (Oct 21, night, Kyle's test account
+scjewleryshowcase@gmail.com, project "ace-test-512402", Testing mode with
+that account as the one test user):** Kyle connected "2026 ACE Books
+(test)" (600 fake jobs pasted into a Google Sheet, 43 red prices) from the
+Mac; the Mac app and a phone Simulator both filled with 600 jobs, 480
+customers, 43 unpaid, and all 600 rows were tagged. Google did pass
+`state` back through the picker. Lockstep test the same night, three
+devices (Mac app, phone Simulator A "Ashley", phone Simulator B "Alex",
+which filled itself from empty) plus the real sheet, all copies compared
+by a fingerprint of every job after each step:
+- price typed in the sheet → all three devices (about 5 s after the
+  sheet check);
+- 15 rows pasted into the sheet → 15 new jobs on all three (about 2 min);
+- Mark paid clicked on the Mac → both phones in 28 s, sheet row unpaid
+  flag cleared;
+- Mark paid tapped on phone A → Mac and phone B in 24 s, sheet updated;
+- a row deleted in the sheet → job gone on all three;
+- a job deleted on phone A (after its "Delete this job?" question) →
+  gone on the Mac, phone B and the sheet.
+After every step all copies matched (end: 613 jobs, $244,250). Still
+unknown: whether hidden row tags survive sorting, cutting
+and pasting (Google does not say); whether Cloudflare's free plan's 10 ms
+of CPU per run is enough to read a 600-row sheet (if not, the $5 a month
+Workers plan allows far more).
+
+Original plan follows. Researched Oct 21, 2026 from Google's and
 Cloudflare's own documentation (links at the end); anything those pages do
 not say is marked **unconfirmed**.
 

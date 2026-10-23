@@ -12,8 +12,6 @@ enum AppSettings {
     static let claudeModelKey = "settings.claudeModel"
 
     /// Which WhisperKit model the Assistant uses.
-    static let speechModelKey = "settings.speechModel"
-    static let defaultSpeechModel = "openai_whisper-base.en"
 
     /// Effort level sent to Claude for Assistant requests.
     static let effortKey = "settings.claudeEffort"
@@ -53,10 +51,6 @@ enum AppSettings {
 
     static var claudeModel: ClaudeModel {
         ClaudeModel(rawValue: UserDefaults.standard.string(forKey: claudeModelKey) ?? "") ?? .haiku
-    }
-
-    static var speechModel: String {
-        UserDefaults.standard.string(forKey: speechModelKey) ?? defaultSpeechModel
     }
 
     static var effort: ClaudeEffort {

@@ -80,6 +80,7 @@ struct DumpsterDetailView: View {
             if !historyNewestFirst.isEmpty {
                 Section("Past rentals") {
                     ForEach(historyNewestFirst) { record in
+                        NavigationLink { RentalRecordView(record: record) } label: {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(record.customer?.name ?? "No customer")
                                 .font(.headline)
@@ -89,6 +90,7 @@ struct DumpsterDetailView: View {
                             Text(historyLine(record))
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
+                        }
                         }
                     }
                 }

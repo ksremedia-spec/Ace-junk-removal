@@ -15,7 +15,7 @@ struct JobReviewView: View {
     /// them unless the name is changed to someone else.
     let knownCustomer: Customer?
     /// The voice model, for answering the Missing questions by voice.
-    let engine: WhisperKitEngine?
+    let engine: SpeechEngine?
     var onSaved: () -> Void
     var onStartOver: () -> Void
 
@@ -70,7 +70,7 @@ struct JobReviewView: View {
     @State private var saved = false
     @State private var flagged = 0
 
-    init(draft: JobDraft, knownCustomer: Customer? = nil, engine: WhisperKitEngine? = nil,
+    init(draft: JobDraft, knownCustomer: Customer? = nil, engine: SpeechEngine? = nil,
          onSaved: @escaping () -> Void, onStartOver: @escaping () -> Void) {
         self.draft = draft
         self.knownCustomer = knownCustomer
@@ -80,7 +80,7 @@ struct JobReviewView: View {
 
         let parsedDate = Self.parse(date: draft.date, time: draft.time)
         let parsedType = draft.jobType.trimmingCharacters(in: .whitespaces).isEmpty ? .junkRemoval : JobType(stored: draft.jobType)
-        let parsedPayment = Self.payment(from: draft.paymentType)
+        let parsedPayment = JobDraft.paymentType(from: draft.paymentType) ?? .unknown
         let parsedPaid = draft.paid.lowercased() == "paid"
         // An end time only counts with a start time; nothing is assumed.
         let parsedEnd = parsedDate.hasTime ? JobTimes.end(fromClock: draft.endTime, on: parsedDate.date) : nil
@@ -519,9 +519,12 @@ struct JobReviewView: View {
         let customer: Customer
         if let match = matchingCustomer {
             customer = match
-            if customer.phone.isEmpty, !phoneDigits.isEmpty { customer.phone = PhoneFormat.formatted(phone) }
-            if customer.address.isEmpty { customer.address = fullAddress }
-            customer.updatedAt = Date()
+            var changed = false
+            if customer.phone.isEmpty, !phoneDigits.isEmpty { customer.phone = PhoneFormat.formatted(phone); changed = true }
+            if customer.address.isEmpty, !fullAddress.isEmpty { customer.address = fullAddress; changed = true }
+            // Stamped only when something changed: a stamp alone sends the
+            // customer to every device and their rows to the sheet.
+            if changed { customer.updatedAt = Date() }
         } else {
             let trimmedName = name.trimmingCharacters(in: .whitespaces)
             customer = Customer(
@@ -540,7 +543,7 @@ struct JobReviewView: View {
             price: Parse.money(priceText),
             paymentType: paymentType,
             isPaid: isPaid,
-            notes: notes.trimmingCharacters(in: .whitespacesAndNewlines)
+            notes: CustomerAddress.notes(notes, saidAddress: fullAddress, onFile: customer.address)
         )
         context.insert(job)
         job.customer = customer
@@ -571,12 +574,4 @@ struct JobReviewView: View {
         return (day, false)
     }
 
-    private static func payment(from text: String) -> PaymentType {
-        switch text.lowercased() {
-        case "cash": return .cash
-        case "check": return .check
-        case "card": return .card
-        default: return .unknown
-        }
-    }
 }

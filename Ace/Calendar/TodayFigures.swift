@@ -9,6 +9,10 @@ struct TodayFigures: View {
     let quotes: [Quote]
     /// iPhone: tapping Quotes opens the Quotes tab.
     var onShowQuotes: (() -> Void)? = nil
+    /// Tapping Owed opens the unpaid jobs; Dumpsters opens the dumpsters
+    /// (audit Oct 21, design idea 5: every figure opens what it counts).
+    var onShowOwed: (() -> Void)? = nil
+    var onShowDumpsters: (() -> Void)? = nil
     /// Two rows of two, or one row of four on the wide Mac board.
     var columns = 2
 
@@ -28,26 +32,43 @@ struct TodayFigures: View {
                 value: Plural.text(todaysOpenJobs.count, "job"),
                 detail: todaysOpenJobs.priceTotal > 0 ? Money.text(todaysOpenJobs.priceTotal) + " booked" : "Nothing priced"
             )
-            StatTile(
-                title: "Owed",
-                value: Money.text(owedTotal),
-                detail: owedJobs.isEmpty ? "All paid" : "from " + Plural.text(owedJobs.count, "job"),
-                tint: owedTotal > 0 ? Tint.owed : .primary
-            )
-            StatTile(
-                title: "Dumpsters",
-                value: dumpsterValue,
-                detail: dumpsterDetail,
-                tint: !overdue.isEmpty ? Tint.overdue : (!dueToday.isEmpty ? Tint.owed : .primary)
-            )
-            if let onShowQuotes {
-                Button(action: onShowQuotes) {
-                    quotesTile
-                }
-                .buttonStyle(.plain)
-            } else {
-                quotesTile
+            tappable(onShowOwed) {
+                StatTile(
+                    title: "Owed",
+                    value: Money.text(owedTotal),
+                    detail: owedJobs.isEmpty ? "All paid" : "from " + Plural.text(owedJobs.count, "job"),
+                    tint: owedTotal > 0 ? Tint.owed : .primary
+                )
             }
+            tappable(onShowDumpsters) {
+                StatTile(
+                    title: "Dumpsters",
+                    value: dumpsterValue,
+                    detail: dumpsterDetail,
+                    tint: !overdue.isEmpty ? Tint.overdue : (!dueToday.isEmpty ? Tint.owed : .primary)
+                )
+            }
+            tappable(onShowQuotes) { quotesTile }
+        }
+    }
+
+    /// A tile that opens something gets a small arrow, like a list row.
+    @ViewBuilder
+    private func tappable<Tile: View>(_ action: (() -> Void)?, @ViewBuilder tile: () -> Tile) -> some View {
+        if let action {
+            Button(action: action) {
+                tile()
+                    .overlay(alignment: .topTrailing) {
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                            .padding(Space.m)
+                            .accessibilityHidden(true)
+                    }
+            }
+            .buttonStyle(.plain)
+        } else {
+            tile()
         }
     }
 
@@ -78,4 +99,11 @@ struct TodayFigures: View {
         if openQuotes.isEmpty { return "None waiting" }
         return total > 0 ? Money.text(total) + " waiting" : "None priced"
     }
+}
+
+extension Notification.Name {
+    /// Show the unpaid jobs (from the Owed figure).
+    static let aceShowUnpaid = Notification.Name("aceShowUnpaid")
+    /// Show the dumpsters (from the Dumpsters figure).
+    static let aceShowDumpsters = Notification.Name("aceShowDumpsters")
 }

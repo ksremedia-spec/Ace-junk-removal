@@ -8,6 +8,7 @@ struct WelcomeView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("importedSheet") private var importedSheet = false
     @AppStorage(Beta.examplesKey) private var examplesLoaded = false
+    @State private var sheetConnected = false
     /// Picks a sidebar section, closing the guide first.
     let go: (MacMainView.SidebarItem) -> Void
     let importSheet: () -> Void
@@ -36,10 +37,20 @@ struct WelcomeView: View {
             }
 
             VStack(spacing: 0) {
-                step(1, "Bring in the spreadsheet",
-                     "In Google Sheets, open the job list and choose File › Download › Microsoft Excel (.xlsx). Then import that file here. Ace shows what it found before anything is saved.",
-                     done: importedSheet) {
-                    Button("Import…") { importSheet() }
+                if SyncEngine.shared.isSetUp {
+                    // With sync on, the sheet itself is connected; importing
+                    // it as well would make second copies (audit Oct 21, M10).
+                    step(1, "Connect the Google Sheet",
+                         "In Settings, under Google Sheet, click Connect Google Sheet, sign in, click Allow and pick the job sheet. Its jobs come into Ace, and the two stay in step from then on.",
+                         done: sheetConnected) {
+                        SettingsLink { Text("Open Settings") }
+                    }
+                } else {
+                    step(1, "Bring in the spreadsheet",
+                         "In Google Sheets, open the job list and choose File › Download › Microsoft Excel (.xlsx). Then import that file here. Ace shows what it found before anything is saved.",
+                         done: importedSheet) {
+                        Button("Import…") { importSheet() }
+                    }
                 }
                 Divider().padding(.leading, 52)
                 step(2, "Set up the dumpsters",
@@ -85,6 +96,11 @@ struct WelcomeView: View {
             }
         }
         .padding(Space.xl)
+        .task {
+            if SyncEngine.shared.isSetUp {
+                sheetConnected = await SyncEngine.shared.sheet("status")?.connected ?? false
+            }
+        }
         .frame(width: 620)
         .fixedSize(horizontal: false, vertical: true)
     }

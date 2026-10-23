@@ -36,17 +36,20 @@ Kyle works in the Claude desktop app (Code tab, local session, with computer use
 - Distribution is direct install from Kyle's Mac (ad hoc or sideload), not the
   App Store or TestFlight.
 - Data is stored on the device first, so the app works offline, and syncs to a
-  shared backend on Cloudflare (Workers + D1) owned by the client.
-  Backend details: [CLOUDFLARE ACCOUNT / WORKER URL].
+  shared backend on Cloudflare (Workers + D1). Kyle, Oct 21 2026: it runs on
+  Kyle's own Cloudflare account for now (and Google sign-in on his Google
+  Cloud project), so the client has nothing to set up; it can move to them
+  later. Details: `docs/device-sync.md`, `docs/decisions.md`. The server
+  address is kept out of this public repository.
 - AI calls go to the Anthropic API using the client's own account. Starting
   model: `claude-haiku-5-5`. Keep `claude-sonnet-5-5` available as a switch for
   testing. The API key is typed in once per device in Settings and stored in
   the Keychain. It is never stored on the server or in the code.
 - Speech-to-text runs on the device. Do NOT use Apple's keyboard dictation
-  engine. Candidates: WhisperKit (open source, Argmax) and Apple's
-  SpeechTranscriber from the SpeechAnalyzer framework (the newer engine behind
-  Notes and Voice Memos transcripts, not DictationTranscriber). The winner is
-  picked by testing on a real iPhone.
+  engine. Kyle, Oct 23 2026: use Apple's SpeechTranscriber (SpeechAnalyzer
+  framework, the engine behind Notes and Voice Memos transcripts, not
+  DictationTranscriber) on iPhone and Mac. WhisperKit was removed: in his own
+  testing on his phone it was too heavy. Code: `Ace/Speech/SpeechEngine.swift`.
 
 ## Features for version 1
 
@@ -162,8 +165,8 @@ October 31, 2026.
   errors. Mark view-facing model classes `@MainActor @Observable`.
 - Claude requests use structured output (`output_config.format`) and never
   send `temperature` or a forced `tool_choice`: the current models reject them.
-- WhisperKit is the `WhisperKit` product of the `argmax-oss-swift` package
-  (repository `https://github.com/argmaxinc/argmax-oss-swift`, version 1.1.1
-  or newer; the old `argmaxinc/WhisperKit` URL redirects there). The 1.0
-  release changed the API, so ignore tutorials written for 0.x. A
-  source-verified API reference is in `docs/whisperkit-api.md`.
+- Apple's speech API: check the Speech framework's .swiftinterface in Xcode's
+  SDK before using anything; several helpers (AnalyzerInputConverter,
+  CaptureInputSequenceProvider) are iOS 27 only, and the app's minimum is 26.
+  WhisperKit is no longer used (`docs/whisperkit-api.md` is kept only as
+  history).

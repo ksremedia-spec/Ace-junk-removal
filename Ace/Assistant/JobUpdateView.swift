@@ -176,6 +176,15 @@ private struct JobUpdateForm: View {
         _noteToAdd = State(initialValue: draft.notes)
 
         var flags = AssistantFlags(draft: draft)
+        // "Paid 250" on a $300 job: an amount paid is not a new price, so
+        // ask before lowering it (audit Oct 21, fix-now 14).
+        if draft.paid.lowercased() == "paid", let said = Parse.money(draft.price), let old = job.price, said < old {
+            flags.add("price", "Job was \(Money.text(old)). Was \(Money.text(said)) the whole price, or a part payment? Change it back if part is still owed.")
+        }
+        // A future job marked paid: usually the note meant one already done.
+        if draft.paid.lowercased() == "paid", job.scheduledAt > Dates.startOfToday().addingTimeInterval(86_400) {
+            flags.add("paid", "This job is booked for \(Dates.shortDay(job.scheduledAt)). Check it's the job that was paid.")
+        }
         let endSaid: Bool = saidEnd != nil
         let heardAChange = done == "yes" || done == "no" || paid == "paid" || paid == "unpaid" || paymentSaid != nil
             || !draft.price.isEmpty || !draft.newDate.isEmpty || !draft.newTime.isEmpty || !draft.notes.isEmpty

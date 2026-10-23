@@ -207,7 +207,7 @@ final class FollowUpListener {
         }
     }
 
-    func begin(_ gap: Gap, engine: WhisperKitEngine) {
+    func begin(_ gap: Gap, engine: SpeechEngine) {
         guard phase == .idle else { return }
         do {
             try engine.startListening()
@@ -227,7 +227,7 @@ final class FollowUpListener {
     }
 
     /// The talk button was let go: what was said, read into the field's value.
-    func end(engine: WhisperKitEngine, form: String) async -> Outcome {
+    func end(engine: SpeechEngine, form: String) async -> Outcome {
         guard case .listening(let gap) = phase else { return .none }
         phase = .working(gap)
         defer { phase = .idle }
@@ -250,7 +250,7 @@ final class FollowUpListener {
     }
 
     /// Stops listening without reading anything, when the form closes.
-    func cancel(engine: WhisperKitEngine?) {
+    func cancel(engine: SpeechEngine?) {
         guard case .listening = phase else { return }
         phase = .idle
         Task { await engine?.cancelListening() }
@@ -266,7 +266,7 @@ final class FollowUpListener {
 struct MissingSection: View {
     let gaps: [Gap]
     /// The voice model; the talk button shows once it is ready.
-    let engine: WhisperKitEngine?
+    let engine: SpeechEngine?
     /// The form as it stands, for reading a spoken answer in context.
     var formSummary: () -> String
     /// Puts the cursor in the gap's field.
@@ -348,7 +348,7 @@ struct MissingSection: View {
         }
     }
 
-    private func finish(_ gap: Gap, engine: WhisperKitEngine) {
+    private func finish(_ gap: Gap, engine: SpeechEngine) {
         Task { @MainActor in
             switch await listener.end(engine: engine, form: formSummary()) {
             case .value(let value):

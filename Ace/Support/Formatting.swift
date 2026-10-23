@@ -169,8 +169,21 @@ enum Parse {
         return Double(match.output.0.replacingOccurrences(of: ",", with: ""))
     }
 
+    /// A dumpster weight in tons. "2,8" is 2.8 (a decimal comma); "5600",
+    /// "5600 lb" or "5,600 pounds" are pounds and become 2.8 tons: no
+    /// dumpster holds 100 tons, so a bare number over 100 is pounds (audit
+    /// Oct 21, fix-now 13: 5600 had been read as 5,600 tons).
     static func tons(_ text: String) -> Double? {
-        money(text)
+        let lower = text.lowercased().trimmingCharacters(in: .whitespaces)
+        let saysPounds = lower.contains("lb") || lower.contains("pound")
+        var cleaned = lower
+        // "2,8" or "2,75": a lone comma before one or two digits is a decimal.
+        if lower.range(of: #"^\D*\d+,\d{1,2}\D*$"#, options: .regularExpression) != nil {
+            cleaned = lower.replacingOccurrences(of: ",", with: ".")
+        }
+        guard let value = money(cleaned) else { return nil }
+        if saysPounds || value > 100 { return (value / 2000 * 100).rounded() / 100 }
+        return value
     }
 
     static func moneyText(_ amount: Double?) -> String {

@@ -225,11 +225,14 @@ struct JobEditView: View {
         .sensoryFeedback(.warning, trigger: flagged)
         // On the Mac the list's right-click menu can change these while this
         // form is open; keep the form in step so Save does not undo them.
-        .onChange(of: job?.isDone) { _, newValue in
-            if !deleted, let newValue { form.isDone = newValue; original.isDone = newValue }
-        }
-        .onChange(of: job?.isPaid) { _, newValue in
-            if !deleted, let newValue { form.isPaid = newValue; original.isPaid = newValue }
+        // Changed elsewhere while open (the Mac list's menu, another device
+        // by sync): untouched fields follow, typed ones are kept, so Save
+        // never undoes the other change (audit Oct 21, M8).
+        .onChange(of: job?.updatedAt) { _, _ in
+            guard !deleted, let job else { return }
+            let fresh = JobFormData(job: job)
+            form = form.merging(fresh: fresh, base: original)
+            original = fresh
         }
         // On the Mac this page sits beside the list: clicking another job
         // used to throw away unsaved changes without a word. Like Mail and
@@ -327,19 +330,11 @@ struct JobEditView: View {
     /// The header's Done and Paid buttons save straight away, the same as
     /// the list's right-click menu; the form follows through onChange.
     private func setDone(_ done: Bool, on job: Job) {
-        job.isDone = done
-        job.updatedAt = Date()
-        try? context.save()
-        CalendarStore.shared.jobSaved(job)
-        saved.toggle()
+        JobActions.shared.setDone(done, job, in: context)
     }
 
     private func setPaid(_ paid: Bool, on job: Job) {
-        job.isPaid = paid
-        job.updatedAt = Date()
-        try? context.save()
-        CalendarStore.shared.jobSaved(job)
-        saved.toggle()
+        JobActions.shared.setPaid(paid, job, in: context)
     }
 
     /// Other unfinished timed jobs that day that this one would clash with.
@@ -389,9 +384,10 @@ struct JobEditView: View {
             target = Job(customer: nil, jobType: form.jobType, scheduledAt: form.date, hasTime: form.hasTime)
             context.insert(target)
         }
-        form.apply(to: target)
+        form.apply(to: target, changedSince: job == nil ? nil : original)
         try? context.save()
         CalendarStore.shared.jobSaved(target)
+        form = JobFormData(job: target)
         original = form
         return target
     }

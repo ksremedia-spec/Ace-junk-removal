@@ -36,7 +36,10 @@ struct MacBoard: View {
         ScrollView {
             VStack(alignment: .leading, spacing: Space.xl) {
                 header
-                TodayFigures(jobs: jobs, dumpsters: dumpsters, quotes: quotes, columns: 4)
+                TodayFigures(jobs: jobs, dumpsters: dumpsters, quotes: quotes,
+                             onShowOwed: { NotificationCenter.default.post(name: .aceShowUnpaid, object: nil) },
+                             onShowDumpsters: { NotificationCenter.default.post(name: .aceShowDumpsters, object: nil) },
+                             columns: 4)
                 switch mode {
                 case .week:
                     WeekBoard(days: weekDays, day: $day, selection: $selection,

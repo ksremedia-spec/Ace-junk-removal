@@ -4,12 +4,11 @@ import SwiftUI
 /// through the speech engine. Shows the transcript and how long it took.
 struct SpeechTestView: View {
     /// Owned by RootView so the loaded model survives leaving this screen.
-    let engine: WhisperKitEngine
+    let engine: SpeechEngine
 
     @State private var store = RecordingStore()
     @State private var recorder = AudioRecorder()
 
-    @AppStorage("debug.whisperModel") private var selectedModel = "openai_whisper-base.en"
     @AppStorage("debug.transcript") private var sharedTranscript = ""
 
     @State private var label = ""
@@ -37,57 +36,40 @@ struct SpeechTestView: View {
         }
     }
 
-    // MARK: Model
+    // MARK: Engine
 
     private var modelSection: some View {
         Section {
-            Picker("Model", selection: $selectedModel) {
-                ForEach(WhisperKitEngine.modelChoices) { choice in
-                    Text(choice.shortName)
-                        .tag(choice.name)
-                }
-            }
-            if let description = WhisperKitEngine.modelChoices.first(where: { $0.name == selectedModel })?.description {
-                Text(description)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-
             switch engine.state {
             case .notLoaded:
-                Button("Load model") {
-                    Task { await engine.load(model: selectedModel) }
+                Button("Get voice ready") {
+                    Task { await engine.load() }
                 }
             case .downloading(let fraction):
                 ProgressView(value: fraction) {
-                    Text("Downloading model")
+                    Text("Downloading Apple's English speech model")
                 } currentValueLabel: {
                     Text(fraction.formatted(.percent.precision(.fractionLength(0))))
                 }
             case .loading:
                 HStack {
                     ProgressView()
-                    Text("Preparing model for this device. The first time can take several minutes.")
+                    Text("Getting voice ready.")
                         .foregroundStyle(.secondary)
                 }
             case .ready:
-                LabeledContent("Loaded", value: WhisperKitEngine.shortName(engine.loadedModel))
-                if engine.loadedModel != selectedModel {
-                    Button("Switch to selected model") {
-                        Task { await engine.load(model: selectedModel) }
-                    }
-                }
+                LabeledContent("Voice", value: "Ready")
             case .failed(let message):
                 Label(message, systemImage: "exclamationmark.triangle")
                     .foregroundStyle(.secondary)
                 Button("Try again") {
-                    Task { await engine.load(model: selectedModel) }
+                    Task { await engine.load() }
                 }
             }
         } header: {
-            Text("WhisperKit")
+            Text("Apple speech recognition")
         } footer: {
-            Text("The model downloads once (needs internet), then works offline.")
+            Text("Apple's own engine, on this device. If English isn't installed yet it downloads once, then works offline.")
         }
     }
 
@@ -180,7 +162,7 @@ struct SpeechTestView: View {
 
             if let text = recording.whisperText {
                 Divider()
-                Text("WhisperKit · \(WhisperKitEngine.shortName(recording.whisperModel)) · \(recording.whisperSeconds ?? 0, format: .number.precision(.fractionLength(1))) s")
+                Text("\(recording.whisperModel ?? "Apple") · \(recording.whisperSeconds ?? 0, format: .number.precision(.fractionLength(1))) s")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                 Text(text.isEmpty ? "(nothing recognized)" : text)
@@ -191,10 +173,6 @@ struct SpeechTestView: View {
                 .font(.footnote)
             }
 
-            Divider()
-            Text("Apple SpeechTranscriber · not added yet")
-                .font(.footnote)
-                .foregroundStyle(.tertiary)
 
             HStack {
                 if transcribingID == recording.id {
@@ -222,7 +200,7 @@ struct SpeechTestView: View {
             do {
                 let result = try await engine.transcribe(fileURL: recording.fileURL)
                 var updated = recording
-                updated.whisperModel = engine.loadedModel
+                updated.whisperModel = "Apple"
                 updated.whisperText = result.text
                 updated.whisperSeconds = result.seconds
                 store.update(updated)

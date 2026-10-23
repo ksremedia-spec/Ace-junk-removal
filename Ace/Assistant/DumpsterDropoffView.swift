@@ -91,6 +91,14 @@ struct DumpsterDropoffView: View {
         if draft.dueBack.isEmpty {
             flags.add("dueBack", "No due-back day was said. A week from today?")
         }
+        // Without these the overweight charge at pickup can't be worked out
+        // (audit Oct 21, fix-now 11). Flagged, not blocking.
+        if Parse.tons(draft.agreedTons) == nil {
+            flags.add("agreedTons", "No agreed weight was said. The overweight charge needs one.")
+        }
+        if Parse.money(draft.price) == nil {
+            flags.add("price", "No price was said.")
+        }
         self.flags = flags
     }
 

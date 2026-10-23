@@ -3,7 +3,8 @@
   "private": true,
   "description": "Ace's sync server: keeps the iPhone and the Mac in step (Cloudflare Worker + D1).",
   "scripts": {
-    "dev": "wrangler dev --ip 0.0.0.0 --port 8787",
+    "dev": "wrangler dev --ip 0.0.0.0 --port 8787 --test-scheduled",
+    "sheet": "curl -s http://localhost:8787/cdn-cgi/local/scheduled",
     "migrate:local": "wrangler d1 migrations apply ace-sync --local"
   },
   "dependencies": {

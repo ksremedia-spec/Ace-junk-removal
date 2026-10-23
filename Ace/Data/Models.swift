@@ -223,7 +223,10 @@ final class Dumpster {
         self.isOut = false
         self.location = ""
         self.notes = ""
-        self.updatedAt = Date()
+        // As old as possible: dumpster N has the same sync ID on every
+        // device, so a blank one set up on a new or cleared device must lose
+        // to the real one (audit Oct 21, M5). Any real change stamps now.
+        self.updatedAt = Date(timeIntervalSince1970: 0)
     }
 
     var displayName: String {
@@ -278,6 +281,9 @@ final class Dumpster {
             actualWeightTons: actualWeightTons,
             ratePerTon: ratePerTon
         )
+        // The same drop-off picked up on two devices is one rental, not two
+        // (audit Oct 21, fix-now 3).
+        record.syncID = SyncIDs.rental(dumpster: number, droppedOff: record.droppedOffAt)
         // Insert first, then connect, so relationships are set on a stored record.
         modelContext?.insert(record)
         record.customer = customer
@@ -399,6 +405,12 @@ extension Customer {
     }
 
     /// "tel:5085550147", for a Call link. Nil without a phone number.
+    /// "15 Bay Road, Fall River": the address without the state and ZIP.
+    var shortAddress: String {
+        let parts = address.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        return parts.prefix(2).joined(separator: ", ")
+    }
+
     var phoneURL: URL? {
         let digits = phoneDigits
         guard !digits.isEmpty else { return nil }

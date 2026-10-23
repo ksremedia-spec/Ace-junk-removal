@@ -52,6 +52,9 @@ struct AceCommands: Commands {
                 NotificationCenter.default.post(name: .aceImport, object: nil)
             }
             .keyboardShortcut("i", modifiers: [.command, .shift])
+            // With sync on, jobs come from the Google Sheet; an import as
+            // well would make second copies there (audit Oct 21, M10).
+            .disabled(SyncEngine.shared.isSetUp)
         }
 
         CommandGroup(after: .textEditing) {
@@ -73,6 +76,13 @@ struct AceCommands: Commands {
                 NotificationCenter.default.post(name: .aceGoToToday, object: nil)
             }
             .keyboardShortcut("t", modifiers: .command)
+
+            // Design idea 7 (audit Oct 21): sync on demand.
+            Button("Sync Now") {
+                Task { await SyncEngine.shared.syncNow(manual: true) }
+            }
+            .keyboardShortcut("r", modifiers: .command)
+            .disabled(!SyncEngine.shared.isSetUp)
 
             Divider()
         }

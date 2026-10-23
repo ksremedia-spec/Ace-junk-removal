@@ -72,7 +72,7 @@ struct MacMainView: View {
     /// A stored "today" (from before Calendar replaced Today) opens Calendar.
     @AppStorage(AppSettings.lastTabKey) private var sidebarRaw = SidebarItem.calendar.rawValue
 
-    @State private var engine = WhisperKitEngine()
+    @State private var engine = SpeechEngine()
     @State private var selectedJob: Job?
     @State private var selectedCustomer: Customer?
     @State private var selectedDumpster: Dumpster?
@@ -116,6 +116,8 @@ struct MacMainView: View {
 
     var body: some View {
         splitView
+        .jobActionsHost()
+        .modifier(FigureShortcuts(sidebarRaw: $sidebarRaw))
         .searchable(text: $searchText, placement: .toolbar, prompt: "Search")
         .searchFocused($searchFocused)
         .toolbar {
@@ -139,6 +141,7 @@ struct MacMainView: View {
                         .labelStyle(.titleAndIcon)
                 }
                 .help("Assistant (⇧⌘A)")
+                SyncStatusButton()
                 // Kyle could not find Settings: it lived only in the app menu.
                 SettingsLink {
                     Label("Settings", systemImage: "gearshape")
@@ -332,11 +335,14 @@ struct MacMainView: View {
     private var sidebarRows: some View {
         sidebarItems
             .safeAreaInset(edge: .bottom) {
-                AceLogo(height: 30)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, Space.l)
-                    .padding(.bottom, Space.l)
+                VStack(alignment: .leading, spacing: Space.s) {
+                    SyncFootnote()
+                    AceLogo(height: 30)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, Space.l)
+                .padding(.bottom, Space.l)
             }
     }
 
@@ -900,11 +906,11 @@ struct MacDumpsterBoard: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Dumpsters")
                         .font(.largeTitle.weight(.bold))
-                    Text(dumpsters.isEmpty ? "None set up yet." : summary)
+                    Text(dumpsters.isEmpty ? (SyncEngine.shared.isWaitingForFirstSync ? "Getting them from the other devices…" : "None set up yet.") : summary)
                         .font(.title3)
                         .foregroundStyle(.secondary)
                 }
-                if dumpsters.isEmpty {
+                if dumpsters.isEmpty && !SyncEngine.shared.isWaitingForFirstSync {
                     Button("Set up 6 dumpsters") {
                         for number in 1...6 {
                             context.insert(Dumpster(number: number))
@@ -940,16 +946,10 @@ struct JobContextMenu: View {
 
     var body: some View {
         Button(job.isDone ? "Mark Not Done" : "Mark Done") {
-            job.isDone.toggle()
-            job.updatedAt = Date()
-            try? context.save()
-            CalendarStore.shared.jobSaved(job)
+            JobActions.shared.setDone(!job.isDone, job, in: context)
         }
-        Button(job.isPaid ? "Mark Unpaid" : "Mark Paid") {
-            job.isPaid.toggle()
-            job.updatedAt = Date()
-            try? context.save()
-            CalendarStore.shared.jobSaved(job)
+        Button(job.isPaid ? "Mark Unpaid" : "Mark Paid…") {
+            JobActions.shared.setPaid(!job.isPaid, job, in: context)
         }
         Divider()
         Button("Delete Job…", role: .destructive) {
@@ -960,8 +960,23 @@ struct JobContextMenu: View {
 
 // MARK: - Settings window (app menu › Settings, ⌘,)
 
+/// The board's Owed and Dumpsters figures open their sections.
+private struct FigureShortcuts: ViewModifier {
+    @Binding var sidebarRaw: String
+
+    func body(content: Content) -> some View {
+        content
+            .onReceive(NotificationCenter.default.publisher(for: .aceShowUnpaid)) { _ in
+                sidebarRaw = MacMainView.SidebarItem.unpaid.rawValue
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .aceShowDumpsters)) { _ in
+                sidebarRaw = MacMainView.SidebarItem.dumpsters.rawValue
+            }
+    }
+}
+
 struct MacSettingsWindow: View {
-    @State private var engine = WhisperKitEngine()
+    @State private var engine = SpeechEngine()
 
     var body: some View {
         NavigationStack {

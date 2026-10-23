@@ -11,6 +11,9 @@ struct JobCard: View {
     @Environment(\.dynamicTypeSize) private var typeSize
     let job: Job
     let isSelected: Bool
+    /// The street and town under the name: on the iPhone's day list, so
+    /// Alex sees where without opening the job (audit Oct 21, idea 3).
+    var showsAddress = false
 
     private var timeText: String {
         job.hasTime ? JobTimes.text(start: job.scheduledAt, end: nil) : "Any time"
@@ -52,6 +55,12 @@ struct JobCard: View {
                 .foregroundStyle(.secondary)
                 // Wraps at the largest text sizes so the price is not cut.
                 .lineLimit(typeSize.isAccessibilitySize ? 3 : 1)
+            if showsAddress, let place = job.customer?.shortAddress, !place.isEmpty {
+                Text(place)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(typeSize.isAccessibilitySize ? 3 : 1)
+            }
         }
         .padding(.horizontal, Space.s)
         .padding(.vertical, 7)
@@ -272,5 +281,59 @@ struct BoardRow<Label: View>: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
+    }
+}
+
+/// The next job today, at the top of the iPhone Calendar: where, when, and
+/// Call and Directions one tap away (audit Oct 21, design idea 3).
+struct NextJobCard: View {
+    let job: Job
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.s) {
+            NavigationLink {
+                JobEditView(job: job)
+            } label: {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Next")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(job.jobType.tint)
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(job.customer?.name ?? "No customer")
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(.primary)
+                        Spacer(minLength: Space.s)
+                        Text(job.hasTime ? JobTimes.text(start: job.scheduledAt, end: job.endsAt) : "Any time")
+                            .font(.callout.weight(.medium))
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
+                    Text([job.jobType.rawValue, job.price.map(Money.text)].compactMap { $0 }.joined(separator: " · "))
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    if let address = job.customer?.address, !address.isEmpty {
+                        Text(address)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            FlowRow(spacing: Space.s) {
+                if let url = job.customer?.phoneURL {
+                    Link(destination: url) { Label("Call", systemImage: "phone.fill") }
+                        .buttonStyle(.action(Tint.paid, prominent: true))
+                }
+                if let address = job.customer?.address, let url = Maps.directions(to: address) {
+                    Link(destination: url) { Label("Directions", systemImage: "map.fill") }
+                        .buttonStyle(.action(.accentColor, prominent: true))
+                }
+            }
+        }
+        .padding(Space.m)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardBackground()
     }
 }

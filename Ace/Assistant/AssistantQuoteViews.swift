@@ -21,7 +21,7 @@ struct NewQuoteView: View {
     let knownCustomer: Customer?
     private let flags: AssistantFlags
     /// The voice model, for answering the Missing questions by voice.
-    let engine: WhisperKitEngine?
+    let engine: SpeechEngine?
     var onFinish: (String) -> Void
     var onStartOver: () -> Void
 
@@ -41,7 +41,7 @@ struct NewQuoteView: View {
     @State private var scrollTarget: Gap?
 
     init(action: AssistantAction, issues: [PlanIssue], customers: [Customer], knownCustomer: Customer?,
-         engine: WhisperKitEngine? = nil,
+         engine: SpeechEngine? = nil,
          onFinish: @escaping (String) -> Void, onStartOver: @escaping () -> Void) {
         self.customers = customers
         self.knownCustomer = knownCustomer
@@ -275,9 +275,12 @@ struct NewQuoteView: View {
         let customer: Customer
         if let match = matchingCustomer {
             customer = match
-            if customer.phone.isEmpty, !phoneDigits.isEmpty { customer.phone = PhoneFormat.formatted(phone) }
-            if customer.address.isEmpty { customer.address = fullAddress }
-            customer.updatedAt = Date()
+            var changed = false
+            if customer.phone.isEmpty, !phoneDigits.isEmpty { customer.phone = PhoneFormat.formatted(phone); changed = true }
+            if customer.address.isEmpty, !fullAddress.isEmpty { customer.address = fullAddress; changed = true }
+            // Stamped only when something changed: a stamp alone sends the
+            // customer to every device and their rows to the sheet.
+            if changed { customer.updatedAt = Date() }
         } else {
             customer = Customer(
                 name: trimmedName,
@@ -292,6 +295,7 @@ struct NewQuoteView: View {
         context.insert(quote)
         var data = form
         data.customer = customer
+        data.notes = CustomerAddress.notes(data.notes, saidAddress: fullAddress, onFile: customer.address)
         data.apply(to: quote)
         try? context.save()
         // A phone or address filled in above goes onto their jobs' events.
