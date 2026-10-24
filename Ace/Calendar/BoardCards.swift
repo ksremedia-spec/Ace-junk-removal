@@ -55,7 +55,9 @@ struct JobCard: View {
                 .foregroundStyle(.secondary)
                 // Wraps at the largest text sizes so the price is not cut.
                 .lineLimit(typeSize.isAccessibilitySize ? 3 : 1)
-            if showsAddress, let place = job.customer?.shortAddress, !place.isEmpty {
+            // The job's own address when one was said, not only the
+            // customer's on file (audit Oct 24, 39).
+            if showsAddress, let place = job.siteAddress.map(JobSite.short), !place.isEmpty {
                 Text(place)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -285,15 +287,17 @@ struct BoardRow<Label: View>: View {
 }
 
 /// The next job today, at the top of the iPhone Calendar: where, when, and
-/// Call and Directions one tap away (audit Oct 21, design idea 3).
+/// Call and Directions one tap away (audit Oct 21, design idea 3). The
+/// address is the job's own when one was said (audit Oct 24, 39).
 struct NextJobCard: View {
     let job: Job
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.s) {
-            NavigationLink {
-                JobEditView(job: job)
-            } label: {
+            // Opened by value (MainView's Calendar stack has the page), so
+            // Mark done on it does not close it when this card moves on to
+            // the following job (audit Oct 24, 37).
+            NavigationLink(value: job) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Next")
                         .font(.caption.weight(.semibold))
@@ -311,7 +315,7 @@ struct NextJobCard: View {
                     Text([job.jobType.rawValue, job.price.map(Money.text)].compactMap { $0 }.joined(separator: " · "))
                         .font(.callout)
                         .foregroundStyle(.secondary)
-                    if let address = job.customer?.address, !address.isEmpty {
+                    if let address = job.siteAddress {
                         Text(address)
                             .font(.callout)
                             .foregroundStyle(.secondary)
@@ -326,7 +330,7 @@ struct NextJobCard: View {
                     Link(destination: url) { Label("Call", systemImage: "phone.fill") }
                         .buttonStyle(.action(Tint.paid, prominent: true))
                 }
-                if let address = job.customer?.address, let url = Maps.directions(to: address) {
+                if let address = job.siteAddress, let url = Maps.directions(to: address) {
                     Link(destination: url) { Label("Directions", systemImage: "map.fill") }
                         .buttonStyle(.action(.accentColor, prominent: true))
                 }

@@ -393,3 +393,18 @@ own repository with its own rules file (`CLAUDE.md`).
 - Possible next step, not built: give the engine the customer, street and town
   names as hints (AnalysisContext.contextualStrings).
 
+
+## iPhones get Ace through TestFlight, not Ad Hoc (2026-10-24)
+
+- Kyle, Oct 24, after hearing that Ad Hoc needs Developer Mode on their
+  phones: "TestFlight may be the better route at first anyway - we can make
+  changes over the air." This replaces the Oct 18 "no TestFlight" rule for
+  the iPhones. The Mac copy stays Developer ID + notarized (Ace.dmg).
+- How: Ashley and Alex are internal testers on Kyle's developer account (users
+  in App Store Connect, no Apple review for internal builds, likely). They
+  install Apple's TestFlight app once; new copies arrive over the air.
+- A TestFlight copy stops opening 90 days after upload, so a job on Kyle's Mac
+  uploads a fresh copy of the last committed version every 60 days (Kyle
+  chose the automatic upload, Oct 24). It needs the Mac on and Xcode signed in.
+- The Ad Hoc route (`tools/setup/install-iphone.sh`) is kept as a fallback:
+  it works without App Store Connect, but needs Developer Mode and a cable.

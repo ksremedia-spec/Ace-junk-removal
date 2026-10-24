@@ -34,3 +34,20 @@ Google renames buttons now and then, so the labels may differ slightly.
 
 Then in Ace on the Mac: Settings › Google Sheet › Connect Google Sheet…
 → sign in → Allow → pick the sheet.
+
+## Done Oct 24, 2026 (Kyle's project "Ace test", ace-test-512402)
+
+- Branding: app name "Ace", support and developer email
+  scjewleryshowcase@gmail.com, homepage and privacy policy on the Ace server
+  (its "/" and "/privacy" pages; Google required both once the server's
+  domain was listed as an authorized domain, which it does automatically
+  when the redirect address is added).
+- Audience: **In production** (published Oct 24). Google's dialog: no
+  verification needed with no logo, under 10 domains and no sensitive
+  scopes. So any Google account can connect, and access no longer ends
+  after 7 days. The test sheet's connection was made while still in
+  Testing, so its token may still end; Ashley's connection on setup day is
+  made after publishing.
+- Redirect addresses: the local test server and the live server, each
+  ending in /google/callback.
+

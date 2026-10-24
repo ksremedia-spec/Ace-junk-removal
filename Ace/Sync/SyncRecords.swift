@@ -7,7 +7,9 @@ import SwiftData
 /// Calendar bookkeeping and anything device-only stays out.
 enum SyncType: String, CaseIterable {
     // The order records are applied in, so a record's links already exist.
-    case customer, worker, dumpster, job, quote, rental, labor
+    // `setting` is the business's shared settings, kept in UserDefaults
+    // rather than the database (audit Oct 24, findings 4 and 36).
+    case customer, worker, dumpster, job, quote, rental, labor, setting
 }
 
 struct CustomerData: Codable, Equatable {
@@ -89,6 +91,14 @@ struct LaborData: Codable, Equatable {
     var note: String
 }
 
+/// The one shared settings record. A missing field was never set on any
+/// device, so each device keeps its own default.
+struct SettingData: Codable, Equatable {
+    var overweightRatePerTon: Double?
+    /// Calendar weekday numbers, 1 is Sunday.
+    var salaryDays: [Int]?
+}
+
 /// IDs worked out from what a record is, so two devices that make "the
 /// same" record give it the same ID (a name-based UUID, version 5 layout).
 enum SyncIDs {
@@ -99,6 +109,9 @@ enum SyncIDs {
     static func rental(dumpster: Int, droppedOff: Date) -> UUID {
         named("rental-\(dumpster)-\(Int(droppedOff.timeIntervalSince1970 / 60))")
     }
+
+    /// The shared settings record: one per business, the same ID everywhere.
+    static let settings = named("settings")
 
     static func labor(worker: UUID, day: Date, calendar: Calendar = .current) -> UUID {
         let parts = calendar.dateComponents([.year, .month, .day], from: day)
@@ -153,7 +166,10 @@ struct SyncSnapshot {
             s.quotes[q.syncID!] = q
         }
         for r in all(RentalRecord.self) {
-            if r.syncID == nil { r.syncID = UUID(); changed = true }
+            // Two rentals of one dumpster dropped off the same day were given
+            // the same ID (audit Oct 24, finding 27): the second gets its own,
+            // so both reach the other devices.
+            if r.syncID == nil || s.rentals[r.syncID!] != nil { r.syncID = UUID(); changed = true }
             s.rentals[r.syncID!] = r
         }
         for e in all(LaborEntry.self) {
@@ -176,6 +192,21 @@ struct SyncSnapshot {
         case .quote: return Array(quotes.keys)
         case .rental: return Array(rentals.keys)
         case .labor: return Array(labor.keys)
+        case .setting: return AppSettings.sharedUpdatedAt == nil ? [] : [SyncIDs.settings]
+        }
+    }
+
+    /// The record is on this device.
+    func has(_ type: SyncType, _ id: UUID) -> Bool {
+        switch type {
+        case .customer: return customers[id] != nil
+        case .worker: return workers[id] != nil
+        case .dumpster: return dumpsters[id] != nil
+        case .job: return jobs[id] != nil
+        case .quote: return quotes[id] != nil
+        case .rental: return rentals[id] != nil
+        case .labor: return labor[id] != nil
+        case .setting: return id == SyncIDs.settings && AppSettings.sharedUpdatedAt != nil
         }
     }
 
@@ -215,6 +246,10 @@ struct SyncSnapshot {
         case .labor:
             guard let e = labor[id] else { return nil }
             return (try! coder.encode(LaborData(worker: e.worker?.syncID, day: e.day, hours: e.hours, isOff: e.isOff, note: e.note)), e.updatedAt)
+        case .setting:
+            guard id == SyncIDs.settings, let at = AppSettings.sharedUpdatedAt else { return nil }
+            return (try! coder.encode(SettingData(overweightRatePerTon: AppSettings.storedOverweightRate,
+                                                  salaryDays: AppSettings.storedSalaryDays?.sorted())), at)
         }
     }
 
@@ -229,6 +264,7 @@ struct SyncSnapshot {
         case .quote: quotes[id]?.updatedAt = date
         case .rental: rentals[id]?.updatedAt = date
         case .labor: labor[id]?.updatedAt = date
+        case .setting: if id == SyncIDs.settings { AppSettings.stampShared(date) }
         }
     }
 
@@ -236,9 +272,13 @@ struct SyncSnapshot {
 
     /// Creates or updates the record from the server's copy. Links point at
     /// records already in the snapshot; a link to a record not here is
-    /// cleared.
-    mutating func apply(_ type: SyncType, _ id: UUID, _ json: Data, updatedAt: Date, in context: ModelContext) throws {
+    /// cleared. Returns false when a link was cleared that way, so the
+    /// change can be applied again once the linked record arrives.
+    @discardableResult
+    mutating func apply(_ type: SyncType, _ id: UUID, _ json: Data, updatedAt: Date, in context: ModelContext) throws -> Bool {
         let coder = SyncCoding.decoder
+        /// The link was empty, or the record it points at is here.
+        func found(_ link: UUID?, _ target: AnyObject?) -> Bool { link == nil || target != nil }
         switch type {
         case .customer:
             let d = try coder.decode(CustomerData.self, from: json)
@@ -256,6 +296,7 @@ struct SyncSnapshot {
             x.number = d.number; x.label = d.label; x.isOut = d.isOut; x.customer = d.customer.flatMap { customers[$0] }
             x.location = d.location; x.droppedOffAt = d.droppedOffAt; x.dueBackAt = d.dueBackAt; x.price = d.price
             x.agreedWeightTons = d.agreedWeightTons; x.notes = d.notes; x.conditionNote = d.conditionNote; x.updatedAt = updatedAt
+            return found(d.customer, x.customer)
         case .job:
             let d = try coder.decode(JobData.self, from: json)
             let j = jobs[id] ?? {
@@ -267,6 +308,7 @@ struct SyncSnapshot {
             j.jobTypeRaw = d.jobType; j.scheduledAt = d.scheduledAt; j.hasTime = d.hasTime; j.endsAt = d.endsAt
             j.price = d.price; j.paymentTypeRaw = d.paymentType; j.isPaid = d.isPaid; j.isDone = d.isDone
             j.notes = d.notes; j.createdAt = d.createdAt; j.updatedAt = updatedAt
+            return found(d.customer, j.customer)
         case .quote:
             let d = try coder.decode(QuoteData.self, from: json)
             let q = quotes[id] ?? { let q = Quote(); q.syncID = id; context.insert(q); quotes[id] = q; return q }()
@@ -274,6 +316,7 @@ struct SyncSnapshot {
             q.jobTypeRaw = d.jobType; q.details = d.details; q.price = d.price; q.quotedOn = d.quotedOn
             q.followUpOn = d.followUpOn; q.statusRaw = d.status; q.notes = d.notes; q.createdAt = d.createdAt
             q.updatedAt = updatedAt
+            return found(d.customer, q.customer) && found(d.job, q.job)
         case .rental:
             let d = try coder.decode(RentalData.self, from: json)
             let r = rentals[id] ?? {
@@ -286,6 +329,7 @@ struct SyncSnapshot {
             r.location = d.location; r.droppedOffAt = d.droppedOffAt; r.pickedUpAt = d.pickedUpAt; r.price = d.price
             r.agreedWeightTons = d.agreedWeightTons; r.actualWeightTons = d.actualWeightTons; r.ratePerTon = d.ratePerTon
             r.updatedAt = updatedAt
+            return found(d.dumpster, r.dumpster) && found(d.customer, r.customer)
         case .labor:
             let d = try coder.decode(LaborData.self, from: json)
             let e = labor[id] ?? {
@@ -294,7 +338,13 @@ struct SyncSnapshot {
             }()
             e.worker = d.worker.flatMap { workers[$0] }
             e.day = d.day; e.hours = d.hours; e.isOff = d.isOff; e.note = d.note; e.updatedAt = updatedAt
+            return found(d.worker, e.worker)
+        case .setting:
+            guard id == SyncIDs.settings else { return true }
+            let d = try coder.decode(SettingData.self, from: json)
+            AppSettings.applyShared(d, updatedAt: updatedAt)
         }
+        return true
     }
 
     /// Deletes the record because another device deleted it.
@@ -312,6 +362,9 @@ struct SyncSnapshot {
         case .quote: if let q = quotes.removeValue(forKey: id) { context.delete(q) }
         case .rental: if let r = rentals.removeValue(forKey: id) { context.delete(r) }
         case .labor: if let e = labor.removeValue(forKey: id) { context.delete(e) }
+        // Only when removed from this device (Settings › Sync): back to
+        // this device's defaults until the server's copy arrives.
+        case .setting: if id == SyncIDs.settings { AppSettings.clearShared() }
         }
     }
 }
@@ -332,7 +385,18 @@ enum SyncCoding {
         return d
     }()
 
+    private static let hex = Array("0123456789abcdef".utf8)
+
+    /// The SHA-256 of the fields as lowercase hex. Same text as before, made
+    /// without String(format:), which was slow over thousands of records
+    /// (audit Oct 24, finding 50).
     static func fingerprint(_ data: Data) -> String {
-        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        var text: [UInt8] = []
+        text.reserveCapacity(64)
+        for byte in SHA256.hash(data: data) {
+            text.append(hex[Int(byte >> 4)])
+            text.append(hex[Int(byte & 0x0F)])
+        }
+        return String(decoding: text, as: UTF8.self)
     }
 }

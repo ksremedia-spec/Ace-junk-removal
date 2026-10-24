@@ -327,7 +327,8 @@ struct AssistantView: View {
                             onStart: startRecording,
                             onEnd: stopRecording
                         )
-                        Text(phase == .recording ? "Listening." : "or type it below")
+                        .disabled(voiceUnavailable)
+                        Text(phase == .recording ? "Listening." : (voiceUnavailable ? voiceUnavailableText : "or type it below"))
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
@@ -339,7 +340,8 @@ struct AssistantView: View {
                             onStart: startRecording,
                             onEnd: stopRecording
                         )
-                        Text(phase == .recording ? "Listening." : "or type it below")
+                        .disabled(voiceUnavailable)
+                        Text(phase == .recording ? "Listening." : (voiceUnavailable ? voiceUnavailableText : "or type it below"))
                             .foregroundStyle(.secondary)
                     }
                     #endif
@@ -370,6 +372,15 @@ struct AssistantView: View {
                                 Task { @MainActor in await ask(transcript) }
                             } label: {
                                 Label("Send again", systemImage: "arrow.clockwise")
+                            }
+                            .buttonStyle(.action(.accentColor, prominent: true))
+                        } else if hasKeptRecording {
+                            // Voice wasn't ready when the note ended; the
+                            // recording was kept, so it need not be said again.
+                            Button {
+                                retryKeptRecording()
+                            } label: {
+                                Label("Try again", systemImage: "arrow.clockwise")
                             }
                             .buttonStyle(.action(.accentColor, prominent: true))
                         }
@@ -469,6 +480,32 @@ struct AssistantView: View {
         }
     }
 
+    /// Apple's speech recognition can't run (no model, no signal for the
+    /// first download, or a Mac that can't run it): recording a note it
+    /// can't write down would only lose it (audit Oct 24).
+    private var voiceUnavailable: Bool {
+        if case .failed = engine.state { return true }
+        return false
+    }
+
+    private var voiceUnavailableText: String {
+        "Voice isn't available. Type the note below, or try loading voice again."
+    }
+
+    /// A recording kept after voice failed to get ready.
+    private var hasKeptRecording: Bool {
+        guard let recordingURL else { return false }
+        return FileManager.default.fileExists(atPath: recordingURL.path)
+    }
+
+    private func retryKeptRecording() {
+        phase = .transcribing
+        Task { @MainActor in
+            if case .failed = engine.state { await engine.load() }
+            await process()
+        }
+    }
+
     private var microphoneOffText: String {
         #if os(macOS)
         return "Microphone access is off. Turn it on in System Settings › Privacy & Security › Microphone, or type the note."
@@ -519,9 +556,11 @@ struct AssistantView: View {
             listeningLive = false
             Task { @MainActor in
                 do {
+                    // Words already heard come back even if Apple's engine
+                    // fails at the end; this throws only when none were.
                     transcript = try await engine.stopListening().text
                 } catch {
-                    phase = .failed(error.localizedDescription)
+                    phase = .failed("Voice stopped early. Try again, or type the note.")
                     return
                 }
                 guard !transcript.isEmpty else {
@@ -681,6 +720,7 @@ struct AssistantView: View {
     }
 
     private func reset() {
+        if let recordingURL { try? FileManager.default.removeItem(at: recordingURL) }
         unsentNote = ""
         restoredUnsent = false
         phase = .idle
@@ -718,7 +758,7 @@ struct AssistantView: View {
 
         var errorDescription: String? {
             switch self {
-            case .speechModel(let message): return "Voice couldn't get ready. \(message)"
+            case .speechModel(let message): return "Voice couldn't get ready. \(message) The recording is kept."
             }
         }
     }

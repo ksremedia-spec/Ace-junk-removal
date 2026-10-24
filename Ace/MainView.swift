@@ -48,6 +48,11 @@ struct MainView: View {
                     CalendarView(selectedDay: $calendarDay, onShowQuotes: { showOpenQuotes() })
                         .toolbar { toolbarItems(showSettings: true, showToday: !calendarShowsToday) }
                         .navigationDestination(for: Screen.self, destination: screen)
+                        // Jobs opened by value (the Next card) stay open when
+                        // Mark done moves them off the card (audit Oct 24, 37).
+                        .navigationDestination(for: Job.self) { job in
+                            JobEditView(job: job)
+                        }
                 }
                 .undoBar()
             }

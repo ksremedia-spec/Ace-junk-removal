@@ -1,5 +1,14 @@
 # Beta relay: the Assistant without a key on the tester's Mac
 
+> **Oct 24 update.** The business copy uses this same Worker, but only
+> through the Ace sync server: the app sends `POST /v1/claude` with the sync
+> code, and the server passes it on over a service binding (`CLAUDE` in
+> `cloudflare/ace-sync/wrangler.jsonc`). So the Worker must NOT be deleted
+> any more; its key is the business copy's Assistant. `Beta.isBeta` is
+> false, and `BetaRelay.txt` now lives in `cloudflare/beta-relay/` (git-
+> ignored), outside the app. Closing the Worker's public address once no
+> beta copy is in use: see `docs/setup-day.md`.
+
 Oct 20, 2026. Kyle is sending a Mac beta to a non-technical tester before
 visiting. The Assistant needs an Anthropic key; instead of putting the key in
 the app, the beta sends notes to a small Cloudflare Worker that holds the key

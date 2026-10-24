@@ -25,7 +25,9 @@ server later.
 ## What is synced
 
 Customers, jobs, dumpsters, dumpster history (rentals), quotes, crew and
-crew hours: the seven record types in `Ace/Data`. Not synced:
+crew hours: the seven record types in `Ace/Data`. Plus one shared settings
+record (added Oct 24, audit findings 4 and 36): the overweight rate per ton
+and the salaried crew's working days. Not synced:
 - each device's own choices (last tab, calendar view, Assistant model,
   the unsent Assistant note, the welcome guide having been seen);
 - calendar links (`calendarItemID`, `calendarWrittenAt`): each device's
@@ -33,7 +35,20 @@ crew hours: the seven record types in `Ace/Data`. Not synced:
   write calendar events, so two devices never both write the same event.
   **Open:** which device writes a job's Google Calendar event once both
   are in use. Today, whichever device saves the job writes it.
-- Later: the overweight rate in Settings (a shared business setting).
+
+**The shared settings record** (type `setting`, one record, ID
+`FFB30D3F-7D27-5DA8-B403-87C81300D326`, worked out from the name
+"settings"). Its fields: `{"overweightRatePerTon": 150, "salaryDays":
+[2,3,4,5,6,7]}` (weekday numbers, 1 is Sunday). A field left out was never
+set on any device, so each device keeps its own default ($125, Monday to
+Saturday). Changing the rate in Settings stamps the record and sends it; the
+later change wins, as for records. Opening Settings or typing the same value
+does not count as a change. A device sends nothing until the rate or the
+days are changed somewhere. Rentals still keep the rate they were picked up
+with. The salary days have no screen to change them yet; the code that
+changes them (`AppSettings.setSalaryDays`) already stamps and sends. The
+server must list `setting` in its allowed types, or it refuses the whole
+sync with "Unknown record type".
 
 ## The sync icon (Kyle, Oct 21)
 
@@ -73,6 +88,10 @@ time, deleted yes/no, the record's fields as JSON, and a running number
   same" record do not end up with two: dumpster N always has the same ID
   (both devices clicking Set up 6 dumpsters gives six, not twelve), and a
   crew member's hours for one day always have the same ID.
+- A rental's ID comes from the dumpster number and the drop-off date.
+  Two rentals of one dumpster dropped off the same day would share it, so
+  the second one found is given its own random ID before the sync (Oct 24,
+  finding 27). Rentals that already have their own ID keep it.
 - What changed: the device remembers, per record, a fingerprint of what it
   last sent or received. A record whose fingerprint differs is sent. If a
   screen changed a record without stamping its "last changed" time, the
@@ -109,8 +128,36 @@ time, deleted yes/no, the record's fields as JSON, and a running number
   the beta's example data) sends them; a device that starts empty only
   receives. Example data on two devices would show up twice, so tests
   start one device empty (`-debug.empty`).
-- The server keeps deleted records as "deleted" rows, so a mistake can be
-  looked up and undone by hand.
+- A device that had synced with one server and then meets another (a new
+  address, or the same address after the server was wiped and given a new
+  ID) does not send what it holds (Oct 24, finding 5). The first request
+  after Ace opens carries no changes, so the new server is noticed before
+  anything reaches it. What the new server has replaces the device's copy;
+  everything else on the device is held. Settings › Sync then says "412
+  records on this device are not on the sync server" with two choices:
+  Send to Every Device, or Remove from This Device (both ask first; removing
+  also brings everything down from the server again). Changing the
+  overweight rate meanwhile sends the new rate. A device that never synced
+  anywhere behaves as before.
+- More than 20 deletions in one sync are held until confirmed in Settings ›
+  Sync. Crew hours and dumpster history don't count towards the 20: they go
+  with their person or dumpster (Oct 24, finding 51).
+- If every record on a device is gone but its sync memory is not, Ace takes
+  it as a replaced database and starts afresh instead of deleting
+  everything everywhere. Known limit, left as is for version 1 (Oct 24,
+  finding 52): a device that really deleted all of its last records (20 or
+  fewer, dumpsters included) gets them back from the server, and the other
+  devices keep them.
+- A job, quote, rental, dumpster or day of hours that arrives linked to a
+  record not on this device is applied with the link empty and tried again
+  on every sync until the linked record arrives (Oct 24, finding 53).
+- What the server keeps of a deletion (corrected Oct 24, finding 43): a
+  record deleted on a phone or Mac is kept on the server only as its type,
+  ID and "deleted"; its fields (name, price, notes) are gone. Nothing is
+  kept for 30 days and there is no undo. A job deleted that way also leaves
+  Ashley's sheet; the only way back is the sheet's own File › Version
+  history, which brings the row back as a new job. (A row deleted in the
+  sheet keeps its job's fields on the server.)
 
 ## Test results (Oct 21, 2026, on Kyle's Mac)
 

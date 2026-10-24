@@ -17,6 +17,8 @@ struct RentalRecordView: View {
     @State private var actualText: String
     @State private var confirmDelete = false
     @State private var saved = 0
+    /// "28 tons is more than a dumpster holds. Was it 2.8 tons?"
+    @State private var askHeavy = false
 
     init(record: RentalRecord) {
         self.record = record
@@ -67,6 +69,11 @@ struct RentalRecordView: View {
                         .multilineTextAlignment(.trailing)
                         .decimalKeyboard()
                 }
+                if let note = WeightCheck.note(for: Parse.tons(actualText)) {
+                    Text(note)
+                        .font(.footnote)
+                        .foregroundStyle(Tint.warning)
+                }
                 LabeledContent("Overweight charge", value: Money.text(charge))
             } header: {
                 Text("Price and weight")
@@ -91,19 +98,30 @@ struct RentalRecordView: View {
         #endif
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button("Save") { save() }
-                    .disabled(!hasChanges)
+                Button("Save") {
+                    if WeightCheck.suggestion(for: Parse.tons(actualText)) != nil {
+                        askHeavy = true
+                    } else {
+                        save()
+                    }
+                }
+                .disabled(!hasChanges)
             }
+        }
+        .heavyWeightQuestion(isPresented: $askHeavy, tons: Parse.tons(actualText)) { tons in
+            save(actualTons: tons)
         }
         .sensoryFeedback(.success, trigger: saved)
     }
 
-    private func save() {
+    /// `actualTons`: the weight chosen in the heavy-weight question, else
+    /// the one typed.
+    private func save(actualTons chosen: Double? = nil) {
         record.droppedOffAt = Calendar.current.startOfDay(for: droppedOff)
         record.pickedUpAt = Calendar.current.startOfDay(for: pickedUp)
         record.price = Parse.money(priceText)
         record.agreedWeightTons = Parse.tons(agreedText)
-        record.actualWeightTons = Parse.tons(actualText)
+        record.actualWeightTons = chosen ?? Parse.tons(actualText)
         record.updatedAt = Date()
         try? context.save()
         saved += 1

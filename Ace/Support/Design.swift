@@ -44,6 +44,10 @@ extension Color {
 /// finished. Blue and indigo are only job-type and dumpster colours.
 enum Tint {
     static let paid = Color(light: Color(red: 0.11, green: 0.50, blue: 0.22), dark: .green)
+    /// Green behind white text (a filled Call, Done or Paid button). Apple's
+    /// dark-mode green is too bright for white text (about 2:1), so dark
+    /// mode gets a deeper one (about 6:1).
+    static let paidFill = Color(light: Color(red: 0.11, green: 0.50, blue: 0.22), dark: Color(red: 0.10, green: 0.45, blue: 0.22))
     static let owed = Color(light: Color(red: 0.72, green: 0.33, blue: 0.0), dark: .orange)
     /// A field or question that needs attention: the same readable orange
     /// as owed money (Apple's own orange is too pale in sunlight).
@@ -324,6 +328,10 @@ struct ActionButtonStyle: ButtonStyle {
     var tint: Color = .accentColor
     var prominent = false
 
+    /// The filled colour: paid green is deepened in dark mode so the
+    /// white text reads.
+    private var fill: Color { tint == Tint.paid ? Tint.paidFill : tint }
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.callout.weight(.semibold))
@@ -337,7 +345,7 @@ struct ActionButtonStyle: ButtonStyle {
             #endif
             .foregroundStyle(prominent ? Color.white : tint)
             .background(
-                Capsule().fill(prominent ? tint : tint.opacity(0.14))
+                Capsule().fill(prominent ? fill : tint.opacity(0.14))
             )
             .opacity(configuration.isPressed ? 0.7 : 1)
             .contentShape(Capsule())

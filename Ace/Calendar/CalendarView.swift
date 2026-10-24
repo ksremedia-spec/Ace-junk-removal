@@ -170,9 +170,9 @@ struct CalendarView: View {
                 }
             }
             ForEach(day.jobs) { job in
-                NavigationLink {
-                    JobEditView(job: job)
-                } label: {
+                // By value, so the page stays open after Mark done
+                // (audit Oct 24, 24 and 37).
+                NavigationLink(value: job) {
                     JobCard(job: job, isSelected: false, showsAddress: true)
                 }
                 .buttonStyle(.plain)
@@ -254,9 +254,7 @@ struct CalendarView: View {
     private var slippedCard: some View {
         BoardListCard(title: "Not marked done", count: slippedJobs.count) {
             ForEach(slippedJobs) { job in
-                NavigationLink {
-                    JobEditView(job: job)
-                } label: {
+                NavigationLink(value: job) {
                     JobRow(job: job, showDate: true)
                         .padding(.horizontal, Space.s)
                         .padding(.vertical, 2)

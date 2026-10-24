@@ -108,6 +108,10 @@ final class CalendarStore {
             if current == .full { store.reset() }
             access = current
         }
+        // Asks Google for changes now rather than on its own schedule, so
+        // another device's job events arrive sooner. Anything new comes in
+        // through the change notice above.
+        if access == .full { store.refreshSourcesIfNecessary() }
         reloadCalendars()
         changeCount += 1
     }
@@ -224,21 +228,26 @@ final class CalendarStore {
         if job.jobID == nil { job.jobID = UUID() }
         guard let jobID = job.jobID else { return }
 
-        var found: [EKEvent] = []
+        // Always look for copies another device wrote, not only on the first
+        // write: a phone can write its own copy before Google has brought the
+        // Mac's down, and then both devices remember different events
+        // (audit Oct 21, item 24).
+        var found = markedEvents(jobID: jobID, in: calendar, near: job.scheduledAt)
         if let remembered = rememberedEvent(of: job, jobID: jobID) {
             if remembered.calendar?.calendarIdentifier == calendar.calendarIdentifier {
-                found = [remembered]
+                if !found.contains(where: { $0.calendarItemIdentifier == remembered.calendarItemIdentifier }) {
+                    // Outside the search window, e.g. the job moved far off.
+                    found.append(remembered)
+                    found.sort(by: Self.keptFirst)
+                }
             } else {
                 // The Calendar for Jobs was changed since this event was
                 // written: the copy in the old calendar goes.
                 try? store.remove(remembered, span: .thisEvent, commit: true)
             }
         }
-        if found.isEmpty {
-            // Before creating an event, look for one another device wrote.
-            found = markedEvents(jobID: jobID, in: calendar, near: job.scheduledAt)
-        }
-        // Two devices wrote the same job: keep one, delete the others.
+        // Two devices wrote the same job: every device keeps the same one
+        // and deletes the others.
         for extra in found.dropFirst() {
             try? store.remove(extra, span: .thisEvent, commit: true)
         }
@@ -332,11 +341,15 @@ final class CalendarStore {
                 found[event.calendarItemIdentifier] = event
             }
         }
-        return found.values.sorted { a, b in
-            let keyA = a.calendarItemExternalIdentifier ?? ""
-            let keyB = b.calendarItemExternalIdentifier ?? ""
-            return keyA != keyB ? keyA < keyB : a.calendarItemIdentifier < b.calendarItemIdentifier
-        }
+        return found.values.sorted(by: Self.keptFirst)
+    }
+
+    /// The order every device agrees on: the event whose server identifier
+    /// sorts first is the one kept.
+    private static func keptFirst(_ a: EKEvent, _ b: EKEvent) -> Bool {
+        let keyA = a.calendarItemExternalIdentifier ?? ""
+        let keyB = b.calendarItemExternalIdentifier ?? ""
+        return keyA != keyB ? keyA < keyB : a.calendarItemIdentifier < b.calendarItemIdentifier
     }
 
     /// One search may cover at most four years (Apple's limit), so the

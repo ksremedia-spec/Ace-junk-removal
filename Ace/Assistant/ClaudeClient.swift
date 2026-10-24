@@ -1,8 +1,13 @@
 import Foundation
+#if os(iOS)
+import UIKit
+#endif
 
-/// Talks to the Anthropic Messages API directly from the device. The API key
-/// comes from the Keychain and is sent only to api.anthropic.com. The beta
-/// sends through Kyle's Cloudflare relay instead, with no key (Beta.relayURL).
+/// Talks to the Anthropic Messages API. With a key in this device's Keychain
+/// it goes straight to api.anthropic.com. Without one, it goes through the
+/// business's sync server (`/v1/claude`, sync code required), which holds
+/// the key, so nobody types it on a phone (Oct 24). The beta used Kyle's
+/// relay instead (Beta.relayURL).
 enum ClaudeModel: String, CaseIterable, Identifiable {
     case haiku = "claude-haiku-5-5"
     case sonnet = "claude-sonnet-5-5"
@@ -63,7 +68,7 @@ struct ClaudeClient {
     /// first, in its own block marked for caching, so a second note within a
     /// few minutes does not pay for 600 customers again.
     static func plan(note: String, directory: String, records: String, model: ClaudeModel, effort: ClaudeEffort) async throws -> (plan: AssistantPlan, seconds: Double, inputTokens: Int, outputTokens: Int) {
-        let apiKey = try currentKey()
+        let route = try await currentRoute()
 
         let userText = "Spoken note:\n\(note)\n\nRecords:\n\(records)"
         var userContent: [[String: Any]] = []
@@ -99,7 +104,7 @@ struct ClaudeClient {
             ],
         ]
 
-        let (text, json, seconds) = try await send(body, apiKey: apiKey, timeout: 90)
+        let (text, json, seconds) = try await send(body, route: route, timeout: 90)
 
         #if DEBUG
         // Debug builds only: the last note and Claude's raw answer, in the
@@ -131,7 +136,7 @@ struct ClaudeClient {
     /// Empty when the answer does not give it. Haiku at low effort: the
     /// task is small and the person is waiting with the phone in hand.
     static func fill(_ field: String, question: String, answer: String, form: String) async throws -> String {
-        let apiKey = try currentKey()
+        let route = try await currentRoute()
         let body: [String: Any] = [
             "model": ClaudeModel.haiku.rawValue,
             "max_tokens": 2000,
@@ -150,31 +155,45 @@ struct ClaudeClient {
                 ],
             ],
         ]
-        let (text, _, _) = try await send(body, apiKey: apiKey, timeout: 30)
+        let (text, _, _) = try await send(body, route: route, timeout: 30)
         let json = (try? JSONSerialization.jsonObject(with: Data(text.utf8))) as? [String: Any]
         return (json?["value"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Where a request goes and how it proves it may: the device's own key
+    /// first, then the beta relay, then the sync server.
+    private enum Route {
+        case direct(key: String)
+        case relay(URL)
+        case server(URL, code: String)
+    }
+
+    @MainActor
+    private static func currentRoute() throws -> Route {
+        if let key = Keychain.read(Keychain.anthropicAPIKey), !key.isEmpty { return .direct(key: key) }
+        if let relay = Beta.relayURL { return .relay(relay) }
+        if let config = SyncEngine.shared.config { return .server(config.url, code: config.code) }
+        throw ClaudeError.missingKey
     }
 
     /// Posts one Messages request and returns the reply's text, the whole
     /// response and how long it took. Throws on an error status, a refusal
     /// or a cut-off answer.
-    /// The device's key, or "" when the beta relay holds it.
-    private static func currentKey() throws -> String {
-        if Beta.relayURL != nil { return "" }
-        guard let apiKey = Keychain.read(Keychain.anthropicAPIKey), !apiKey.isEmpty else {
-            throw ClaudeError.missingKey
+    private static func send(_ body: [String: Any], route: Route, timeout: TimeInterval) async throws -> (text: String, json: [String: Any], seconds: Double) {
+        var request: URLRequest
+        switch route {
+        case .direct(let key):
+            request = URLRequest(url: endpoint)
+            request.setValue(key, forHTTPHeaderField: "x-api-key")
+        case .relay(let url):
+            request = URLRequest(url: url.appendingPathComponent("v1/messages"))
+        case .server(let url, let code):
+            request = URLRequest(url: url.appending(path: "v1/claude"))
+            request.setValue("Bearer \(code)", forHTTPHeaderField: "Authorization")
         }
-        return apiKey
-    }
-
-    private static func send(_ body: [String: Any], apiKey: String, timeout: TimeInterval) async throws -> (text: String, json: [String: Any], seconds: Double) {
-        var request = URLRequest(url: Beta.relayURL?.appendingPathComponent("v1/messages") ?? endpoint)
         request.httpMethod = "POST"
         request.timeoutInterval = timeout
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        if !apiKey.isEmpty {
-            request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
-        }
         request.setValue(apiVersion, forHTTPHeaderField: "anthropic-version")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         #if DEBUG
@@ -182,6 +201,14 @@ struct ClaudeClient {
             let stamp = Int(Date().timeIntervalSince1970 * 1000)
             try? sent.write(to: FileManager.default.temporaryDirectory.appendingPathComponent("assistant-request-\(stamp).json"))
         }
+        #endif
+
+        #if os(iOS)
+        // Locking the phone while the Assistant works would otherwise cut
+        // the request off and show No signal (ship audit Oct 24, #19): iOS
+        // gives a request started in the foreground about 30 seconds more.
+        let background = await BackgroundTime(name: "Assistant")
+        defer { Task { @MainActor in background.end() } }
         #endif
 
         let started = Date()
@@ -220,3 +247,23 @@ struct ClaudeClient {
         return (text, json, seconds)
     }
 }
+
+#if os(iOS)
+/// A little time to finish after the app leaves the screen.
+@MainActor
+final class BackgroundTime {
+    private var id: UIBackgroundTaskIdentifier = .invalid
+
+    init(name: String) {
+        id = UIApplication.shared.beginBackgroundTask(withName: name) { [weak self] in
+            self?.end()
+        }
+    }
+
+    func end() {
+        guard id != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(id)
+        id = .invalid
+    }
+}
+#endif

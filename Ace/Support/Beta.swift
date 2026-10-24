@@ -3,10 +3,10 @@ import SwiftData
 
 /// The test copy Kyle sends out before the visit (Oct 20): it opens on the
 /// sample data instead of an empty app, so non-technical testers have
-/// something to try. Set `isBeta` to false before building for Ashley and
-/// Alex for real.
+/// something to try. Off for the business copy (Oct 24): Ashley and Alex
+/// start empty and sync with the business's server.
 enum Beta {
-    static let isBeta = true
+    static let isBeta = false
 
     /// The Cloudflare relay that holds Kyle's API key for the beta
     /// (cloudflare/beta-relay). When set, the Assistant sends notes there
@@ -21,10 +21,12 @@ enum Beta {
         return URL(string: text.trimmingCharacters(in: .whitespacesAndNewlines))
     }()
 
-    /// The Assistant can send notes: through the relay, or with a key in
-    /// this device's Keychain.
+    /// The Assistant can send notes: with a key in this device's Keychain,
+    /// through the relay, or through the sync server, which passes them on
+    /// with the key it holds (ClaudeClient).
+    @MainActor
     static var assistantReady: Bool {
-        relayURL != nil || Keychain.read(Keychain.anthropicAPIKey) != nil
+        relayURL != nil || Keychain.read(Keychain.anthropicAPIKey) != nil || SyncEngine.shared.config != nil
     }
 
     /// Set once the example records were loaded, so the guide and the import

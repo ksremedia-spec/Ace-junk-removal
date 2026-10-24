@@ -1,14 +1,57 @@
 # Keeping Ashley's Google Sheet and Ace in step
 
-**Status, Oct 21 (night): built and tested against a stand-in for Google
-on Kyle's Mac; not yet tried with real Google.** Server code:
+**Status, Oct 24: built; tried with real Google on Kyle's test sheet
+(Oct 21, below); Ashley's real sheet not connected yet.** Server code:
 `cloudflare/ace-sync/src/google.js` (sign-in, the minute-by-minute check)
-and `src/sheet.js` (reading and writing Ashley's columns, the same rules as
-the Mac import). Mac: Settings › Google Sheet (`Ace/Sync/SheetLinkSection.swift`).
+and `src/sheet.js` (reading and writing Ashley's columns, close to the
+Mac import's rules). Mac: Settings › Google Sheet (`Ace/Sync/SheetLinkSection.swift`).
 Google setup steps: `google-cloud-setup.md`.
 
+**What is true now (Oct 24), and what the plan below promised but was
+not built.** Read this before the rest of the page, which is the
+original Oct 21 plan.
+- Built: two-way sync every minute, row tags, the pauses (more than 10
+  rows vanishing from the sheet, more than 10 rows edited in the sheet,
+  more than 20 rows Ace would add, more than 25 rows Ace would change,
+  more than 10 rows Ace would delete, renamed headings or tab), Resume.
+- Oct 24 audit fixes, tested only against the stand-in Google (62 checks
+  passing): a sort that moves row contents but not the hidden tags is
+  matched up again by contents, with nothing changed in Ace (a sort plus
+  one edit is also handled; a sort plus two or more edits pauses and
+  asks for Edit > Undo); more than 10 deletions from Ace pause;
+  Disconnect then Connect of the same sheet keeps the tags and the
+  changes made in between; blank Date cells keep their day when Ace
+  changes the row above; totals lines labelled other ways are skipped;
+  light and dark reds and theme-colour reds count as not paid; the
+  Client Job List tab is preferred over a longer crew tab; a row typed
+  while Ace writes makes Ace wait a minute instead of writing to the
+  wrong row; a tag number clash is retried with other numbers.
+- **Not built (dropped or not done):** the "copy of every row" restore
+  tool (safety rule 4: the server keeps only a fingerprint per row, so
+  undo is the sheet's own version history, File › Version history);
+  the week on a copy before the real sheet (rule 5 and steps
+  2–4: two-way writing goes straight onto the sheet that is connected);
+  the note saying what was replaced when both sides change a job
+  (decision 3). Nobody has decided to drop these on purpose; they are
+  open. **Open question for Kyle:** connect Ashley's real sheet on day
+  one, or a copy of it first?
+- Not yet checked with real Google: what happens to the hidden tags on
+  sort, cut and paste, copy and drag (step 1 below, about 10 minutes on
+  a scratch sheet; do it before connecting her real sheet); the theme
+  field (`properties.spreadsheetTheme`) the Oct 24 read now asks for.
+- Check on setup day: whether her sheet has totals or subtotal rows
+  (a SUM over the Price column does not grow when Ace adds a row just
+  below the last job; widen it once, for example to `=SUM(F2:F)`);
+  whether she leaves Date cells blank; which reds she uses (decision 5).
+  Compare Ace's unpaid count and total with her own after the first
+  check.
+- Known and left alone (needs Ashley's answer): a job booked in Ace that
+  is not paid yet is written with a red price before it happens. If red
+  means "owes money" to her and she clears it on future jobs, Ace marks
+  them paid.
+
 Tested with `test/run-sheet-test.sh` (stand-in Google `test/fake-google.mjs`,
-separate test database), all 24 checks passing: connecting, matching a job
+separate test database), all 24 checks passing on Oct 21 (62 on Oct 24): connecting, matching a job
 already in Ace instead of doubling it, red = not paid, payment types,
 check number / not mailing / unknown house number into notes, edits both
 ways, a new Ace job placed as a row in date order, a typed row becoming a
@@ -96,9 +139,12 @@ sheet until she trusts Ace. Layout of the sheet: `ashley-spreadsheet.md`.
    sheet, so an edit she is making in another cell is not overwritten.
 4. **Two undo paths.** Google Sheets keeps its own full version history
    (File › Version history), and the server keeps a copy of every row as
-   it last saw it, so any sync can be put back.
+   it last saw it, so any sync can be put back. *(Oct 24: not built. The
+   server keeps only a fingerprint of each row; the undo path is the
+   sheet's own version history.)*
 5. **Try it on a copy first.** Two-way writing runs for a week against a
-   copy of her sheet before it touches the real one.
+   copy of her sheet before it touches the real one. *(Oct 24: not done;
+   see the open question at the top.)*
 
 ## The order of work
 
@@ -160,7 +206,8 @@ early to mid November, after the October 31 version 1.
    of its own edits; Google does not give a time per cell, so a sheet edit
    counts from when the server notices it (within about a minute). Only
    edits to the same job less than a minute apart can come out in the
-   wrong order. Ace shows a note saying what was replaced.
+   wrong order. Ace shows a note saying what was replaced. *(Oct 24: the
+   note is not built.)*
 4. ~~Deletions?~~ **Answered Oct 21 (Kyle): copied to the other side
    automatically, without asking.** See safety rule 2.
 5. Does red always mean unpaid, and does Ashley colour it by hand or

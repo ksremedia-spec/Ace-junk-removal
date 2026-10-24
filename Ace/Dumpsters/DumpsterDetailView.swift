@@ -23,6 +23,8 @@ struct DumpsterDetailView: View {
     // Pickup (used while the dumpster is out).
     @State private var actualTonsText = ""
     @State private var confirmPickup = false
+    /// "28 tons is more than a dumpster holds. Was it 2.8 tons?"
+    @State private var askHeavy = false
 
     @State private var saved = false
     @State private var flagged = 0
@@ -34,8 +36,10 @@ struct DumpsterDetailView: View {
 
     private var actualTons: Double? { Parse.tons(actualTonsText) }
 
-    private var pickupCharge: Double {
-        Overweight.charge(agreedTons: dumpster.agreedWeightTons, actualTons: actualTons, ratePerTon: ratePerTon)
+    private var pickupCharge: Double { charge(for: actualTons) }
+
+    private func charge(for tons: Double?) -> Double {
+        Overweight.charge(agreedTons: dumpster.agreedWeightTons, actualTons: tons, ratePerTon: ratePerTon)
     }
 
     private var historyNewestFirst: [RentalRecord] {
@@ -102,6 +106,12 @@ struct DumpsterDetailView: View {
         .sheet(isPresented: $showingCustomerPicker) {
             NavigationStack {
                 CustomerPickerView(selection: $dropOffCustomer)
+            }
+        }
+        .onChange(of: dropOffDate) { _, newDate in
+            // A later drop-off moves a due-back day that is now before it.
+            if dueBackDate < newDate {
+                dueBackDate = Calendar.current.date(byAdding: .day, value: 7, to: newDate) ?? newDate
             }
         }
         .onChange(of: dropOffCustomer) { _, customer in
@@ -187,10 +197,12 @@ struct DumpsterDetailView: View {
             if let droppedOffAt = dumpster.droppedOffAt {
                 LabeledContent("Dropped off", value: Dates.shortDay(droppedOffAt))
             }
+            // Not before the drop-off, or it would be overdue at once.
             DatePicker("Due back", selection: Binding(
                 get: { dumpster.dueBackAt ?? Date() },
                 set: { dumpster.dueBackAt = $0; dumpster.updatedAt = Date() }
-            ), displayedComponents: .date)
+            ), in: (dumpster.droppedOffAt.map { Calendar.current.startOfDay(for: $0) } ?? .distantPast)...,
+               displayedComponents: .date)
             if !dumpster.notes.isEmpty {
                 Text(dumpster.notes)
             }
@@ -204,6 +216,11 @@ struct DumpsterDetailView: View {
                 TextField("Actual weight in tons", text: $actualTonsText, prompt: Text("e.g. 2.8"))
                     .multilineTextAlignment(.trailing)
                     .decimalKeyboard()
+            }
+            if let note = WeightCheck.note(for: actualTons) {
+                Text(note)
+                    .font(.footnote)
+                    .foregroundStyle(Tint.warning)
             }
             if actualTons != nil, dumpster.agreedWeightTons == nil {
                 Text("No agreed weight on this rental. No overweight charge.")
@@ -223,6 +240,11 @@ struct DumpsterDetailView: View {
                 }
             }
             Button {
+                if WeightCheck.suggestion(for: actualTons) != nil {
+                    flagged += 1
+                    askHeavy = true
+                    return
+                }
                 if pickupCharge > 0 { flagged += 1 }
                 confirmPickup = true
             } label: {
@@ -232,6 +254,9 @@ struct DumpsterDetailView: View {
             .buttonStyle(.action(.accentColor, prominent: true))
             .confirmationDialog(pickupQuestion, isPresented: $confirmPickup, titleVisibility: .visible) {
                 Button("Mark picked up") { markPickedUp() }
+            }
+            .heavyWeightQuestion(isPresented: $askHeavy, tons: actualTons) { tons in
+                markPickedUp(tons: tons)
             }
         } header: {
             Text("Pickup")
@@ -253,9 +278,12 @@ struct DumpsterDetailView: View {
         return "Mark Dumpster \(dumpster.number) as picked up?"
     }
 
-    private func markPickedUp() {
-        let charge = pickupCharge
-        dumpster.markPickedUp(actualWeightTons: actualTons, ratePerTon: ratePerTon)
+    /// `tons`: the weight chosen in the heavy-weight question, else the one
+    /// typed.
+    private func markPickedUp(tons chosen: Double? = nil) {
+        let tons = chosen ?? actualTons
+        let charge = charge(for: tons)
+        dumpster.markPickedUp(actualWeightTons: tons, ratePerTon: ratePerTon)
         try? context.save()
         actualTonsText = ""
         savedNote = "Dumpster \(dumpster.number) picked up." + (charge > 0 ? " Overweight charge \(Money.text(charge))." : "")
@@ -274,7 +302,8 @@ struct DumpsterDetailView: View {
             TextField("Location", text: $dropOffLocation, prompt: Text("Address, or where on the lot"), axis: .vertical)
                 .wordsCapitalized()
             DatePicker("Drop-off", selection: $dropOffDate, displayedComponents: .date)
-            DatePicker("Due back", selection: $dueBackDate, displayedComponents: .date)
+            // Not before the drop-off, or it would be overdue at once.
+            DatePicker("Due back", selection: $dueBackDate, in: dropOffDate..., displayedComponents: .date)
             // Labelled: a bare "450" and "2" once typed said nothing.
             LabeledContent("Price") {
                 TextField("Price", text: $dropOffPriceText, prompt: Text("$0"))

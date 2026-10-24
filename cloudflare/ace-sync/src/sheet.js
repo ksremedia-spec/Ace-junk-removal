@@ -98,11 +98,19 @@ function cellNumber(cell) {
 
 /// Strong red, little green or blue (the importer's rule: r ≥ 180,
 /// g and b ≤ 110 out of 255). A missing channel counts as 0.
-export function isRed(cell) {
+/// Also any other shade of red: Google's light reds (#ea9999, #f4cccc) and
+/// dark reds (#990000), and a theme colour that is red (`theme`: colour
+/// type → rgbColor). Orange, pink-purple and grey are not (audit Oct 24, 18).
+export function isRed(cell, theme = {}) {
   const style = cell?.effectiveFormat?.backgroundColorStyle;
-  const c = style?.rgbColor;
+  const c = style?.rgbColor ?? theme[style?.themeColor];
   if (!c) return false;
-  return (c.red ?? 0) >= 180 / 255 && (c.green ?? 0) <= 110 / 255 && (c.blue ?? 0) <= 110 / 255;
+  const r = c.red ?? 0, g = c.green ?? 0, b = c.blue ?? 0;
+  if (r >= 180 / 255 && g <= 110 / 255 && b <= 110 / 255) return true;
+  // Red is the strongest channel, the colour is not greyish, and its hue
+  // is within 20 degrees of pure red.
+  const low = Math.min(g, b);
+  return r >= 0.35 && r > g && r > b && (r - low) / r >= 0.15 && Math.abs(g - b) <= (r - low) / 3;
 }
 
 function money(text) {
@@ -129,26 +137,41 @@ function findHeader(rows) {
 
 /// The tab that looks like the job list, read into rows. Every sheet row
 /// is kept (with its position), so rows can be found again by position.
-export function readSheet(spreadsheet) {
+/// `preferTab`: the sheetId the link has used so far.
+export function readSheet(spreadsheet, preferTab) {
   const title = spreadsheet.properties?.title ?? "";
   const titleYear = (title.match(/\b(20\d\d)\b/) ?? [])[1];
+  const theme = Object.fromEntries((spreadsheet.properties?.spreadsheetTheme?.themeColors ?? [])
+    .map((t) => [t.colorType, t.color?.rgbColor]));
+  // Which tab is the job list: the one already in use, then one named like
+  // "Client Job List", then one with a Customer heading, then the most
+  // rows. In a new year's sheet a crew tab headed Name, Date and Amount
+  // can have more rows than the job list (audit Oct 24, 56).
+  const rank = (t) => [t.sheetId === preferTab ? 1 : 0, /client|job/i.test(t.tabName) ? 1 : 0, t.customerHeading ? 1 : 0, t.jobs.length];
+  const better = (a, b) => {
+    const [x, y] = [rank(a), rank(b)];
+    const i = x.findIndex((v, k) => v !== y[k]);
+    return i >= 0 && x[i] > y[i];
+  };
   let best = null;
   for (const sheet of spreadsheet.sheets ?? []) {
     const data = sheet.data?.[0] ?? {};
     const rows = data.rowData ?? [];
     const header = findHeader(rows);
     if (!header) continue;
-    const parsed = parseRows(rows, data.rowMetadata ?? [], header, Number(titleYear) || new Date().getUTCFullYear());
-    if (!best || parsed.jobs.length > best.jobs.length) {
-      best = { ...parsed, sheetId: sheet.properties.sheetId, tabName: sheet.properties.title, header };
-    }
+    const parsed = parseRows(rows, data.rowMetadata ?? [], header, Number(titleYear) || new Date().getUTCFullYear(), theme);
+    const candidate = {
+      ...parsed, sheetId: sheet.properties.sheetId, tabName: sheet.properties.title ?? "", header,
+      customerHeading: cellText(rows[header.index]?.values?.[header.columns.name]).toLowerCase().includes("customer"),
+    };
+    if (!best || better(candidate, best)) best = candidate;
   }
   return best;
 }
 
-function parseRows(rows, rowMetadata, header, fallbackYear) {
+function parseRows(rows, rowMetadata, header, fallbackYear, theme) {
   const jobs = [];
-  const layout = []; // every row: { tag, day } for placing new rows
+  const layout = []; // every row: { tag, day, dateBlank } for placing new rows
   let year = fallbackYear;
   let lastDay = null;
   const count = Math.max(rows.length, rowMetadata.length);
@@ -168,7 +191,12 @@ function parseRows(rows, rowMetadata, header, fallbackYear) {
     const heading = clean(cellText(rows[header.index]?.values?.[header.columns.name])).toLowerCase();
     // A totals line says exactly "Total" or "Totals"; "Total Property
     // Management" is a customer (audit fix-now 28).
-    if ((!name && !street && !city && price === null) || name.toLowerCase() === heading || /^totals?:?$/i.test(name)) {
+    // A totals or subtotal line labelled some other way ("TOTAL" in the
+    // Date column, "October Total") has a price but no address, and no
+    // name or one ending in "total". A row Ace already tagged as a job is
+    // still read (audit Oct 24, 17).
+    const totalsLine = tag === null && !street && !city && (!name || /(^|\s|sub)totals?:?$/i.test(name));
+    if ((!name && !street && !city && price === null) || name.toLowerCase() === heading || /^totals?:?$/i.test(name) || totalsLine) {
       layout.push({ tag, day: null });
       continue;
     }
@@ -189,19 +217,22 @@ function parseRows(rows, rowMetadata, header, fallbackYear) {
     if (!day) day = { y: year, m: 1, d: 1 };
     year = day.y;
     lastDay = day;
+    // An empty Date cell: the day is the row above's (google.js writes it
+    // in before that could change).
+    const dateBlank = serial === null && clean(cellText(dateCell)) === "";
 
     const check = cell("check");
     const checkText = cellNumber(check) !== null ? String(Math.trunc(cellNumber(check))) : clean(cellText(check));
     const row = {
       index, tag, day, name, street, city, price,
       paymentRaw: cellText(cell("payment")),
-      unpaid: isRed(priceCell),
+      unpaid: isRed(priceCell, theme),
       check: checkText,
       notMailing: clean(cellText(cell("notMailing"))) !== "",
     };
     row.hash = rowHash(row);
     jobs.push(row);
-    layout.push({ tag, day });
+    layout.push({ tag, day, dateBlank });
   }
   return { jobs, layout };
 }

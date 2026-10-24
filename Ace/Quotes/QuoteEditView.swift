@@ -1,3 +1,6 @@
+#if os(macOS)
+import AppKit
+#endif
 import SwiftData
 import SwiftUI
 
@@ -170,16 +173,24 @@ struct QuoteEditView: View {
             form = form.merging(fresh: fresh, base: original)
             original = fresh
         }
-        .onDisappear {
-            if !deleted, let quote, hasChanges, form.customer != nil {
-                form.apply(to: quote)
-                try? context.save()
-            }
-        }
+        .onDisappear { saveOnLeave() }
         .sensoryFeedback(.success, trigger: saved)
         #if os(macOS)
+        // Quitting does not close the page first, so it saves here too
+        // (audit Oct 24, 34).
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
+            saveOnLeave()
+        }
         .frame(minWidth: 480, minHeight: 560)
         #endif
+    }
+
+    /// Keeps what was typed when the page closes or the app quits.
+    private func saveOnLeave() {
+        guard !deleted, let quote, hasChanges, form.customer != nil else { return }
+        form.apply(to: quote)
+        try? context.save()
+        original = form
     }
 
     // MARK: Header

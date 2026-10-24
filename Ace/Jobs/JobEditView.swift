@@ -1,3 +1,6 @@
+#if os(macOS)
+import AppKit
+#endif
 import SwiftData
 import SwiftUI
 
@@ -13,6 +16,10 @@ struct JobEditView: View {
     /// Called with the job after Save, before the form closes. Booking a
     /// quote uses it to mark the quote booked; Cancel never calls it.
     private let onSaved: ((Job) -> Void)?
+    /// On the Mac the page beside the list clears the parent's selection
+    /// (the page is not pushed, so it cannot close itself); without it the
+    /// page closes (audit Oct 24, 8 and 9; the same as quotes).
+    private let onDeleted: (() -> Void)?
     @State private var form: JobFormData
     /// The form as it was opened (or last saved), to tell whether anything
     /// has changed since.
@@ -27,22 +34,34 @@ struct JobEditView: View {
     /// as the page closes (Oct 20 phone audit: a crash and a ghost event).
     @State private var deleted = false
     @State private var confirmDiscard = false
+    @State private var askingEnd = false
 
     private var isNew: Bool { job == nil }
 
+    /// The job, while it still exists. Nil for a new job, and once it was
+    /// deleted here, by the Assistant or by another device: nothing reads
+    /// or writes a deleted record.
+    private var liveJob: Job? {
+        guard let job, !JobActions.isGone(job) else { return nil }
+        return job
+    }
+
     /// iPhone: going Back from a job whose new time clashes with another
-    /// asks the overlap question first, instead of saving quietly.
-    private var backNeedsOverlapQuestion: Bool {
+    /// asks the overlap question first, instead of saving quietly. An end
+    /// time before the start asks too: it cannot be saved, and going Back
+    /// used to drop every change without a word (audit Oct 24, 21).
+    private var backNeedsQuestion: Bool {
         #if os(iOS)
-        return !isNew && hasChanges && timingChanged && !overlapping.isEmpty
+        return !isNew && hasChanges && (!form.endIsValid || (timingChanged && !overlapping.isEmpty))
         #else
         return false
         #endif
     }
 
-    init(job: Job?, prefill: JobFormData? = nil, onSaved: ((Job) -> Void)? = nil) {
+    init(job: Job?, prefill: JobFormData? = nil, onSaved: ((Job) -> Void)? = nil, onDeleted: (() -> Void)? = nil) {
         self.job = job
         self.onSaved = onSaved
+        self.onDeleted = onDeleted
         let start = prefill ?? JobFormData(job: job)
         _form = State(initialValue: start)
         _original = State(initialValue: start)
@@ -175,11 +194,11 @@ struct JobEditView: View {
                 }
             }
             #if os(iOS)
-            if backNeedsOverlapQuestion {
+            if backNeedsQuestion {
                 ToolbarItem(placement: .navigation) {
                     // Save anyway saves and closes; Change the time stays.
                     Button {
-                        trySave()
+                        goBack()
                     } label: {
                         Label("Back", systemImage: "chevron.backward")
                     }
@@ -204,6 +223,12 @@ struct JobEditView: View {
             Button("Save anyway") { save() }
             Button("Change the time", role: .cancel) {}
         }
+        .alert("Remove the end time?", isPresented: $askingEnd) {
+            Button("Remove end time") { removeEndAndSave() }
+            Button("Change the time", role: .cancel) {}
+        } message: {
+            Text("It is before the start time.")
+        }
         // A half-typed booking is not thrown away by a brush of the sheet;
         // Cancel asks first (Oct 20 phone audit).
         .interactiveDismissDisabled(isNew && hasChanges)
@@ -212,7 +237,7 @@ struct JobEditView: View {
             Button("Keep editing", role: .cancel) {}
         }
         #if os(iOS)
-        .navigationBarBackButtonHidden(backNeedsOverlapQuestion)
+        .navigationBarBackButtonHidden(backNeedsQuestion)
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .onChange(of: form.hasTime) { _, on in
@@ -228,21 +253,76 @@ struct JobEditView: View {
         // Changed elsewhere while open (the Mac list's menu, another device
         // by sync): untouched fields follow, typed ones are kept, so Save
         // never undoes the other change (audit Oct 21, M8).
-        .onChange(of: job?.updatedAt) { _, _ in
-            guard !deleted, let job else { return }
+        .onChange(of: liveJob?.updatedAt) { _, _ in
+            guard !deleted, let job = liveJob else { return }
             let fresh = JobFormData(job: job)
             form = form.merging(fresh: fresh, base: original)
             original = fresh
         }
+        // Deleted elsewhere while open (the Assistant, another device by
+        // sync): the page closes, and nothing typed is written to it.
+        .onChange(of: jobs.count) { _, _ in
+            guard !deleted, let job, JobActions.isGone(job) else { return }
+            deleted = true
+            original = form
+            if let onDeleted { onDeleted() } else { dismiss() }
+        }
+        // Its customer was deleted (from the customer page opened here): the
+        // page stops showing them (audit Oct 24, 68).
+        .onChange(of: liveJob?.customer?.persistentModelID) { _, _ in refreshCustomer() }
+        .onAppear { refreshCustomer() }
         // On the Mac this page sits beside the list: clicking another job
         // used to throw away unsaved changes without a word. Like Mail and
         // Notes, they are kept instead (Oct 20 audit).
-        .onDisappear {
-            if !deleted, !isNew, hasChanges, form.customer != nil, form.endIsValid { persist() }
-        }
+        .onDisappear { saveOnLeave() }
         #if os(macOS)
+        // Quitting does not close the page first, so it saves here too
+        // (audit Oct 24, 34).
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
+            saveOnLeave()
+        }
         .frame(minWidth: 480, minHeight: 560)
         #endif
+    }
+
+    /// Keeps what was typed when the page closes without Save. An end time
+    /// before the start cannot be saved, so only it is dropped; a job with
+    /// no customer keeps its other changes too (audit Oct 24, 21).
+    private func saveOnLeave() {
+        guard !deleted, !isNew, hasChanges, liveJob != nil else { return }
+        if !form.endIsValid { form.hasEnd = false }
+        persist()
+    }
+
+    /// iPhone Back while a question is due: the end time first, then the
+    /// overlap.
+    private func goBack() {
+        if !form.endIsValid {
+            flagged += 1
+            askingEnd = true
+        } else {
+            trySave()
+        }
+    }
+
+    private func removeEndAndSave() {
+        form.hasEnd = false
+        // The overlap question, if any, waits for this alert to close.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { trySave() }
+    }
+
+    /// A customer deleted while this page was open is no longer shown or
+    /// read; a customer chosen here and not saved yet is kept.
+    private func refreshCustomer() {
+        guard !deleted, let job = liveJob else { return }
+        let current = job.customer.flatMap { Self.isGone($0) ? nil : $0 }
+        let untouched = form.customer == original.customer
+        if untouched || form.customer.map(Self.isGone) == true { form.customer = current }
+        if untouched || original.customer.map(Self.isGone) == true { original.customer = current }
+    }
+
+    private static func isGone(_ customer: Customer) -> Bool {
+        customer.modelContext == nil || customer.isDeleted
     }
 
     // MARK: Header
@@ -252,10 +332,10 @@ struct JobEditView: View {
         DetailHeader(
             title: form.customer?.name ?? (isNew ? "New job" : "No customer"),
             subtitle: whenText,
-            caption: form.customer?.address.isEmpty == false ? form.customer?.address : nil,
+            caption: siteAddress,
             value: Parse.money(form.priceText).map(Money.text),
-            valueTint: (job?.isPaid ?? form.isPaid) ? .secondary : .primary,
-            hasActions: job != nil || form.customer?.phoneURL != nil || form.customer?.directionsURL != nil
+            valueTint: (liveJob?.isPaid ?? form.isPaid) ? .secondary : .primary,
+            hasActions: liveJob != nil || form.customer?.phoneURL != nil || directionsURL != nil
         ) {
             TypeBadge(type: form.jobType, size: 52, muted: form.isDone)
         } pills: {
@@ -277,7 +357,7 @@ struct JobEditView: View {
                 }
             }
         } actions: {
-            if let job {
+            if let job = liveJob {
                 Button {
                     setDone(!job.isDone, on: job)
                 } label: {
@@ -301,7 +381,7 @@ struct JobEditView: View {
                 }
                 .buttonStyle(.action())
             }
-            if let url = form.customer?.directionsURL {
+            if let url = directionsURL {
                 Button {
                     openURL(url)
                 } label: {
@@ -310,6 +390,17 @@ struct JobEditView: View {
                 .buttonStyle(.action())
             }
         }
+    }
+
+    /// Where the work is: a "Job address: …" first line in the notes (a job
+    /// said at another address), else the customer's address on file
+    /// (audit Oct 24, 39).
+    private var siteAddress: String? {
+        JobSite.address(notes: form.notes, customer: form.customer)
+    }
+
+    private var directionsURL: URL? {
+        siteAddress.flatMap(Maps.directions)
     }
 
     private var hasPills: Bool {
@@ -348,6 +439,7 @@ struct JobEditView: View {
     /// Saving an unchanged job (marking it paid, say) does not ask again.
     private var timingChanged: Bool {
         guard let job else { return true }
+        guard !JobActions.isGone(job) else { return false }
         return job.hasTime != form.hasTime
             || job.scheduledAt != form.date
             || job.endsAt != form.endDate
@@ -368,6 +460,7 @@ struct JobEditView: View {
     private var hasChanges: Bool { form != original }
 
     private func save() {
+        if let job, JobActions.isGone(job) { return }
         let target = persist()
         saved.toggle()
         onSaved?(target)
@@ -395,9 +488,12 @@ struct JobEditView: View {
     private func delete() {
         deleted = true
         original = form
-        if let job {
-            job.remove(from: context)
-        }
-        dismiss()
+        guard let job else { return dismiss() }
+        // The Undo bar and the payment question let go of it first.
+        JobActions.shared.forget(job)
+        // The Mac clears its selection first, so nothing shows a deleted job.
+        onDeleted?()
+        if !JobActions.isGone(job) { job.remove(from: context) }
+        if onDeleted == nil { dismiss() }
     }
 }

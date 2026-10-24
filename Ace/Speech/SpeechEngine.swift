@@ -138,6 +138,9 @@ final class SpeechEngine {
         try audio.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothHFP])
         try audio.setActive(true)
         #endif
+        // A microphone that fails to start hands the audio back too.
+        var started = false
+        defer { if !started { Self.releaseAudio() } }
 
         let transcriber = Self.makeTranscriber(locale)
         let analyzer = SpeechAnalyzer(modules: [transcriber])
@@ -157,6 +160,7 @@ final class SpeechEngine {
         }
         engine.prepare()
         try engine.start()
+        started = true
 
         self.audioEngine = engine
         self.analyzer = analyzer
@@ -186,7 +190,9 @@ final class SpeechEngine {
     }
 
     /// Stops the microphone and waits for Apple's engine to settle the last
-    /// words, then returns the whole note.
+    /// words, then returns the whole note. If the engine fails at the end,
+    /// the words already heard are still returned; it throws only when
+    /// nothing at all was heard (audit Oct 24).
     func stopListening() async throws -> Result {
         guard isListening, let analyzer else { throw EngineError.notLoaded }
         isListening = false
@@ -196,15 +202,26 @@ final class SpeechEngine {
         input?.finish()
         input = nil
         let ended = Date()
-        // A quick tap can stop before the analysis has even begun.
-        _ = try? await startTask?.value
-        try await analyzer.finalizeAndFinishThroughEndOfInput()
-        await Self.wait(for: resultsTask, upTo: .seconds(5))
-        resultsTask = nil
-        startTask = nil
-        self.analyzer = nil
-        Self.releaseAudio()
+        // However this ends, the listen is cleared and the audio handed
+        // back, so the truck's music or podcast comes back.
+        defer {
+            resultsTask = nil
+            startTask = nil
+            self.analyzer = nil
+            Self.releaseAudio()
+        }
+        var failure: Error?
+        do {
+            // A quick tap can stop before the analysis has even begun.
+            _ = try await startTask?.value
+            try await analyzer.finalizeAndFinishThroughEndOfInput()
+        } catch {
+            failure = error
+            await analyzer.cancelAndFinishNow()
+        }
+        await Self.wait(for: resultsTask, upTo: failure == nil ? .seconds(5) : .seconds(1))
         let text = Self.clean(Self.joined(finalText, liveTentative))
+        if let failure, text.isEmpty { throw failure }
         return Result(text: text, seconds: Date().timeIntervalSince(ended), audioSeconds: frames.seconds)
     }
 

@@ -64,8 +64,8 @@ struct WelcomeView: View {
                 }
                 Divider().padding(.leading, 52)
                 step(4, "Use the Assistant",
-                     Beta.relayURL != nil
-                        ? "Set up for this test. Click Assistant in the toolbar and type or say a job, such as \"Linda Johnson, Friday at 9, $350.\""
+                     Beta.assistantReady
+                        ? "Already set up. Click Assistant in the toolbar and type or say a job, such as \"Linda Johnson, Friday at 9, $350.\""
                         : "Add the Anthropic key once in Settings. Then click Assistant and type or say a job, such as \"Linda Johnson, Friday at 9, $350.\"",
                      done: Beta.assistantReady) {
                     if !Beta.assistantReady {

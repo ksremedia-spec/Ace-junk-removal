@@ -11,6 +11,7 @@ struct SheetLinkSection: View {
     @State private var waiting = false
     @State private var message: String?
     @State private var confirmDisconnect = false
+    @State private var confirmResume = false
 
     var body: some View {
         if sync.isSetUp {
@@ -20,10 +21,24 @@ struct SheetLinkSection: View {
                     if let paused = status.paused, !paused.isEmpty {
                         Label(paused, systemImage: "pause.circle")
                             .foregroundStyle(Tint.warning)
-                        Button("Resume") { Task { self.status = await sync.sheet("resume") } }
+                        // On the Mac only, after a plain warning: the next
+                        // check skips every safety stop (audit Oct 24, finding 30).
+                        #if os(macOS)
+                        Button("Resume…") { confirmResume = true }
+                            .confirmationDialog("Resume the Google Sheet link?", isPresented: $confirmResume, titleVisibility: .visible) {
+                                Button("Resume") { act("resume") }
+                            } message: {
+                                Text(paused + "\n\nThe next check runs without these safety stops: jobs whose rows are gone from the sheet are deleted on every device, changed rows replace what Ace has, and Ace writes all its own changes into the sheet.")
+                            }
+                        #endif
                     } else if let error = status.lastError, !error.isEmpty {
                         Label(error, systemImage: "exclamationmark.triangle")
                             .foregroundStyle(Tint.warning)
+                        // Google's text says to connect again (finding 35).
+                        #if os(macOS)
+                        Button(waiting ? "Waiting for Google…" : "Connect Again…") { connect() }
+                            .disabled(waiting)
+                        #endif
                     } else {
                         LabeledContent("Checked", value: status.lastChecked.map { $0.formatted(.relative(presentation: .named)) } ?? "Not yet")
                     }
@@ -53,7 +68,7 @@ struct SheetLinkSection: View {
             }
             .task { await refresh() }
             .confirmationDialog("Disconnect the Google Sheet?", isPresented: $confirmDisconnect) {
-                Button("Disconnect", role: .destructive) { Task { self.status = await sync.sheet("disconnect") } }
+                Button("Disconnect", role: .destructive) { act("disconnect") }
             } message: {
                 Text("Ace and the sheet stop keeping in step. Nothing is deleted in either.")
             }
@@ -65,21 +80,41 @@ struct SheetLinkSection: View {
         if status == nil { message = "Could not reach the sync server." }
     }
 
+    /// Resume or Disconnect. The status stays as it was if the server
+    /// can't be reached.
+    private func act(_ action: String) {
+        message = nil
+        Task {
+            if let now = await sync.sheet(action) {
+                status = now
+            } else {
+                message = "Could not reach the sync server."
+            }
+        }
+    }
+
     private func connect() {
         message = nil
         Task {
-            guard let reply = await sync.sheet("start"), let text = reply.url, let url = URL(string: text) else {
-                message = "Could not start the Google sign-in."
+            guard let reply = await sync.sheet("start") else {
+                message = "Could not reach the sync server."
                 return
             }
             if let error = reply.error { message = error; return }
+            guard let text = reply.url, let url = URL(string: text) else {
+                message = "Could not start the Google sign-in."
+                return
+            }
+            // Connecting again: the old link shows as connected until the
+            // new one replaces it.
+            let before = status?.connected == true ? status?.connectedAt : nil
             openURL(url)
             // Wait for the sign-in to come back (up to five minutes).
             waiting = true
             defer { waiting = false }
             for _ in 0..<100 {
                 try? await Task.sleep(for: .seconds(3))
-                if let now = await sync.sheet("status"), now.connected {
+                if let now = await sync.sheet("status"), now.connected, before == nil || now.connectedAt != before {
                     status = now
                     message = "Connected. The first check runs within a minute."
                     _ = await sync.sheet("run")

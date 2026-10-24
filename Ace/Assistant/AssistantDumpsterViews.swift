@@ -94,6 +94,8 @@ private struct DumpsterSwapForm: View {
     @State private var notes: String
     @State private var saved = false
     @State private var flagged = 0
+    /// "28 tons is more than a dumpster holds. Was it 2.8 tons?"
+    @State private var askHeavy = false
 
     init(out: Dumpster, action: AssistantAction, issues: [PlanIssue], dumpsters: [Dumpster],
          onFinish: @escaping (String) -> Void, onStartOver: @escaping () -> Void) {
@@ -147,7 +149,7 @@ private struct DumpsterSwapForm: View {
 
     /// Clears as soon as a weight is typed in.
     private var weightNote: String? {
-        actualTons == nil ? (flags["actualTons"] ?? "No weight was said.") : nil
+        actualTons == nil ? (flags["actualTons"] ?? "No weight was said.") : WeightCheck.note(for: actualTons)
     }
 
     var body: some View {
@@ -161,9 +163,19 @@ private struct DumpsterSwapForm: View {
         .formStyle(.grouped)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button("Swap") { performSwap() }
-                    .disabled(leaving == nil)
+                Button("Swap") {
+                    if WeightCheck.suggestion(for: actualTons) != nil {
+                        flagged += 1
+                        askHeavy = true
+                    } else {
+                        performSwap()
+                    }
+                }
+                .disabled(leaving == nil)
             }
+        }
+        .heavyWeightQuestion(isPresented: $askHeavy, tons: actualTons) { tons in
+            performSwap(tons: tons)
         }
         .onAppear {
             if !flags.isEmpty || weightNote != nil { flagged += 1 }
@@ -243,14 +255,16 @@ private struct DumpsterSwapForm: View {
         }
     }
 
-    private func performSwap() {
+    /// `tons`: the weight chosen in the heavy-weight question, else the one
+    /// typed.
+    private func performSwap(tons chosen: Double? = nil) {
         guard let leaving else { return }
         // Read before the pickup, which clears them.
         let customer = out.customer
         let location = out.location
         let takenNumber = out.number
 
-        out.markPickedUp(actualWeightTons: actualTons, ratePerTon: ratePerTon)
+        out.markPickedUp(actualWeightTons: chosen ?? actualTons, ratePerTon: ratePerTon)
         leaving.dropOff(
             to: customer,
             location: location,

@@ -47,8 +47,14 @@ final class SyncEngine {
     @ObservationIgnored private var generation = 0
     /// Changes this copy of Ace could not read, for the status line.
     private(set) var unreadableCount = 0
+    /// The sync running now, so others can wait for it to finish.
+    @ObservationIgnored private var running: Task<Void, Never>?
+    /// The server answered with the ID this device knows, since Ace opened.
+    @ObservationIgnored private var serverChecked = false
 
-    private init() {}
+    private init() {
+        heldRecords = state.held.count
+    }
 
     // MARK: Settings
 
@@ -116,17 +122,7 @@ final class SyncEngine {
         NotificationCenter.default.addObserver(forName: ModelContext.didSave, object: context, queue: nil) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, !self.savingOwn else { return }
-                self.hasUnsent = true
-                if self.isSyncing {
-                    self.again = true
-                } else {
-                    // Short on iPhone: Alex saves and pockets the phone (audit M7).
-                    #if os(iOS)
-                    self.syncSoon(after: 1)
-                    #else
-                    self.syncSoon(after: 3)
-                    #endif
-                }
+                self.noteLocalChange()
             }
         }
         loop?.cancel()
@@ -139,22 +135,61 @@ final class SyncEngine {
         }
     }
 
+    /// Something was saved here: send it shortly.
+    private func noteLocalChange() {
+        hasUnsent = true
+        if running != nil {
+            again = true
+        } else {
+            // Short on iPhone: Alex saves and pockets the phone (audit M7).
+            #if os(iOS)
+            syncSoon(after: 1)
+            #else
+            syncSoon(after: 3)
+            #endif
+        }
+    }
+
+    /// The overweight rate or the salary days changed in Settings: send them
+    /// shortly. A change made now is meant for this server, even if the old
+    /// value was held back after a move to another server.
+    func settingsChanged() {
+        state.held.remove(SyncState.key(.setting, SyncIDs.settings))
+        heldRecords = state.held.count
+        noteLocalChange()
+    }
+
     /// Going to the background: finish sending what was just saved. iOS
     /// gives an app a short while to do so when asked (audit Oct 21, M7).
     func syncBeforeBackground() {
         #if os(iOS)
         guard isSetUp else { return }
-        let app = UIApplication.shared
-        var task = UIBackgroundTaskIdentifier.invalid
-        task = app.beginBackgroundTask(withName: "Ace sync") {
-            app.endBackgroundTask(task)
+        endBackgroundTime()
+        let task = UIApplication.shared.beginBackgroundTask(withName: "Ace sync") {
+            MainActor.assumeIsolated { SyncEngine.shared.endBackgroundTime() }
         }
+        backgroundTime = task
         Task { [weak self] in
-            await self?.syncNow()
-            app.endBackgroundTask(task)
+            guard let self else { return }
+            // A sync already under way may be the one carrying the change
+            // just saved: wait for it, then send anything still unsent
+            // (audit Oct 24, finding 13).
+            let wasRunning = self.running != nil
+            await self.finishRunning()
+            if !wasRunning || self.hasUnsent { await self.syncNow() }
+            if backgroundTime == task { self.endBackgroundTime() }
         }
         #endif
     }
+
+    #if os(iOS)
+    /// Hands the background time back to iOS, once.
+    private func endBackgroundTime() {
+        guard backgroundTime != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(backgroundTime)
+        backgroundTime = .invalid
+    }
+    #endif
 
     private func checkSheetIfDue() async {
         guard isSetUp else { return }
@@ -195,6 +230,8 @@ final class SyncEngine {
         // A sync running now must not apply what it fetched for the old memory.
         generation += 1
         heldDeletions = 0
+        heldRecords = 0
+        serverChecked = false
     }
 
     /// More deletions than this in one sync are held back until confirmed in
@@ -206,15 +243,70 @@ final class SyncEngine {
     @ObservationIgnored private var allowBulkDeletions = false
 
     func sendHeldDeletions() async {
+        // A sync already running would make this one return at once, and
+        // nothing would be sent (audit Oct 24, finding 51).
+        await finishRunning()
         allowBulkDeletions = true
         await syncNow(manual: true)
         allowBulkDeletions = false
     }
 
+    /// Records that were on this device before it was moved to this server
+    /// (it had synced with another one: a test server, or this one before it
+    /// was wiped). They are not sent until Settings › Sync says so, so old
+    /// test data cannot reach a fresh server (audit Oct 24, findings 5, 11).
+    private(set) var heldRecords = 0
+
+    /// Sends the held records to the server after all.
+    func sendHeldRecords() async {
+        await finishRunning()
+        state.held = []
+        state.save()
+        heldRecords = 0
+        await syncNow(manual: true)
+    }
+
+    /// Removes the held records from this device only, then brings
+    /// everything down from the server again, so a record it has that was
+    /// held here is not missed.
+    func removeHeldRecords() async {
+        guard let context else { return }
+        await finishRunning()
+        var snapshot = SyncSnapshot.read(context).0
+        for key in state.held where state.known[key] == nil {
+            guard let (type, id) = SyncState.split(key) else { continue }
+            snapshot.delete(type, id, in: context)
+        }
+        saveOwn(context)
+        state.held = []
+        state.since = 0
+        state.save()
+        heldRecords = 0
+        await syncNow(manual: true)
+    }
+
     // MARK: One sync
 
+    /// One sync, unless one is already running (then it returns at once).
     func syncNow(manual: Bool = false) async {
-        guard let context, let config, !isSyncing else { return }
+        guard context != nil, config != nil, running == nil else { return }
+        // The task clears `running` itself, so anyone waiting on it sees it
+        // gone as soon as it finishes.
+        let task = Task {
+            await self.syncOnce(manual: manual)
+            self.running = nil
+        }
+        running = task
+        await task.value
+    }
+
+    /// Waits until no sync is running.
+    private func finishRunning() async {
+        while let task = running { await task.value }
+    }
+
+    private func syncOnce(manual: Bool) async {
+        guard let context, let config else { return }
         isSyncing = true
         isManual = manual
         again = false
@@ -269,6 +361,7 @@ final class SyncEngine {
         if let problem { return .problem(problem) }
         if isOffline { return .offline }
         if heldDeletions > 0 { return .problem("\(heldDeletions) deletions were held back. Open Settings › Sync.") }
+        if heldRecords > 0 { return .problem(heldRecordsText + " Open Settings › Sync.") }
         if unreadableCount > 0 { return .problem("\(Plural.text(unreadableCount, "change")) from another device couldn't be read. Update Ace on this device.") }
         if let sheetProblem { return .problem(sheetProblem) }
         if hasUnsent { return .waiting }
@@ -276,22 +369,38 @@ final class SyncEngine {
         return .waiting
     }
 
+    /// "412 records on this device are not on the sync server."
+    var heldRecordsText: String {
+        heldRecords == 1
+            ? "1 record on this device is not on the sync server."
+            : "\(heldRecords) records on this device are not on the sync server."
+    }
+
     private func run(_ context: ModelContext, _ config: Config) async throws {
-        // Talking to a different server than last time: start afresh.
+        // Talking to a different server than last time: start afresh. The
+        // old server's ID is kept, so a device that had synced elsewhere
+        // holds its records back instead of sending them (finding 5).
         if state.url != config.url.absoluteString {
+            let server = state.server
             forget()
             state.url = config.url.absoluteString
+            state.server = server
             state.save()
         }
         let runGeneration = generation
+        let serverBefore = state.server
+        let heldBefore = state.held
         let read = SyncSnapshot.read(context)
         var snapshot = read.0
         if read.1 { saveOwn(context) }
 
         // The database was replaced (or emptied) but the sync memory
         // survived: start afresh instead of deleting everything everywhere.
-        let total = SyncType.allCases.reduce(0) { $0 + snapshot.ids(of: $1).count }
-        if total == 0 && !state.known.isEmpty {
+        // The shared settings are not in the database, so they don't count.
+        // This also fires when a device really deleted its last records:
+        // rare, and those records then come back (docs/device-sync.md).
+        let total = SyncType.allCases.reduce(0) { $0 + ($1 == .setting ? 0 : snapshot.ids(of: $1).count) }
+        if total == 0 && state.known.keys.contains(where: { SyncState.split($0)?.0 != .setting }) {
             let url = state.url
             forget()
             state.url = url
@@ -307,9 +416,11 @@ final class SyncEngine {
             for id in snapshot.ids(of: type) {
                 let key = SyncState.key(type, id)
                 seen.insert(key)
+                let known = state.known[key]
+                // Held back after a move to another server, until Settings says.
+                if known == nil && state.held.contains(key) { continue }
                 guard let (data, stamped) = snapshot.encoded(type, id) else { continue }
                 let print = SyncCoding.fingerprint(data)
-                let known = state.known[key]
                 guard known?.fingerprint != print else { continue }
                 var time = stamped ?? .distantPast
                 // Fields changed without a new "last changed" time: stamp it now.
@@ -326,7 +437,11 @@ final class SyncEngine {
             guard let (type, id) = SyncState.split(key) else { continue }
             deletions.append(Outgoing(type: type, id: id, updatedAt: now, deleted: true, data: Data("{}".utf8), fingerprint: ""))
         }
-        if deletions.count > Self.maxDeletionsWithoutAsking && !allowBulkDeletions {
+        // Crew hours and dumpster history go with their person or dumpster,
+        // so they don't count: deleting one person with a month of hours is
+        // an ordinary delete (audit Oct 24, finding 51).
+        let counted = deletions.filter { $0.type != .labor && $0.type != .rental }.count
+        if counted > Self.maxDeletionsWithoutAsking && !allowBulkDeletions {
             heldDeletions = deletions.count
         } else {
             heldDeletions = 0
@@ -338,13 +453,31 @@ final class SyncEngine {
         var incoming: [String: Incoming] = [:]
         var since = state.since
         var index = 0
+        // The first request after Ace opens carries no changes when this
+        // device knows its server, so a wiped or replaced server is noticed
+        // before any of this device's records reach it (finding 5).
+        var probe = !serverChecked && state.server != nil
         repeat {
-            let group = Array(outgoing[index..<min(index + 40, outgoing.count)])
+            let group = probe ? [] : Array(outgoing[index..<min(index + 40, outgoing.count)])
+            probe = false
             let reply = try await send(group, since: since, config)
             guard generation == runGeneration else { return }
-            // A different server answered (it was replaced or reset): start
-            // afresh on the next sync instead of mixing the two.
-            if reply.reset || (state.server != nil && reply.server != nil && state.server != reply.server) {
+            // A different server answered (it was replaced or wiped): start
+            // afresh on the next sync instead of mixing the two. What is on
+            // this device came from the old server, so it is held back until
+            // Settings › Sync says to send or remove it (finding 5).
+            if let server = reply.server, let old = state.server, server != old {
+                let url = state.url
+                forget()
+                state.url = url
+                state.server = server
+                state.held = seen
+                state.save()
+                heldRecords = state.held.count
+                return
+            }
+            // The same server, reset: start afresh, sending everything.
+            if reply.reset {
                 let url = state.url
                 forget()
                 state.url = url
@@ -353,6 +486,7 @@ final class SyncEngine {
                 return
             }
             if state.server == nil { state.server = reply.server }
+            serverChecked = true
             for sent in group {
                 let key = SyncState.key(sent.type, sent.id)
                 if sent.deleted {
@@ -370,7 +504,7 @@ final class SyncEngine {
             // everything received is saved below. Saved earlier, a sync cut
             // short (the phone locked mid-download, Oct 21) would leave the
             // device sure it had records it never stored.
-            state.save()
+            if !group.isEmpty { state.save() }
             if index >= outgoing.count && !reply.more { break }
         } while true
 
@@ -382,15 +516,30 @@ final class SyncEngine {
                 incoming[key] = Incoming(type: type, id: id, updatedAtMilliseconds: old.updatedAt, deleted: old.deleted, data: old.data)
             }
         }
+        // Changes applied with a link to a record that wasn't here get
+        // another try, in case it has arrived since (audit Oct 24, finding 53).
+        for old in state.unlinked {
+            guard let type = SyncType(rawValue: old.type), let id = UUID(uuidString: old.id) else { continue }
+            let key = SyncState.key(type, id)
+            if incoming[key] == nil {
+                incoming[key] = Incoming(type: type, id: id, updatedAtMilliseconds: old.updatedAt, deleted: false, data: old.data, retry: true)
+            }
+        }
         var unreadable: [SyncState.Unreadable] = []
+        var unlinked: [SyncState.Unreadable] = []
 
         // Re-read: records may have been deleted on this device while the
-        // request was out (fix-now 6).
-        snapshot = SyncSnapshot.read(context).0
+        // request was out (fix-now 6). Skipped when there is nothing to
+        // apply or tidy (finding 50).
+        if !incoming.isEmpty || !state.held.isEmpty {
+            snapshot = SyncSnapshot.read(context).0
+        }
 
         /// The local copy has an edit not sent yet, and it is the newer one.
         func localWins(_ type: SyncType, _ change: Incoming) -> Bool {
             let key = SyncState.key(type, change.id)
+            // Held back from another server: this server's copy wins.
+            if state.known[key] == nil && state.held.contains(key) { return false }
             guard let local = snapshot.encoded(type, change.id) else { return false }
             // Unchanged since the last sync: the incoming change is newer
             // news, whatever the local stamp says (fix-now 2).
@@ -404,21 +553,32 @@ final class SyncEngine {
         for type in SyncType.allCases {
             for change in incoming.values where change.type == type && !change.deleted {
                 let key = SyncState.key(type, change.id)
-                // This device's own change coming back, or nothing new.
-                if state.known[key]?.updatedAt == change.updatedAtMilliseconds,
-                   snapshot.encoded(type, change.id) != nil { continue }
+                if change.retry {
+                    // Again only if nothing changed here since it was applied.
+                    guard let known = state.known[key], known.updatedAt == change.updatedAtMilliseconds,
+                          let local = snapshot.encoded(type, change.id),
+                          SyncCoding.fingerprint(local.data) == known.fingerprint else { continue }
+                } else if state.known[key]?.updatedAt == change.updatedAtMilliseconds,
+                          snapshot.encoded(type, change.id) != nil {
+                    // This device's own change coming back, or nothing new.
+                    continue
+                }
                 if localWins(type, change) { continue }
+                let linked: Bool
                 do {
-                    try snapshot.apply(type, change.id, change.data, updatedAt: change.updatedAt, in: context)
+                    linked = try snapshot.apply(type, change.id, change.data, updatedAt: change.updatedAt, in: context)
                 } catch {
                     // One change this copy can't read must not stop the rest.
                     unreadable.append(.init(type: type.rawValue, id: change.id.uuidString, updatedAt: change.updatedAtMilliseconds, deleted: false, data: change.data))
                     continue
                 }
+                if !linked {
+                    unlinked.append(.init(type: type.rawValue, id: change.id.uuidString, updatedAt: change.updatedAtMilliseconds, deleted: false, data: change.data))
+                }
                 if let (data, _) = snapshot.encoded(type, change.id) {
                     state.known[key] = .init(fingerprint: SyncCoding.fingerprint(data), updatedAt: change.updatedAtMilliseconds)
                 }
-                applied = true
+                if linked || !change.retry { applied = true }
             }
         }
         for type in SyncType.allCases.reversed() {
@@ -434,10 +594,24 @@ final class SyncEngine {
         }
         guard generation == runGeneration else { return }
         if applied || !outgoing.isEmpty { saveOwn(context) }
+        // A held record stops being held once this server has sent its own
+        // copy, or once it is deleted here.
+        if !state.held.isEmpty {
+            state.held = state.held.filter { key in
+                guard state.known[key] == nil, let (type, id) = SyncState.split(key) else { return false }
+                return snapshot.has(type, id)
+            }
+        }
+        heldRecords = state.held.count
         state.unreadable = unreadable
+        state.unlinked = unlinked
         unreadableCount = unreadable.count
+        // Written only when something moved, not every 30 seconds while
+        // idle (finding 50).
+        let moved = since != state.since || !incoming.isEmpty || !outgoing.isEmpty
+            || serverBefore != state.server || heldBefore != state.held
         state.since = since
-        state.save()
+        if moved { state.save() }
     }
 
     private func saveOwn(_ context: ModelContext) {
@@ -454,6 +628,9 @@ final class SyncEngine {
         var configured: Bool
         var sheetName: String?
         var lastRun: Double?
+        /// When the sheet was connected, so Connect Again can tell the new
+        /// link from the old one.
+        var connectedAt: Double?
         var paused: String?
         var lastError: String?
         var error: String?
@@ -505,6 +682,8 @@ final class SyncEngine {
         let updatedAtMilliseconds: Double
         let deleted: Bool
         let data: Data
+        /// Applied before with a link missing; tried again (finding 53).
+        var retry = false
         var updatedAt: Date { Date(timeIntervalSince1970: updatedAtMilliseconds / 1000) }
     }
 
@@ -580,6 +759,12 @@ struct SyncState: Codable {
     /// Changes from the server this copy of Ace could not read; kept and
     /// tried again on every sync (fix-now 4).
     var unreadable: [Unreadable] = []
+    /// Changes applied with a link to a record not on this device; tried
+    /// again on every sync until the link is found (finding 53).
+    var unlinked: [Unreadable] = []
+    /// Records on this device not sent since it moved to another server,
+    /// until Settings › Sync says to send or remove them (finding 5).
+    var held: Set<String> = []
 
     struct Unreadable: Codable {
         var type: String
@@ -589,7 +774,7 @@ struct SyncState: Codable {
         var data: Data
     }
 
-    enum CodingKeys: String, CodingKey { case device, since, known, url, server, unreadable }
+    enum CodingKeys: String, CodingKey { case device, since, known, url, server, unreadable, unlinked, held }
 
     init() {}
 
@@ -601,6 +786,8 @@ struct SyncState: Codable {
         url = try c.decodeIfPresent(String.self, forKey: .url)
         server = try c.decodeIfPresent(String.self, forKey: .server)
         unreadable = try c.decodeIfPresent([Unreadable].self, forKey: .unreadable) ?? []
+        unlinked = try c.decodeIfPresent([Unreadable].self, forKey: .unlinked) ?? []
+        held = try c.decodeIfPresent(Set<String>.self, forKey: .held) ?? []
     }
 
     static func key(_ type: SyncType, _ id: UUID) -> String { "\(type.rawValue)/\(id.uuidString)" }
@@ -629,3 +816,8 @@ struct SyncState: Codable {
         }
     }
 }
+
+#if os(iOS)
+/// The extra time iOS gave the sync when Ace last went to the background.
+@MainActor private var backgroundTime = UIBackgroundTaskIdentifier.invalid
+#endif

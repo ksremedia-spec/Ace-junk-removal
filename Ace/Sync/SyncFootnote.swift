@@ -49,7 +49,10 @@ struct DumpsterQuickMenu: View {
     }
 
     private func extend(by days: Int) {
-        let from = dumpster.dueBackAt ?? Dates.startOfToday()
+        // From today when it's already overdue, so Extend never leaves it
+        // overdue (audit Oct 24, 71).
+        let today = Dates.startOfToday()
+        let from = max(dumpster.dueBackAt.map { Calendar.current.startOfDay(for: $0) } ?? today, today)
         dumpster.dueBackAt = Calendar.current.date(byAdding: .day, value: days, to: from)
         dumpster.updatedAt = Date()
         try? context.save()

@@ -119,6 +119,8 @@ private struct DumpsterPickupForm: View {
     @State private var confirmNoWeight = false
     @State private var saved = false
     @State private var flagged = 0
+    /// "28 tons is more than a dumpster holds. Was it 2.8 tons?"
+    @State private var askHeavy = false
 
     private let flags: AssistantFlags
 
@@ -148,7 +150,7 @@ private struct DumpsterPickupForm: View {
 
     /// The weight note clears as soon as a weight is typed in.
     private var weightNote: String? {
-        actualTons == nil ? (flags["actualTons"] ?? "No weight was said.") : nil
+        actualTons == nil ? (flags["actualTons"] ?? "No weight was said.") : WeightCheck.note(for: actualTons)
     }
 
     var body: some View {
@@ -165,7 +167,14 @@ private struct DumpsterPickupForm: View {
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("Mark picked up") {
-                    if actualTons == nil { confirmNoWeight = true } else { markPickedUp() }
+                    if actualTons == nil {
+                        confirmNoWeight = true
+                    } else if WeightCheck.suggestion(for: actualTons) != nil {
+                        flagged += 1
+                        askHeavy = true
+                    } else {
+                        markPickedUp()
+                    }
                 }
             }
         }
@@ -173,6 +182,9 @@ private struct DumpsterPickupForm: View {
                             isPresented: $confirmNoWeight, titleVisibility: .visible) {
             Button("Mark picked up") { markPickedUp() }
             Button("Add the weight", role: .cancel) {}
+        }
+        .heavyWeightQuestion(isPresented: $askHeavy, tons: actualTons) { tons in
+            markPickedUp(tons: tons)
         }
         .onAppear {
             if !flags.isEmpty { flagged += 1 }
@@ -239,10 +251,12 @@ private struct DumpsterPickupForm: View {
         }
     }
 
-    private func markPickedUp() {
+    /// `tons`: the weight chosen in the heavy-weight question, else the one
+    /// typed.
+    private func markPickedUp(tons chosen: Double? = nil) {
         // Found before the pickup, which clears the dumpster's customer.
         let linked = markJobDone ? linkedJob : nil
-        dumpster.markPickedUp(actualWeightTons: actualTons, ratePerTon: ratePerTon)
+        dumpster.markPickedUp(actualWeightTons: chosen ?? actualTons, ratePerTon: ratePerTon)
         if let linked {
             linked.isDone = true
             linked.updatedAt = Date()

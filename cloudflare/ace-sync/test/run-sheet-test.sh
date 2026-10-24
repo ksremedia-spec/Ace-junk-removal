@@ -6,12 +6,14 @@
 cd "$(dirname "$0")/.."
 export PATH="$HOME/.ace-tools/node-v24.21.0-darwin-arm64/bin:$PATH"
 STATE=.wrangler/test-state
+# A made-up sync code for the test server only (the real one is never read).
+export SYNC_KEY=sheet-test-only
 rm -rf $STATE
 npx wrangler d1 migrations apply ace-sync --local --persist-to $STATE >/dev/null 2>&1
 node test/fake-google.mjs > /tmp/ace-fake-google.log 2>&1 &
 FAKE=$!
 npx wrangler dev --port 8788 --persist-to $STATE \
-  --var GOOGLE_TEST_URL:http://localhost:8790 --var GOOGLE_CLIENT_ID:test-client \
+  --var SYNC_KEY:$SYNC_KEY --var GOOGLE_TEST_URL:http://localhost:8790 --var GOOGLE_CLIENT_ID:test-client \
   --var GOOGLE_CLIENT_SECRET:test-secret --var PUBLIC_URL:http://localhost:8788 > /tmp/ace-test-server.log 2>&1 &
 SERVER=$!
 for i in {1..60}; do grep -q "Ready on" /tmp/ace-test-server.log && break; sleep 0.5; done

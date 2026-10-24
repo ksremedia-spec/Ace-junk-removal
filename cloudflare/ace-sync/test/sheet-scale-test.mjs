@@ -2,7 +2,7 @@
 // Run with: TEST=test/sheet-scale-test.mjs test/run-sheet-test.sh
 import { readFileSync } from "node:fs";
 const SERVER = "http://localhost:8788", FAKE = "http://localhost:8790";
-const KEY = readFileSync(new URL("../.dev.vars", import.meta.url), "utf8").match(/SYNC_KEY="([^"]*)"/)[1];
+const KEY = process.env.SYNC_KEY ?? readFileSync(new URL("../.dev.vars", import.meta.url), "utf8").match(/SYNC_KEY="([^"]*)"/)[1];
 const post = async (p, b = {}) => (await fetch(SERVER + p, { method: "POST", headers: { Authorization: `Bearer ${KEY}` }, body: JSON.stringify(b) })).json();
 const fake = async (p, b) => (await fetch(FAKE + p, { method: b ? "POST" : "GET", body: b ? JSON.stringify(b) : undefined })).json();
 const serial = (y, m, d) => Math.round((Date.UTC(y, m - 1, d) - Date.UTC(1899, 11, 30)) / 86400000);

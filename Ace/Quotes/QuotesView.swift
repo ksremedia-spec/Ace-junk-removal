@@ -19,6 +19,8 @@ struct QuotesView: View {
     @State private var changed = 0
     /// A quote swiped as lost, waiting for "Mark this quote lost?".
     @State private var pendingLost: Quote?
+    /// A booked quote swiped to reopen, waiting for "Reopen this quote?".
+    @State private var pendingReopen: Quote?
 
     private var filtered: [Quote] { QuoteSearch.filter(quotes, searchText) }
     private var shown: [Quote] { QuoteList.shown(filtered, status: filter) }
@@ -106,6 +108,20 @@ struct QuotesView: View {
         } message: { _ in
             Text("It leaves the Quotes list. Search still finds it, and Reopen brings it back.")
         }
+        // The same question as the quote's page: booking it again would make
+        // a second job (audit Oct 24, 67).
+        .confirmationDialog("Reopen this quote?",
+                            isPresented: Binding(get: { pendingReopen != nil }, set: { if !$0 { pendingReopen = nil } }),
+                            titleVisibility: .visible, presenting: pendingReopen) { quote in
+            Button("Reopen") {
+                reopen(quote)
+                pendingReopen = nil
+            }
+        } message: { quote in
+            if let job = quote.job {
+                Text("The job on \(Dates.shortDay(job.scheduledAt)) stays on the schedule.")
+            }
+        }
         .navigationDestination(for: Quote.self) { quote in
             QuoteEditView(quote: quote, onSaved: { _ in showNotice("Quote saved.") })
         }
@@ -145,7 +161,7 @@ struct QuotesView: View {
             // The Booked list is all booked: no pill on every row.
             QuoteRow(quote: quote, showStatus: filter != .booked)
         }
-        .swipeActions(edge: .leading) {
+        .swipeActions(edge: .leading, allowsFullSwipe: false) {
             if quote.status == .open {
                 Button {
                     quoteToBook = quote
@@ -155,7 +171,7 @@ struct QuotesView: View {
                 .tint(.green)
             } else {
                 Button {
-                    reopen(quote)
+                    if quote.job != nil { pendingReopen = quote } else { reopen(quote) }
                 } label: {
                     Label("Reopen", systemImage: "arrow.uturn.backward")
                 }

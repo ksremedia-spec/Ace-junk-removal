@@ -182,7 +182,7 @@ enum Parse {
             cleaned = lower.replacingOccurrences(of: ",", with: ".")
         }
         guard let value = money(cleaned) else { return nil }
-        if saysPounds || value > 100 { return (value / 2000 * 100).rounded() / 100 }
+        if saysPounds || value > 100 { return value / 2000 }
         return value
     }
 

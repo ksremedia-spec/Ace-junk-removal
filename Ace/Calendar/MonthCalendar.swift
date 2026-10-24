@@ -16,7 +16,10 @@ struct MonthCalendar: View {
     /// Any day in the month on show.
     @State private var month: Date
     @State private var choosingMonth = false
-    @ScaledMetric(relativeTo: .body) private var circle: CGFloat = 36
+    /// Grows with the text, up to 40 points, so seven days always fit
+    /// across a phone (the metric itself reads the uncapped size).
+    @ScaledMetric(relativeTo: .body) private var scaledCircle: CGFloat = 36
+    private var circle: CGFloat { min(scaledCircle, 40) }
 
     init(selectedDay: Binding<Date>, dottedDays: Set<Date>) {
         _selectedDay = selectedDay
@@ -39,6 +42,9 @@ struct MonthCalendar: View {
                     }
                 }
             }
+            // The days stop growing at xxLarge, as in Apple's Calendar and
+            // the week strip, so the right-hand days stay on screen.
+            .dynamicTypeSize(...DynamicTypeSize.xxLarge)
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 30)
@@ -58,7 +64,7 @@ struct MonthCalendar: View {
             GoToMonthSheet(month: month) { chosen in
                 month = chosen
             }
-            .presentationDetents([.height(340)])
+            .presentationDetents([.medium, .large])
         }
     }
 

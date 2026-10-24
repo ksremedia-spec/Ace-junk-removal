@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 
 // What a new job or quote from the Assistant is still missing, and the two
@@ -207,8 +208,22 @@ final class FollowUpListener {
         }
     }
 
-    func begin(_ gap: Gap, engine: SpeechEngine) {
-        guard phase == .idle else { return }
+    /// Waiting for the microphone question; cleared by `cancel`.
+    private var starting = false
+
+    func begin(_ gap: Gap, engine: SpeechEngine) async {
+        guard phase == .idle, !starting else { return }
+        starting = true
+        // Asked the first time. A refusal is said plainly, not as "Nothing
+        // heard." after a silent recording (audit Oct 24).
+        let allowed = await AVAudioApplication.requestRecordPermission()
+        // The form closed while the question was up.
+        guard starting else { return }
+        starting = false
+        guard allowed else {
+            note = Self.microphoneOffText
+            return
+        }
         do {
             try engine.startListening()
             note = ""
@@ -249,8 +264,17 @@ final class FollowUpListener {
         }
     }
 
+    private static var microphoneOffText: String {
+        #if os(macOS)
+        return "Microphone access is off. Type the answer, or turn it on in System Settings › Privacy & Security › Microphone."
+        #else
+        return "Microphone access is off. Type the answer, or turn it on in Settings › Privacy & Security › Microphone."
+        #endif
+    }
+
     /// Stops listening without reading anything, when the form closes.
     func cancel(engine: SpeechEngine?) {
+        starting = false
         guard case .listening = phase else { return }
         phase = .idle
         Task { await engine?.cancelListening() }
@@ -310,7 +334,7 @@ struct MissingSection: View {
                                 HoldToTalkButton(
                                     idleTitle: "Hold to answer",
                                     isListening: listener.phase == .listening(question),
-                                    onStart: { listener.begin(question, engine: engine) },
+                                    onStart: { Task { @MainActor in await listener.begin(question, engine: engine) } },
                                     onEnd: { finish(question, engine: engine) }
                                 )
                                 .disabled(listener.phase == .working(question))

@@ -33,8 +33,9 @@ Kyle works in the Claude desktop app (Code tab, local session, with computer use
 
 - One SwiftUI project targeting iPhone and Mac. Minimum iOS 26 and macOS 26
   (Kyle's assumption; confirmed/adjusted in `docs/platform-facts.md`).
-- Distribution is direct install from Kyle's Mac (ad hoc or sideload), not the
-  App Store or TestFlight.
+- Distribution: iPhones through TestFlight (Kyle, Oct 24: over-the-air
+  updates, no Developer Mode), with a fresh upload every 60 days; the Mac
+  as a notarized Developer ID copy. Not the App Store. `docs/decisions.md`.
 - Data is stored on the device first, so the app works offline, and syncs to a
   shared backend on Cloudflare (Workers + D1). Kyle, Oct 21 2026: it runs on
   Kyle's own Cloudflare account for now (and Google sign-in on his Google

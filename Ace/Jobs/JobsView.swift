@@ -59,8 +59,12 @@ struct JobsView: View {
         .onAppear { if openOnUnpaid { filter = .unpaid; openOnUnpaid = false } }
         .onChange(of: openOnUnpaid) { _, on in if on { filter = .unpaid; openOnUnpaid = false } }
         .searchable(text: $searchText, prompt: "Name, phone, address or notes")
+        .navigationDestination(for: Job.self) { job in
+            JobEditView(job: job)
+        }
         .confirmationDialog("Delete this job?", isPresented: deleteAsked, titleVisibility: .visible, presenting: pendingDelete) { job in
             Button("Delete", role: .destructive) {
+                JobActions.shared.forget(job)
                 job.remove(from: context)
                 pendingDelete = nil
             }
@@ -177,10 +181,11 @@ struct JobsView: View {
         shown.isEmpty ? "Done" : "Done · \(shown.count)"
     }
 
+    /// Opened by value rather than by a destination, so the page stays open
+    /// when Mark paid or Mark done moves the job off this list (audit Oct
+    /// 24, 24 and 37; the same as Quotes).
     private func row(_ job: Job, showDate: Bool = true) -> some View {
-        NavigationLink {
-            JobEditView(job: job)
-        } label: {
+        NavigationLink(value: job) {
             // The list's own name tells the row which pills to leave out.
             JobRow(job: job, showDate: showDate, context: isSearching ? nil : filter)
         }

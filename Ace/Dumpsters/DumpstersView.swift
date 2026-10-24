@@ -9,14 +9,18 @@ struct DumpstersView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Dumpster.number) private var dumpsters: [Dumpster]
     @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.scenePhase) private var scenePhase
+    /// Read by the page, so "Due today" turns "Overdue" after midnight
+    /// even when the app was left open on this tab.
+    @State private var today = Dates.startOfToday()
 
     /// "3 of 6 out · 1 overdue · 1 due today", or "6 in the yard". "1 out"
     /// next to an overdue one read as if only one was out (Oct 20 phone audit).
     private var summary: String {
         let out = dumpsters.filter(\.isOut).count
         guard out > 0 else { return "\(dumpsters.count) in the yard" }
-        let overdue = dumpsters.filter { $0.status() == .overdue }.count
-        let dueToday = dumpsters.filter { $0.status() == .dueToday }.count
+        let overdue = dumpsters.filter { $0.status(on: today) == .overdue }.count
+        let dueToday = dumpsters.filter { $0.status(on: today) == .dueToday }.count
         var parts = ["\(out) of \(dumpsters.count) out"]
         if overdue > 0 { parts.append("\(overdue) overdue") }
         if dueToday > 0 { parts.append("\(dueToday) due today") }
@@ -58,6 +62,9 @@ struct DumpstersView: View {
                             .contextMenu { DumpsterQuickMenu(dumpster: dumpster) }
                         }
                     }
+                    // New tiles on a new day, so their colours are worked
+                    // out again.
+                    .id(today)
                 }
             }
             .padding(.horizontal, Space.l)
@@ -67,5 +74,11 @@ struct DumpstersView: View {
         .environment(\.cardFill, Tint.boardCard)
         .navigationTitle("Dumpsters")
         .refreshable { await SyncEngine.shared.syncNow(manual: true) }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { today = Dates.startOfToday() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged).receive(on: RunLoop.main)) { _ in
+            today = Dates.startOfToday()
+        }
     }
 }

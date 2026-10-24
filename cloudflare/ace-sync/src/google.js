@@ -91,21 +91,39 @@ export async function finishConnect(request, env) {
   const file = await googleJSON(google(env, `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(sheetId)}?fields=name,mimeType`), tokens.access_token);
   if (file.mimeType !== SHEET_TYPE) return page("The sheet was not connected.", "That file is not a Google Sheet. Start again and pick the job sheet.");
 
+  const connected = page(`Ace is connected to “${file.name ?? "the sheet"}”.`, "You can close this tab. Ace checks the sheet every minute.");
+  // The same sheet again (after Disconnect or a sign-in error): only the
+  // sign-in is replaced. The row tags and the place in Ace's changes are
+  // kept, so changes made in between still reach the sheet and no job is
+  // matched up a second time (audit Oct 24, 15).
+  const existing = await env.DB.prepare("SELECT sheet_id FROM google_link WHERE id = 1").first();
+  if (existing?.sheet_id === sheetId) {
+    await env.DB.batch([
+      env.DB.prepare("DELETE FROM google_pending"),
+      env.DB.prepare("UPDATE google_link SET refresh_token = ?1, sheet_name = ?2, last_error = '' WHERE id = 1").bind(tokens.refresh_token, file.name ?? ""),
+    ]);
+    return connected;
+  }
+
   // Ace's changes from before the connection are not copied into the sheet;
-  // jobs already in both are matched up on the first check.
+  // jobs already in both are matched up on the first check. Tag numbers
+  // start at a random large number, so they cannot clash with hidden tags
+  // something else put in the file (audit Oct 24, 55).
   const latest = await env.DB.prepare("SELECT COALESCE(MAX(seq), 0) AS latest FROM records").first();
+  const firstTag = 1000000 + Math.floor(Math.random() * 1000000);
   await env.DB.batch([
     env.DB.prepare("DELETE FROM google_pending"),
     env.DB.prepare("DELETE FROM sheet_rows"),
     env.DB.prepare(`INSERT OR REPLACE INTO google_link
       (id, refresh_token, sheet_id, sheet_name, connected_at, last_version, last_seq, next_tag, paused, last_run, last_error)
-      VALUES (1, ?1, ?2, ?3, ?4, '', ?5, 1, '', 0, '')`).bind(tokens.refresh_token, sheetId, file.name ?? "", Date.now(), latest.latest),
+      VALUES (1, ?1, ?2, ?3, ?4, '', ?5, ?6, '', 0, '')`).bind(tokens.refresh_token, sheetId, file.name ?? "", Date.now(), latest.latest, firstTag),
   ]);
-  return page(`Ace is connected to “${file.name ?? "the sheet"}”.`, "You can close this tab. Ace checks the sheet every minute.");
+  return connected;
 }
 
 export async function status(env) {
-  const link = await env.DB.prepare("SELECT sheet_name, connected_at, paused, last_run, last_error FROM google_link WHERE id = 1").first();
+  // A link with no sign-in was disconnected (kept for connecting again).
+  const link = await env.DB.prepare("SELECT sheet_name, connected_at, paused, last_run, last_error FROM google_link WHERE id = 1 AND refresh_token != ''").first();
   if (!link) return { connected: false, configured: !!(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET && env.PUBLIC_URL) };
   return {
     connected: true, configured: true, sheetName: link.sheet_name, connectedAt: link.connected_at,
@@ -113,13 +131,16 @@ export async function status(env) {
   };
 }
 
+/// Forgets the sign-in and stops the checks. The row tags and the place in
+/// Ace's changes stay, for when the same sheet is connected again; another
+/// sheet starts afresh (audit Oct 24, 15).
 export async function disconnect(env) {
-  await env.DB.batch([env.DB.prepare("DELETE FROM google_link"), env.DB.prepare("DELETE FROM sheet_rows")]);
+  await env.DB.prepare("UPDATE google_link SET refresh_token = '', running_until = 0 WHERE id = 1").run();
   return { connected: false };
 }
 
 export async function resume(env) {
-  await env.DB.prepare("UPDATE google_link SET paused = '', override = 1 WHERE id = 1").run();
+  await env.DB.prepare("UPDATE google_link SET paused = '', override = 1 WHERE id = 1 AND refresh_token != ''").run();
   return status(env);
 }
 
@@ -131,7 +152,7 @@ export async function runSheetSync(env) {
   // in case a run is cut off.
   const now = Date.now();
   const lease = await env.DB.prepare(
-    "UPDATE google_link SET running_until = ?1 WHERE id = 1 AND paused = '' AND running_until < ?2"
+    "UPDATE google_link SET running_until = ?1 WHERE id = 1 AND paused = '' AND refresh_token != '' AND running_until < ?2"
   ).bind(now + 120000, now).run();
   if (!lease.meta?.changes) return;
   const link = await env.DB.prepare("SELECT * FROM google_link WHERE id = 1").first();
@@ -153,9 +174,12 @@ async function runOnce(env, link) {
   // Nothing new on either side: one cheap request and done.
   if (String(file.version) === link.last_version && pending.n === 0) return;
 
-  const fields = "properties.title,sheets(properties(sheetId,title),data(rowData(values(effectiveValue,formattedValue,effectiveFormat.backgroundColorStyle)),rowMetadata(developerMetadata(metadataId,metadataKey))))";
+  // The theme turns a theme-colour fill into red, green and blue (audit Oct 24, 18).
+  const fields = "properties(title,spreadsheetTheme),sheets(properties(sheetId,title),data(rowData(values(effectiveValue,formattedValue,effectiveFormat.backgroundColorStyle)),rowMetadata(developerMetadata(metadataId,metadataKey))))";
   const grid = await googleJSON(google(env, `https://sheets.googleapis.com/v4/spreadsheets/${link.sheet_id}?fields=${encodeURIComponent(fields)}`), token);
-  const sheet = readSheet(grid);
+  // The tab the link has used so far is kept, even when another tab has
+  // more rows (audit Oct 24, 56).
+  const sheet = readSheet(grid, link.layout ? JSON.parse(link.layout)[0] : undefined);
   if (!sheet) throw new Error("The job list was not found in the sheet: no Customer Name and Price headings.");
   // The tab and its columns as first seen: a renamed or moved heading would
   // otherwise change every job at once (audit fix-now 30).
@@ -263,12 +287,50 @@ async function runOnce(env, link) {
       .bind(`${reason} Syncing with the sheet paused; nothing was changed. Check the sheet, then Resume in Settings.`).run();
   };
 
-  // A sort or paste that moved contents but not the hidden row tags would
-  // make many tagged rows look edited at once.
+  // A sort or paste that moved row contents but not the hidden row tags
+  // makes rows look edited, each now reading exactly as another edited
+  // row's job did. Such a row is paired with that job again and nothing
+  // changes in Ace; Resume would otherwise give every job another row's
+  // contents (audit Oct 24, 6 and 44).
   const edited = sheet.jobs.filter((r) => r.tag !== null && byTag.has(r.tag) && byTag.get(r.tag).hash !== r.hash);
-  if (guarded && edited.length > MAX_EDITED) {
-    await pause(`${edited.length} rows changed in the sheet at once (more than ${MAX_EDITED}), which can mean rows were sorted or moved.`);
+  const jobsByHash = new Map(); // fingerprint → jobs of edited rows that last read like that
+  for (const r of edited) {
+    const { job_id, hash } = byTag.get(r.tag);
+    if (!jobsByHash.has(hash)) jobsByHash.set(hash, []);
+    jobsByHash.get(hash).push(job_id);
+  }
+  const moved = new Map(); // tag → the job whose contents are now on its row
+  for (const r of edited) {
+    const job = jobsByHash.get(r.hash)?.shift();
+    if (job !== undefined) moved.set(r.tag, job);
+  }
+  const claimed = new Set(moved.values());
+  // Rows that really changed but whose own job moved to another row, and
+  // the jobs that moved and changed (their contents are on no row as they
+  // were). There are always as many of one as of the other.
+  const displaced = edited.filter((r) => !moved.has(r.tag) && claimed.has(byTag.get(r.tag).job_id));
+  const unplaced = edited.filter((r) => moved.has(r.tag) && !claimed.has(byTag.get(r.tag).job_id)).map((r) => byTag.get(r.tag));
+  const undo = "If the sheet was sorted, undo the sort (Edit > Undo) before resuming.";
+  if (guarded && displaced.length > 1) {
+    await pause(`Rows were moved and changed in the sheet at the same time, so it is not clear which row is which job. ${undo}`);
     return;
+  }
+  // Rows whose contents Ace will take as edits.
+  const changedRows = edited.length - moved.size;
+  if (guarded && changedRows > MAX_EDITED) {
+    await pause(`${changedRows} rows changed in the sheet at once (more than ${MAX_EDITED}). ${undo}`);
+    return;
+  }
+  // One moved-and-changed row is that job, edited. After Resume, more than
+  // one are paired in sheet order.
+  const repaired = new Map(edited.filter((r) => moved.has(r.tag)).map((r) => [r.tag, { tag: r.tag, job_id: moved.get(r.tag), hash: r.hash }]));
+  displaced.forEach((r, i) => repaired.set(r.tag, { ...unplaced[i], tag: r.tag }));
+  for (const [tag, entry] of repaired) {
+    byTag.set(tag, entry);
+    tagOfJob.set(entry.job_id, tag);
+    // Cleared and written again, since a job is on one row only.
+    tagDeletes.add(tag);
+    tagWrites.set(tag, { job_id: entry.job_id, hash: entry.hash });
   }
 
   // 1. The sheet into Ace.
@@ -357,6 +419,20 @@ async function runOnce(env, link) {
     if (tag !== undefined) updates.push({ tag, row, job }); else inserts.push({ job, row });
   }
   const currentByTag = new Map(sheet.jobs.filter((r) => r.tag !== null).map((r) => [tagged.get(r.index) ?? r.tag, r]));
+  const dayNumber = (d) => (d ? d.y * 10000 + d.m * 100 + d.d : null);
+  // Rows with a blank Date cell take the date of the row above (sheet.js).
+  // When Ace changes, adds or removes a dated row above them, their date is
+  // written in first, so they keep meaning the same day (audit Oct 24, 16).
+  const keepDates = (from, newDay) => {
+    for (let i = from; i < layout.length; i++) {
+      const r = layout[i];
+      if (!r.day) continue;
+      if (!r.dateBlank || dayNumber(r.day) === dayNumber(newDay)) break;
+      requests.push(...cellWrites({ day: r.day }, sheet.sheetId, i, sheet.header.columns, new Set(["date"])));
+      r.dateBlank = false;
+    }
+  };
+  const redated = []; // [row index, new day]
   let rewrites = 0;
   for (const { tag, row, job } of updates) {
     const index = rowOfTag(tag);
@@ -371,22 +447,31 @@ async function runOnce(env, link) {
       requests.push(...cellWrites(merged, sheet.sheetId, index, sheet.header.columns, only));
       rewrites++;
     }
+    if (only.has("date")) { layout[index].dateBlank = false; redated.push([index, merged.day]); }
     tagWrites.set(tag, { job_id: byTagJob(tag), hash: merged.hash });
   }
-  if (guarded && (inserts.length > MAX_INSERTS || rewrites > MAX_REWRITES)) {
-    await pause(inserts.length > MAX_INSERTS
-      ? `Ace would add ${inserts.length} new rows to the sheet at once (more than ${MAX_INSERTS}).`
-      : `Ace would change ${rewrites} rows in the sheet at once (more than ${MAX_REWRITES}).`);
+  for (const [index, day] of redated) keepDates(index + 1, day);
+  // Deletions count too: nothing else limits how many rows Ace removes
+  // from her books in one check (audit Oct 24, 14).
+  const tooMany = inserts.length > MAX_INSERTS ? `Ace would add ${inserts.length} new rows to the sheet at once (more than ${MAX_INSERTS}).`
+    : rewrites > MAX_REWRITES ? `Ace would change ${rewrites} rows in the sheet at once (more than ${MAX_REWRITES}).`
+    : deletes.length > MAX_DELETES ? `Ace would delete ${deletes.length} rows from the sheet at once (more than ${MAX_DELETES}).`
+    : "";
+  if (guarded && tooMany) {
+    await pause(tooMany);
     return;
   }
   // Deletions from the bottom up, so the rows above keep their places.
   for (const index of deletes.map(rowOfTag).filter((i) => i >= 0).sort((a, b) => b - a)) {
+    let above = index - 1;
+    while (above >= 0 && !layout[above].day) above--;
+    keepDates(index + 1, above >= 0 ? layout[above].day : null);
     requests.push({ deleteDimension: { range: { sheetId: sheet.sheetId, dimension: "ROWS", startIndex: index, endIndex: index + 1 } } });
     tagDeletes.add(layout[index].tag);
+    tagWrites.delete(layout[index].tag);
     layout.splice(index, 1);
   }
   // New jobs go in date order, after the last row on or before their day.
-  const dayNumber = (d) => (d ? d.y * 10000 + d.m * 100 + d.d : null);
   for (const { job, row } of inserts.sort((a, b) => a.job.data.scheduledAt - b.job.data.scheduledAt)) {
     let at = layout.length;
     let lastData = -1;
@@ -405,6 +490,7 @@ async function runOnce(env, link) {
       location: { dimensionRange: { sheetId: sheet.sheetId, dimension: "ROWS", startIndex: at, endIndex: at + 1 } },
     } } });
     layout.splice(at, 0, { tag, day: row.day });
+    keepDates(at + 1, row.day);
     tagWrites.set(tag, { job_id: job.id, hash: rowHash(row) });
   }
 
@@ -414,11 +500,29 @@ async function runOnce(env, link) {
 
   // Write the sheet first (all or nothing), then Ace's side. If Ashley
   // changed the sheet since it was read, the row positions may be stale:
-  // write nothing and try again next minute (audit fix-now 26).
+  // write nothing and try again next minute (audit fix-now 26). Drive's
+  // version may lag behind her edits (Google does not say), so the tagged
+  // rows are also read again: if any is no longer where it was, a row was
+  // added, removed or moved meanwhile (audit Oct 24, 54).
   if (requests.length) {
     const check = await googleJSON(google(env, `https://www.googleapis.com/drive/v3/files/${link.sheet_id}?fields=version`), token);
     if (String(check.version) !== String(file.version)) return;
-    await googleJSON(google(env, `https://sheets.googleapis.com/v4/spreadsheets/${link.sheet_id}:batchUpdate`), token, { requests });
+    const tagFields = "sheets(properties(sheetId),data(rowMetadata(developerMetadata(metadataId,metadataKey))))";
+    const again = await googleJSON(google(env, `https://sheets.googleapis.com/v4/spreadsheets/${link.sheet_id}?fields=${encodeURIComponent(tagFields)}`), token);
+    const tab = (again.sheets ?? []).find((s) => s.properties?.sheetId === sheet.sheetId);
+    const tagsNow = (tab?.data?.[0]?.rowMetadata ?? []).map((r) => (r?.developerMetadata ?? []).find((m) => m.metadataKey === "a")?.metadataId ?? null);
+    const places = (tags) => JSON.stringify(tags.flatMap((tag, index) => (tag === null ? [] : [[index, tag]])));
+    if (!tab || places(tagsNow) !== places(sheet.layout.map((r) => r.tag))) return;
+    try {
+      await googleJSON(google(env, `https://sheets.googleapis.com/v4/spreadsheets/${link.sheet_id}:batchUpdate`), token, { requests });
+    } catch (error) {
+      // A tag number already used elsewhere in the file fails the whole
+      // write; the next check tries numbers further on (audit Oct 24, 55).
+      if (/metadata/i.test(String(error.message))) {
+        await env.DB.prepare("UPDATE google_link SET next_tag = ?1 WHERE id = 1").bind(nextTag + 1000 + Math.floor(Math.random() * 100000)).run();
+      }
+      throw error;
+    }
   }
   // The version from before this run's own write: an edit she made while it
   // ran is then seen next time, not skipped.

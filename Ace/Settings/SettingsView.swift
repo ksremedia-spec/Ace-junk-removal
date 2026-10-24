@@ -26,7 +26,7 @@ struct SettingsView: View {
         Form {
             Section {
                 NavigationLink(value: MainView.Screen.apikey) {
-                    LabeledContent("API key", value: Beta.relayURL != nil ? "Provided for this test" : (hasKey ? "Stored" : "Not set"))
+                    LabeledContent("API key", value: hasKey ? "Stored" : (Beta.relayURL != nil ? "Provided for this test" : (SyncEngine.shared.config != nil ? "Through the Ace server" : "Not set")))
                 }
                 Picker("Claude model", selection: $claudeModelRaw) {
                     ForEach(ClaudeModel.allCases) { model in
@@ -51,19 +51,23 @@ struct SettingsView: View {
                     TextField("", text: $rateText, prompt: Text("125"))
                         .labelsHidden()
                         .multilineTextAlignment(.trailing)
+                        // Leaves room for the whole label (it read "Overweight
+                        // rate, $…" on an iPhone 17).
+                        .frame(maxWidth: 90)
                         .decimalKeyboard()
                         .onChange(of: rateText) { _, newValue in
                             // Saved on every keystroke that reads as a number,
-                            // so nothing depends on a Return key.
+                            // so nothing depends on a Return key, and sent to
+                            // the other devices (audit Oct 24, finding 4).
                             if let value = Parse.money(newValue), value > 0 {
-                                ratePerTon = value
+                                AppSettings.setOverweightRate(value)
                             }
                         }
                 }
             } header: {
                 Text("Dumpsters")
             } footer: {
-                Text("Charged for each ton over the agreed weight at pickup. Partial tons are charged in proportion.")
+                Text("Charged for each ton over the agreed weight at pickup. Partial tons are charged in proportion. The same on every device.")
             }
 
             SyncSettingsSection()

@@ -12,6 +12,8 @@ const COLS = ["", "Date", "Customer Name", "# and Street Name", "City, State & Z
 let version = 1;
 let rows = [];  // each: { cells: [ { v, red } ], meta: [ { metadataId, metadataKey } ] }
 let lastBatch = [];
+let highestId = 0;      // the largest tag number ever created
+let afterRead = null;   // a row Ashley "types" right after the next full read
 
 function reset(list) {
   rows = [{ cells: COLS.map((h) => ({ v: h || null })), meta: [] }];
@@ -67,6 +69,7 @@ function applyBatch(requests) {
       const used = rows.some((r) => r.meta.some((x) => x.metadataId === m.metadataId));
       if (used) throw new Error(`metadataId ${m.metadataId} is already in use`);
       rows[m.location.dimensionRange.startIndex].meta.push({ metadataId: m.metadataId, metadataKey: m.metadataKey });
+      highestId = Math.max(highestId, m.metadataId);
     } else if (q.updateCells) {
       const { start, rows: values, fields } = q.updateCells;
       const row = rows[start.rowIndex];
@@ -134,7 +137,16 @@ http.createServer(async (req, res) => {
     if (url.pathname === `/drive/v3/files/${SHEET_ID}`) {
       return send(res, 200, { name: "2026 ACE Books (test)", mimeType: "application/vnd.google-apps.spreadsheet", version: String(version) });
     }
-    if (url.pathname === `/v4/spreadsheets/${SHEET_ID}`) return send(res, 200, grid());
+    if (url.pathname === `/v4/spreadsheets/${SHEET_ID}`) {
+      send(res, 200, grid());
+      // A row typed between Ace's read and its write, which Drive's version
+      // has not caught up with yet (the version is left as it was).
+      if (afterRead && (url.searchParams.get("fields") ?? "").includes("rowData")) {
+        rows.splice(afterRead.at, 0, makeRow(afterRead.row));
+        afterRead = null;
+      }
+      return;
+    }
     if (url.pathname === `/v4/spreadsheets/${SHEET_ID}:batchUpdate`) {
       const { requests } = JSON.parse(body);
       lastBatch = requests;
@@ -167,6 +179,14 @@ http.createServer(async (req, res) => {
       body.forEach((r, i) => { r.cells = contents[i]; });
       version++;
       return send(res, 200, { ok: true });
+    }
+    if (url.pathname === "/test/insert-after-read") { afterRead = input; return send(res, 200, { ok: true }); }
+    if (url.pathname === "/test/reserve-next-ids") {
+      // Something else in the file (another tab, an add-on) holds the next
+      // tag numbers Ace would pick.
+      const ids = Array.from({ length: input.count ?? 3 }, (_, i) => highestId + 1 + i);
+      for (const id of ids) rows[0].meta.push({ metadataId: id, metadataKey: "other" });
+      return send(res, 200, { ids });
     }
     if (url.pathname === "/test/delete") { rows.splice(input.row, input.count ?? 1); version++; return send(res, 200, { ok: true }); }
     send(res, 404, { error: "not found" });

@@ -264,6 +264,8 @@
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Ace shows your calendars next to your jobs and adds jobs to the calendar you choose.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Ace records your voice so it can fill in a job form.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Ace turns your voice into text on this device to fill in a job form.";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -282,7 +284,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.1;
+				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.acejunkremoval.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
@@ -308,6 +310,8 @@
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Ace shows your calendars next to your jobs and adds jobs to the calendar you choose.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Ace records your voice so it can fill in a job form.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Ace turns your voice into text on this device to fill in a job form.";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -326,7 +330,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.1;
+				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.acejunkremoval.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;

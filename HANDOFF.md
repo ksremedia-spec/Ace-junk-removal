@@ -1,13 +1,81 @@
 # Handoff: start here
 
-Last updated 2026-10-19, about 20:45 UTC (4:45 PM Eastern), by the cloud
-session that wrote everything so far. Kyle is moving to a Local session in
+Last updated 2026-10-24, about 1:50 PM Eastern, by the local session on
+Kyle's Mac. **Read "Oct 24: ship status" first**; sections 2 onwards are the
+history from Oct 19–23 and parts of them are out of date (they still mention
+WhisperKit and "sync not built"; both changed, see CLAUDE.md).
+Originally written 2026-10-19 by the cloud session. Kyle is moving to a Local session in
 the Claude desktop app on his Mac (Code tab, computer use on). The chat
 history does not come along, so this file is the handoff. Keep it current:
 update it whenever something is built, tested, decided or asked.
 
 Labels used below: **Verified** (checked, with how), **Assumed** (believed,
 not checked), **Unknown** (with how to find out).
+
+---
+
+## Oct 24: ship status
+
+Kyle asked (Oct 24, away all day): a full audit of both apps, fix the
+serious problems, package them, and a helper so setup day needs no Claude.
+
+**Done**
+- Ship audit: 98 agents, 90 confirmed findings (3 critical, 7 high, 36
+  medium, 44 low). Full list: scratchpad of the Oct 24 session (not kept);
+  the fixes are listed in `docs/review-2026-10-24-ship/fixes.md`.
+- All critical and high findings fixed, and most medium ones, by four fix
+  agents plus this session. Summary in that file.
+- `Beta.isBeta = false`. `BetaRelay.txt` moved to `cloudflare/beta-relay/`.
+- Assistant on their devices: through the Ace server (`/v1/claude`, sync
+  code) and a service binding to `ace-beta-relay`, which holds Kyle's key.
+  Decided by Claude while Kyle was away; **tell Kyle** (he can switch to the
+  business's own key later: a key typed in Settings wins). `docs/setup-day.md`.
+- New `setting` sync record: the overweight rate (and crew working days)
+  now sync. Server type list updated.
+- Setup helper: `~/Desktop/Ace Setup.app` (source `tools/AceSetup`,
+  scripts `tools/setup`). Steps and research: `docs/setup-day.md`.
+
+**Verified (and how)**
+- Both apps build (iOS Simulator, Mac), Oct 24, with every fix merged.
+- Sheet-link test suite: 62 of 62 checks pass, against the stand-in Google.
+- In the Simulator (iPhone 17, iOS 26.5, a local test server):
+  - empty start, then download;
+  - the synced $150 rate is used for the pickup charge;
+  - the 28-tons question, with a $120 charge after "Save as 2.8 tons";
+  - the Next card and the job header show the job site;
+  - Mark done keeps the page open, and Undo works;
+  - after a server wipe the phone uploads nothing and shows "13 records…
+    not on the sync server" with Send and Remove, and Remove works;
+  - a rate typed on the phone reaches the server;
+  - the month grid fits at the largest text size.
+- Mac business copy: archived, Developer ID, notarized by Apple, `Ace.dmg`
+  on the Desktop (dry run with the pre-fix code; rebuild on setup day).
+- iPhone business copy: archived and exported Ad Hoc on Kyle's account.
+  The profile ends **Aug 12 2027**, get-task-allow is false, and Kyle's
+  phones are in it. Both copies pass `check-before-sending.sh --business-copy`.
+- The Assistant route, locally: app route → server → relay → Anthropic,
+  which rejected a fake key, as it should.
+
+**Not done or not verified**
+- **Live server not updated.** The safety check refused the deploy, so it
+  waits for Kyle. The helper's step 2 runs `update-server.sh`, which applies
+  migrations and then deploys. Until then the live server rejects `setting`
+  records. A device with this build that changes the rate then fails to
+  sync, so update the server before installing this build anywhere.
+- The Mac fixes, other than building: no Mac clicking was possible (Kyle
+  away). The test list is in the fixes file.
+- Installing on a real iPhone through the helper: Kyle's phones weren't
+  connected. Kyle says the app itself runs on his phone.
+- The first live Assistant request through the server: it happens at the
+  end of the helper's step 2.
+- Ashley's real sheet. Do the 10-minute sort / cut-paste test on a scratch
+  sheet first. On the first real check, confirm the new theme-colour field
+  read doesn't fail with "Google answered 400".
+- The overweight rate: $125 is a placeholder. Ask Alex.
+
+**Before installing the new build on Kyle's own test devices:** delete the
+old Ace first. Otherwise the new build holds its test data (safe, but it
+shows a warning) once the server is fresh.
 
 ---
 
@@ -21,10 +89,11 @@ not checked), **Unknown** (with how to find out).
   explain in plain English, do the technical steps yourself, ask one
   question at a time.
 - One SwiftUI project for iPhone and Mac. Records are stored on the device
-  (works offline). Shared sync through Cloudflare comes later (not built).
+  (works offline) and synced through Kyle's Cloudflare server (built,
+  live since Oct 21).
 - The **Assistant**: speak a note ("Mrs. Johnson, 42 Elm, garage cleanout
   Friday at 9, $300 cash"), the phone turns speech into text on the device
-  (WhisperKit), Claude fills in the form, Ashley checks it and taps Save.
+  (Apple's SpeechTranscriber since Oct 23), Claude fills in the form, Ashley checks it and taps Save.
 - Deadline: version 1 on Ashley's and Alex's phones by about **October 31,
   2026**.
 - Repository: https://github.com/ksremedia-spec/Ace-junk-removal (public),

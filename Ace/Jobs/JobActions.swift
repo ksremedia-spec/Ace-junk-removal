@@ -8,6 +8,9 @@ import SwiftUI
 /// - every change shows "Job marked paid. Undo" for a few seconds.
 /// Undo puts the old values back with a new time, so the reversal syncs
 /// like any other change (SwiftData's own undo would roll the time back).
+/// It puts back only what the action changed, and only while that field
+/// still holds what the action set: a note typed meanwhile, or a change
+/// from another device, is never undone with it (audit Oct 24, 38 and 63).
 @MainActor @Observable
 final class JobActions {
     static let shared = JobActions()
@@ -21,38 +24,64 @@ final class JobActions {
     private(set) var message: String?
     private(set) var shown = 0
     @ObservationIgnored private var undo: (() -> Void)?
+    /// The job the Undo bar is about, so deleting it takes the bar away.
+    @ObservationIgnored private var undoJobID: PersistentIdentifier?
     @ObservationIgnored private var hide: Task<Void, Never>?
 
     private init() {}
 
     func setDone(_ done: Bool, _ job: Job, in context: ModelContext) {
-        let before = Snapshot(job)
+        guard !Self.isGone(job) else { return }
+        let before = job.isDone
         job.isDone = done
         save(job, in: context)
-        offerUndo(done ? "Job marked done." : "Job marked not done.", job: job, before: before, in: context)
+        offerUndo(done ? "Job marked done." : "Job marked not done.", job: job, in: context) { job in
+            guard job.isDone == done, before != done else { return false }
+            job.isDone = before
+            return true
+        }
     }
 
     /// Paid asks how first; Unpaid happens at once.
     func setPaid(_ paid: Bool, _ job: Job, in context: ModelContext) {
+        guard !Self.isGone(job) else { return }
         if paid {
             askingPayment = job
         } else {
-            let before = Snapshot(job)
+            let wasPaid = job.isPaid
             job.isPaid = false
             save(job, in: context)
-            offerUndo("Job marked unpaid.", job: job, before: before, in: context)
+            offerUndo("Job marked unpaid.", job: job, in: context) { job in
+                guard !job.isPaid, wasPaid else { return false }
+                job.isPaid = true
+                return true
+            }
         }
     }
 
     func paid(_ job: Job, by type: PaymentType, checkNumber: String? = nil, in context: ModelContext) {
-        let before = Snapshot(job)
+        guard !Self.isGone(job) else { return }
+        let wasPaid = job.isPaid
+        let typeBefore = job.paymentType
+        let notesBefore = job.notes
         job.isPaid = true
         job.paymentType = type
         if let number = checkNumber?.trimmingCharacters(in: .whitespaces), !number.isEmpty {
             job.notes = Self.notes(job.notes, check: number)
+        } else if type != .check, Self.checkNumber(in: job.notes) != nil {
+            // Paid another way after a check: the old number would show in
+            // the sheet's Check # column beside Cash (audit Oct 24, 65).
+            job.notes = Self.notes(job.notes, check: nil)
         }
+        let notesAfter = job.notes
         save(job, in: context)
-        offerUndo("Job marked paid by \(type.rawValue).", job: job, before: before, in: context)
+        offerUndo("Job marked paid by \(type.rawValue).", job: job, in: context) { job in
+            var changed = false
+            if job.isPaid && !wasPaid { job.isPaid = false; changed = true }
+            if job.paymentType == type && typeBefore != type { job.paymentType = typeBefore; changed = true }
+            if notesAfter != notesBefore && job.notes == notesAfter { job.notes = notesBefore; changed = true }
+            return changed
+        }
     }
 
     func performUndo() {
@@ -64,14 +93,39 @@ final class JobActions {
         hide?.cancel()
         message = nil
         undo = nil
+        undoJobID = nil
+    }
+
+    /// Called just before a job is deleted: its Undo bar and any open "How
+    /// was it paid?" question go, so neither writes to the deleted job
+    /// (audit Oct 24, 22).
+    func forget(_ job: Job) {
+        let id = job.persistentModelID
+        if undoJobID == id { dismiss() }
+        if askingPayment?.persistentModelID == id { askingPayment = nil }
+        if askingCheckNumber?.persistentModelID == id { askingCheckNumber = nil }
+    }
+
+    /// Deleted here, by the Assistant or by another device: nothing may be
+    /// written to it.
+    static func isGone(_ job: Job) -> Bool {
+        job.modelContext == nil || job.isDeleted
     }
 
     /// The notes with "Check #1234" in place of any earlier check number
-    /// (the same wording the sheet link and the import use).
-    static func notes(_ notes: String, check: String) -> String {
+    /// (the same wording the sheet link and the import use). A nil number
+    /// takes the check number out.
+    nonisolated static func notes(_ notes: String, check: String?) -> String {
         let without = notes.replacingOccurrences(of: #"Check #\S+"#, with: "", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let check else { return without }
         return ["Check #\(check)", without].filter { !$0.isEmpty }.joined(separator: " ")
+    }
+
+    /// "1234" from notes holding "Check #1234"; nil when there is none.
+    nonisolated static func checkNumber(in notes: String) -> String? {
+        guard let range = notes.range(of: #"Check #\S+"#, options: .regularExpression) else { return nil }
+        return String(notes[range].dropFirst("Check #".count))
     }
 
     /// How long the Undo bar stays. Debug builds can lengthen it for
@@ -86,27 +140,21 @@ final class JobActions {
 
     // MARK: Inside
 
-    private struct Snapshot {
-        let isDone: Bool, isPaid: Bool, paymentType: PaymentType, notes: String
-        init(_ job: Job) {
-            isDone = job.isDone; isPaid = job.isPaid; paymentType = job.paymentType; notes = job.notes
-        }
-    }
-
     private func save(_ job: Job, in context: ModelContext) {
         job.updatedAt = Date()
         try? context.save()
         CalendarStore.shared.jobSaved(job)
     }
 
-    private func offerUndo(_ text: String, job: Job, before: Snapshot, in context: ModelContext) {
+    /// `restore` puts back what the action changed and says whether it
+    /// changed anything; nothing is saved when it did not.
+    private func offerUndo(_ text: String, job: Job, in context: ModelContext, restore: @escaping (Job) -> Bool) {
         undo = { [weak self] in
-            job.isDone = before.isDone
-            job.isPaid = before.isPaid
-            job.paymentType = before.paymentType
-            job.notes = before.notes
-            self?.save(job, in: context)
+            // Deleted since: writing to it would bring back a ghost event.
+            guard !Self.isGone(job) else { return }
+            if restore(job) { self?.save(job, in: context) }
         }
+        undoJobID = job.persistentModelID
         message = text
         shown += 1
         hide?.cancel()
@@ -115,6 +163,7 @@ final class JobActions {
             guard !Task.isCancelled else { return }
             self?.message = nil
             self?.undo = nil
+            self?.undoJobID = nil
         }
     }
 }
@@ -133,6 +182,7 @@ struct JobActionsHost: ViewModifier {
                 ForEach(Self.choices, id: \.self) { type in
                     Button(type == .check ? "Check…" : type.rawValue) {
                         if type == .check {
+                            guard !JobActions.isGone(job) else { return }
                             actions.checkNumber = ""
                             actions.askingCheckNumber = job
                         } else {
@@ -160,7 +210,7 @@ struct JobActionsHost: ViewModifier {
     }
 
     private var title: String {
-        guard let job = actions.askingPayment else { return "How was it paid?" }
+        guard let job = actions.askingPayment, !JobActions.isGone(job) else { return "How was it paid?" }
         if let price = job.price { return "How was \(Money.text(price)) paid?" }
         return "How was it paid?"
     }
@@ -184,12 +234,15 @@ private struct UndoBar: View {
             Text(message)
                 .font(.callout.weight(.medium))
                 .lineLimit(2)
-            Button("Undo", action: onUndo)
+            // No ⌘Z here: it stays with Edit › Undo, so a typo in a text box
+            // is undone instead of the payment (audit Oct 24, 33 and 64).
+            Button(action: onUndo) {
+                Text("Undo")
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
+            }
                 .font(.callout.weight(.semibold))
                 .buttonStyle(.borderless)
-                #if os(macOS)
-                .keyboardShortcut("z", modifiers: .command)
-                #endif
         }
         .padding(.horizontal, Space.l)
         .padding(.vertical, Space.m)

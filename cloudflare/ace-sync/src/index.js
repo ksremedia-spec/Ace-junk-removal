@@ -10,7 +10,7 @@
 
 import { disconnect, finishConnect, resume, runSheetSync, startConnect, status } from "./google.js";
 
-const TYPES = new Set(["customer", "job", "dumpster", "rental", "quote", "worker", "labor"]);
+const TYPES = new Set(["customer", "job", "dumpster", "rental", "quote", "worker", "labor", "setting"]);
 // The free plan allows 50 database queries per request and 10 ms of CPU,
 // so a device sends at most 40 changes and gets at most 200 back at a time.
 const PAGE = 200;
@@ -20,6 +20,9 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname === "/v1/health") return json({ ok: true });
+    // The two public pages Google's sign-in screen links to (its Branding
+    // page requires a homepage and a privacy policy on this domain).
+    if (url.pathname === "/" || url.pathname === "/privacy") return publicPage(url.pathname);
     // Google sends the browser back here after the sign-in (no sync code:
     // it is checked against the sign-in Ace started).
     if (url.pathname === "/google/callback") return finishConnect(request, env);
@@ -35,6 +38,7 @@ export default {
       case "/v1/google/run":
         await runSheetSync(env);
         return json(await status(env));
+      case "/v1/claude": return claude(request, env);
       case "/v1/sync": break;
       default: return json({ error: "Not found." }, 404);
     }
@@ -115,9 +119,65 @@ function check(change) {
   return null;
 }
 
+// The Assistant's notes (Oct 24): the app sends Anthropic Messages calls
+// here with the sync code, and they go on to the ace-beta-relay Worker over
+// a service binding (CLAUDE in wrangler.jsonc), which holds the API key.
+// Nobody types a key on a phone, and the key is in one place only.
+const CLAUDE_MODELS = ["claude-haiku-5-5", "claude-sonnet-5-5"];
+const CLAUDE_MAX_TOKENS = 16000;
+const CLAUDE_MAX_BYTES = 1_000_000;
+
+async function claude(request, env) {
+  const refuse = (status, message) => json({ type: "error", error: { type: "ace_error", message } }, status);
+  if (!env.CLAUDE) return refuse(503, "The Assistant is not set up on the server.");
+  const text = await request.text();
+  if (text.length > CLAUDE_MAX_BYTES) return refuse(413, "The note is too large.");
+  let body;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    return refuse(400, "The request could not be read.");
+  }
+  if (!CLAUDE_MODELS.includes(body.model)) return refuse(400, "That model is not allowed.");
+  if (typeof body.max_tokens !== "number" || body.max_tokens > CLAUDE_MAX_TOKENS) body.max_tokens = CLAUDE_MAX_TOKENS;
+  const upstream = await env.CLAUDE.fetch("https://relay/v1/messages", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "anthropic-version": request.headers.get("anthropic-version") || "2023-06-01",
+    },
+    body: JSON.stringify(body),
+  });
+  return new Response(upstream.body, {
+    status: upstream.status,
+    headers: { "content-type": upstream.headers.get("content-type") || "application/json" },
+  });
+}
+
 function json(value, status = 200) {
   return new Response(JSON.stringify(value), {
     status,
     headers: { "Content-Type": "application/json" },
+  });
+}
+
+function publicPage(path) {
+  const style = "font:17px/1.5 -apple-system,system-ui,sans-serif;max-width:40em;margin:8vh auto;padding:0 16px;color:#1d1d1f";
+  const body = path === "/privacy" ? `
+<h1>Ace: privacy</h1>
+<p>Ace is a private app used by one small business, Ace Junk Removal in Massachusetts, to keep track of its own jobs, customers, dumpsters and crew hours. It is not offered to the public.</p>
+<h2>What Ace keeps</h2>
+<p>The business's own records: customer names, phone numbers and addresses, jobs, prices and payments, dumpster rentals and crew hours. They are stored on the business's own iPhones and Mac and on this server, so the devices stay in step.</p>
+<h2>Google</h2>
+<p>When the business connects its job sheet, Ace asks Google for access to that one Google Sheet only (the "drive.file" permission). Ace reads and writes that sheet to keep it and the app in step. It cannot see any other file in the Google account. Access can be removed at any time at myaccount.google.com, under Security, Third-party apps with account access.</p>
+<h2>What Ace does not do</h2>
+<p>Ace does not sell, share or advertise with any of this information, and does not track anyone. Notes spoken to the Assistant are turned into text on the device; the text of a note is sent to Anthropic's Claude service only to fill in the job form.</p>
+<h2>Questions</h2>
+<p>Contact the support email shown on the Google sign-in screen.</p>` : `
+<h1>Ace</h1>
+<p>Ace is the private job, customer and dumpster app of Ace Junk Removal, Massachusetts. It is used only by the business's own staff and is not available to the public.</p>
+<p><a href="/privacy">Privacy</a></p>`;
+  return new Response(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Ace</title><body style="${style}">${body}</body>`, {
+    headers: { "Content-Type": "text/html; charset=utf-8" },
   });
 }

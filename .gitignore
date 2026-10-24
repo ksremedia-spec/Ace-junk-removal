@@ -28,7 +28,9 @@ demo/checks/shots/
 docs/review-2026-10-19/
 
 # The beta relay address: kept off the public repo (docs/beta-relay.md).
+# Moved out of Ace/ on Oct 24 so the business copy never carries it.
 Ace/Support/BetaRelay.txt
+cloudflare/beta-relay/BetaRelay.txt
 
 # Zipped screenshots: copies of screenshots/ for sending.
 screenshots/*.zip
@@ -38,7 +40,17 @@ screenshots/*.zip
 .dev.vars
 
 # The live sync server's sync code (Kyle pastes it into Cloudflare and each device)
-cloudflare/ace-sync/live-sync-code.txt
+cloudflare/ace-sync/live-sync-code*.txt
 
 # The business's sync server address and code, built into its copy of Ace
 Ace/Support/SyncServer.txt
+
+# Built copies and signing files: a business build carries the live sync code
+*.xcarchive
+*.dmg
+*.mobileprovision
+*.p12
+.claude/worktrees/
+
+# The live server address for the setup scripts
+tools/setup/live-url.txt

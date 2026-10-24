@@ -69,8 +69,17 @@ struct MacMainView: View {
     @Query(sort: \Job.scheduledAt) private var allJobs: [Job]
     @Query(sort: \Quote.quotedOn) private var allQuotes: [Quote]
     @Query(sort: \Dumpster.number) private var allDumpsters: [Dumpster]
-    /// A stored "today" (from before Calendar replaced Today) opens Calendar.
-    @AppStorage(AppSettings.lastTabKey) private var sidebarRaw = SidebarItem.calendar.rawValue
+    /// This window's sidebar choice: each window has its own, so a second
+    /// window no longer follows the first (audit Oct 24, 32). Empty until
+    /// chosen; it then starts from the last one used in any window.
+    @SceneStorage("mac.sidebar") private var sidebarRaw = ""
+    /// The last sidebar choice in any window, so the app opens where it was
+    /// left. A stored "today" (from before Calendar replaced Today) opens
+    /// Calendar.
+    @AppStorage(AppSettings.lastTabKey) private var lastSidebarRaw = SidebarItem.calendar.rawValue
+    /// Set when ⌘F or typing in Search on a page without a list moves to
+    /// Jobs, so the move does not clear what was typed (audit Oct 24, 31).
+    @State private var keepSearchOnMove = false
 
     @State private var engine = SpeechEngine()
     @State private var selectedJob: Job?
@@ -98,12 +107,19 @@ struct MacMainView: View {
 
     private var sidebarSelection: Binding<SidebarItem?> {
         Binding(
-            get: { SidebarItem(rawValue: sidebarRaw) ?? .calendar },
+            get: { section },
             set: { if let item = $0 { sidebarRaw = item.rawValue } }
         )
     }
 
-    private var section: SidebarItem { SidebarItem(rawValue: sidebarRaw) ?? .calendar }
+    private var section: SidebarItem {
+        SidebarItem(rawValue: sidebarRaw) ?? SidebarItem(rawValue: lastSidebarRaw) ?? .calendar
+    }
+
+    /// Wide pages without a list to search.
+    private var sectionHasNoList: Bool {
+        [.calendar, .dumpsters, .labor].contains(section)
+    }
 
     /// The jobs list's filter, kept in step with the sidebar: picking
     /// "Unpaid" in the list highlights Unpaid in the sidebar and back.
@@ -171,14 +187,18 @@ struct MacMainView: View {
             }
             .frame(minWidth: 480, minHeight: 560)
         }
-        .onReceive(NotificationCenter.default.publisher(for: .aceNewJob)) { _ in showingNewJob = true }
-        .onReceive(NotificationCenter.default.publisher(for: .aceNewCustomer)) { _ in showingNewCustomer = true }
-        .onReceive(NotificationCenter.default.publisher(for: .aceNewQuote)) { _ in showingNewQuote = true }
-        .onReceive(NotificationCenter.default.publisher(for: .aceAssistant)) { _ in showingAssistant = true }
-        .onReceive(NotificationCenter.default.publisher(for: .aceFind)) { _ in searchFocused = true }
-        .onReceive(NotificationCenter.default.publisher(for: .aceGoToToday)) { _ in goToToday() }
-        .onReceive(NotificationCenter.default.publisher(for: .aceImport)) { _ in showingImport = true }
-        .onReceive(NotificationCenter.default.publisher(for: .aceWelcome)) { _ in showingWelcome = true }
+        // The menu bar acts on this window only while it is in front, not on
+        // every open window (audit Oct 24, 32).
+        .focusedSceneValue(\.aceWindow, AceWindowActions(
+            newJob: { showingNewJob = true },
+            newCustomer: { showingNewCustomer = true },
+            newQuote: { showingNewQuote = true },
+            assistant: { showingAssistant = true },
+            importSheet: { showingImport = true },
+            find: { find() },
+            goToToday: { goToToday() },
+            welcome: { showingWelcome = true }
+        ))
         .sheet(isPresented: $showingWelcome) {
             WelcomeView(
                 go: { item in
@@ -208,8 +228,33 @@ struct MacMainView: View {
             rollOverToday()
         }
         // A search typed for one list should not silently filter the next.
-        .onChange(of: sidebarRaw) { _, _ in searchText = "" }
+        // Unpaid and Done are the same jobs list, so it stays there.
+        .onChange(of: sidebarRaw) { old, new in
+            if SidebarItem(rawValue: new) != nil { lastSidebarRaw = new }
+            let jobsLists: Set<SidebarItem> = [.jobs, .unpaid, .done]
+            let movedWithinJobs = SidebarItem(rawValue: old).map(jobsLists.contains) == true
+                && SidebarItem(rawValue: new).map(jobsLists.contains) == true
+            if keepSearchOnMove {
+                keepSearchOnMove = false
+            } else if !movedWithinJobs {
+                searchText = ""
+            }
+        }
+        // Search on Calendar, Dumpsters or Labor has no list to filter: the
+        // first letter typed moves to Jobs, where the search works.
+        .onChange(of: searchText) { _, text in
+            guard !text.isEmpty, sectionHasNoList else { return }
+            showJobsForSearch()
+        }
+        // A deleted job (by the Assistant or another device) is not left
+        // open beside the list (audit Oct 24, 8 and 9).
+        .onChange(of: allJobs.count) { _, _ in
+            if let job = selectedJob, JobActions.isGone(job) { selectedJob = nil }
+            if case .job(let job) = selectedCalendarItem, JobActions.isGone(job) { selectedCalendarItem = nil }
+        }
         .onAppear {
+            // A new window starts on the section last used.
+            if SidebarItem(rawValue: sidebarRaw) == nil { sidebarRaw = section.rawValue }
             handleLaunchArguments()
             WindowSnapshot.captureIfRequested()
             // The first launch opens the guide; it is not shown again.
@@ -304,7 +349,7 @@ struct MacMainView: View {
     private var calendarDetail: some View {
         switch selectedCalendarItem {
         case .job(let job):
-            JobEditView(job: job)
+            JobEditView(job: job, onDeleted: { selectedCalendarItem = nil })
                 .id(job.persistentModelID)
         case .dumpster(let dumpster):
             DumpsterDetailView(dumpster: dumpster)
@@ -415,7 +460,7 @@ struct MacMainView: View {
         switch section {
         case .jobs, .unpaid, .done:
             if let job = selectedJob {
-                JobEditView(job: job)
+                JobEditView(job: job, onDeleted: { selectedJob = nil })
                     .id(job.persistentModelID)
             } else {
                 EmptyDetail(title: "No job selected", symbol: "truck.box",
@@ -455,6 +500,22 @@ struct MacMainView: View {
     private func goToToday() {
         sidebarRaw = SidebarItem.calendar.rawValue
         calendarDay = Dates.startOfToday()
+        // The month grid moves back to this month too.
+        NotificationCenter.default.post(name: .aceGoToToday, object: nil)
+    }
+
+    /// Edit › Find (⌘F). Calendar, Dumpsters and Labor have no list to
+    /// search, so Find opens Jobs (audit Oct 24, 31).
+    private func find() {
+        if sectionHasNoList { showJobsForSearch() }
+        searchFocused = true
+    }
+
+    private func showJobsForSearch() {
+        keepSearchOnMove = true
+        sidebarRaw = SidebarItem.jobs.rawValue
+        // The search field is rebuilt with the new page; keep typing in it.
+        DispatchQueue.main.async { searchFocused = true }
     }
 
     /// Same testing aid as on iPhone: `-sampledata` loads the sample records,
@@ -598,6 +659,7 @@ struct MacQuotesList: View {
     @State private var quoteToBook: Quote?
     @State private var quoteToLose: Quote?
     @State private var quoteToDelete: Quote?
+    @State private var quoteToReopen: Quote?
     /// "Quote marked lost." and the like, shown under the switch for a moment.
     @State private var notice: String?
     @State private var changed = 0
@@ -687,6 +749,15 @@ struct MacQuotesList: View {
         ), titleVisibility: .visible) {
             Button("Delete Quote", role: .destructive) { if let quoteToDelete { delete(quoteToDelete) } }
         }
+        .confirmationDialog("Reopen this quote?", isPresented: Binding(
+            get: { quoteToReopen != nil }, set: { if !$0 { quoteToReopen = nil } }
+        ), titleVisibility: .visible) {
+            Button("Reopen") { if let quoteToReopen { reopen(quoteToReopen) } }
+        } message: {
+            if let job = quoteToReopen?.job {
+                Text("The job on \(Dates.shortDay(job.scheduledAt)) stays on the schedule.")
+            }
+        }
         .sheet(item: $quoteToBook) { quote in
             NavigationStack {
                 JobEditView(job: nil, prefill: QuoteFormData(quote: quote).newJobForm, onSaved: { job in
@@ -725,8 +796,10 @@ struct MacQuotesList: View {
                 quoteToLose = quote
             }
         } else {
-            Button("Reopen") {
-                reopen(quote)
+            Button(quote.job != nil ? "Reopen…" : "Reopen") {
+                // A booked quote's job stays on the schedule: ask, as the
+                // quote's page does (audit Oct 24, 67).
+                if quote.job != nil { quoteToReopen = quote } else { reopen(quote) }
             }
         }
         Divider()
@@ -1014,6 +1087,7 @@ struct ConfirmJobDelete: ViewModifier {
         ), titleVisibility: .visible) {
             Button("Delete Job", role: .destructive) {
                 if let job {
+                    JobActions.shared.forget(job)
                     onDeleted(job)
                     job.remove(from: context)
                 }

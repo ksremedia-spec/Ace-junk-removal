@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 
 const SERVER = process.env.SERVER ?? "http://localhost:8788";
 const FAKE = process.env.FAKE ?? "http://localhost:8790";
-const KEY = readFileSync(new URL("../.dev.vars", import.meta.url), "utf8").match(/SYNC_KEY="([^"]*)"/)[1];
+const KEY = process.env.SYNC_KEY ?? readFileSync(new URL("../.dev.vars", import.meta.url), "utf8").match(/SYNC_KEY="([^"]*)"/)[1];
 
 let failures = 0;
 function check(what, ok, detail = "") {
@@ -95,12 +95,14 @@ await run();
 check("A check with no changes writes nothing", (await records()).latest === latest);
 
 // ---- 4. Ashley edits a row: marks Mark paid and changes the price.
+const latestBefore4 = (await records()).latest;
 await fake("/test/set", { row: 2, col: 5, value: 475, red: false });
 await run();
 ({ all, latest } = await records());
 const mark2 = jobOf(all, "Mark Pereira");
 check("Sheet edit reached Ace (paid, $475)", mark2?.data.isPaid === true && mark2?.data.price === 475, JSON.stringify(mark2?.data));
-check("Only that job changed", [...all.values()].filter((r) => r.seq > latest - 1 && r.type === "job").length >= 1);
+const changed4 = [...all.values()].filter((r) => r.seq > latestBefore4);
+check("Only that job changed", changed4.length === 1 && changed4[0].id === mark2?.id, JSON.stringify(changed4.map((r) => [r.type, r.data.price])));
 
 // ---- 5. A device edits a job: Linda's Oct 8 job to $175, not paid.
 const lindaLater = jobOf(all, "Linda Johnson", 150);
@@ -166,6 +168,8 @@ await post("/v1/google/resume");
 await run();
 const resumed = await post("/v1/google/status");
 check("Resume lets the paused check through, then it runs normally", !resumed.paused, JSON.stringify(resumed));
+({ all } = await records());
+check("…and the 12 jobs are then deleted in Ace", live(all, "job").length === jobsBefore - 12 && !live(all, "job").some((j) => all.get(`customer/${j.data.customer}`)?.data.name.startsWith("Bulk ")));
 
 // ---- 13. Deleting a customer leaves their rows' names and addresses alone (audit M3).
 ({ all } = await records());
@@ -203,11 +207,49 @@ await post("/v1/google/resume");
 await run();
 check("…and Resume lets them in", (await fake("/test/rows")).length === before15 + 25);
 
-// ---- 16. A sort that moves contents but not tags pauses instead (audit M13).
+// ---- 16. A sort that moves contents but not tags (audit M13; Oct 24, 6 and 44):
+// each row is matched to its job again by its contents, and nothing in Ace changes.
+const jobPrint = (all) => JSON.stringify(live(all, "job").map((j) => [j.id, all.get(`customer/${j.data.customer}`)?.data.name, j.data.price, j.data.scheduledAt, j.data.isPaid, j.data.paymentType]).sort());
+const before16 = await records();
 await fake("/test/scramble", {});
 await run();
 const st16 = await post("/v1/google/status");
-check("Rows scrambled by a sort pause the link and change nothing in Ace", !!st16.paused, JSON.stringify(st16));
+let after16 = await records();
+check("A sort that leaves the hidden tags behind does not pause", !st16.paused && !st16.lastError, JSON.stringify(st16));
+check("…and changes no job in Ace", after16.latest === before16.latest && jobPrint(after16.all) === jobPrint(before16.all));
+const tom16 = jobOf(after16.all, "Tom Walsh Jr");
+await push([{ type: "job", id: tom16.id, updatedAt: Date.now(), deleted: false, data: { ...tom16.data, price: 360 } }]);
+await run();
+rows = await fake("/test/rows");
+check("…and a device edit after the sort lands on that job's own row", rows.find((r) => r.name === "Tom Walsh Jr")?.price === 360 && rows.filter((r) => r.price === 360).length === 1, JSON.stringify(rows.filter((r) => r.price === 360 || r.name === "Tom Walsh Jr")));
+
+// A sort plus one edit in the sheet: only the edited job changes.
+await fake("/test/scramble", {});
+rows = await fake("/test/rows");
+await fake("/test/set", { row: rows.findIndex((r) => r.name === "Mark Pereira") + 1, col: 5, value: 480 });
+const before16c = await records();
+await run();
+after16 = await records();
+const changed16c = [...after16.all.values()].filter((r) => r.seq > before16c.latest);
+check("A sort plus one edit: no pause, and only that job changed", !(await post("/v1/google/status")).paused && changed16c.length === 1 && changed16c[0].id === mark2.id && changed16c[0].data.price === 480, JSON.stringify(changed16c.map((r) => [r.type, r.data.price])));
+
+// A sort plus two edits cannot be told apart: pause, with the way back.
+const before16d = await records();
+await fake("/test/scramble", {});
+rows = await fake("/test/rows");
+const saved16 = [rows[0].price, rows[1].price];
+await fake("/test/set", { row: 1, col: 5, value: 901 });
+await fake("/test/set", { row: 2, col: 5, value: 902 });
+await run();
+const st16d = await post("/v1/google/status");
+check("A sort plus two edits pauses and says how to undo the sort", !!st16d.paused && st16d.paused.includes("Edit > Undo"), JSON.stringify(st16d));
+check("…and changes nothing in Ace", (await records()).latest === before16d.latest);
+await fake("/test/set", { row: 1, col: 5, value: saved16[0] });
+await fake("/test/set", { row: 2, col: 5, value: saved16[1] });
+await fake("/test/scramble", {});
+await post("/v1/google/resume"); await run();
+after16 = await records();
+check("…and after Undo and Resume every job is as it was", !(await post("/v1/google/status")).paused && after16.latest === before16d.latest && jobPrint(after16.all) === jobPrint(before16d.all));
 
 // ---- 17. Two devices syncing at once never skip a change (audit M6).
 const ids = Array.from({ length: 30 }, () => uuid());
@@ -242,6 +284,111 @@ check("A customer named Total Property Management comes in", !!jobOf(all, "Total
 // ---- 20. A sign-in that comes back without Ace's state token is refused (fix-now 31).
 const bad = await (await fetch(SERVER + "/google/callback?code=fake-code&picked_file_ids=fake-sheet-1")).text();
 check("A sign-in Ace did not start is refused", bad.includes("not connected"), bad.slice(0, 120));
+
+// ---- 21. Ace deleting many jobs at once pauses instead of emptying her rows (Oct 24, 14 and 42).
+const n21 = (await fake("/test/rows")).length;
+for (let i = 0; i < 12; i++) await fake("/test/insert", { at: n21 + 1 + i, row: [serial(2026, 11, 20), `Gone ${i}`, `${i} Gone St`, "Swansea, MA", 90, "cash", "", "", false] });
+await run();
+({ all } = await records());
+const gone = live(all, "job").filter((j) => all.get(`customer/${j.data.customer}`)?.data.name.startsWith("Gone "));
+await push(gone.map((j) => ({ type: "job", id: j.id, updatedAt: Date.now(), deleted: true, data: {} })));
+await run();
+const st21 = await post("/v1/google/status");
+check("12 jobs deleted in Ace at once pause the link", gone.length === 12 && st21.paused.includes("delete 12 rows"), JSON.stringify(st21));
+check("…and no row leaves the sheet", (await fake("/test/rows")).length === n21 + 12);
+await post("/v1/google/resume"); await run();
+rows = await fake("/test/rows");
+check("…and Resume lets them through", rows.length === n21 && !rows.some((r) => String(r.name).startsWith("Gone ")) && !(await post("/v1/google/status")).paused);
+
+// ---- 22. Disconnect, then Connect the same sheet again (Oct 24, 15).
+await post("/v1/google/disconnect");
+check("Disconnect: status says not connected", (await post("/v1/google/status")).connected === false);
+({ all } = await records());
+const jobs22 = live(all, "job").length;
+const tom22 = jobOf(all, "Tom Walsh Jr");
+await push([{ type: "job", id: tom22.id, updatedAt: Date.now(), deleted: false, data: { ...tom22.data, price: 370, isPaid: false } }]);
+await run();
+check("…and the sheet is left alone while disconnected", (await fake("/test/rows")).find((r) => r.name === "Tom Walsh Jr")?.price === 360);
+const start22 = await post("/v1/google/start");
+const page22 = await (await fetch((await fetch(start22.url, { redirect: "manual" })).headers.get("location"))).text();
+await run();
+({ all } = await records());
+rows = await fake("/test/rows");
+const tomRow22 = rows.find((r) => r.name === "Tom Walsh Jr");
+check("Connecting the same sheet again: a change made meanwhile reaches the sheet", page22.includes("Ace is connected to") && tomRow22?.price === 370 && tomRow22?.red === true, JSON.stringify(tomRow22));
+check("…and no job is doubled", live(all, "job").length === jobs22 && rows.every((r) => r.tag !== null && r.tags === 1), `${live(all, "job").length} jobs, was ${jobs22}`);
+
+// ---- 23. Rows with a blank Date cell keep their day when Ace changes the row above (Oct 24, 16).
+const n23 = (await fake("/test/rows")).length;
+const blanks = [[serial(2026, 12, 1), "Ann Blank"], ["", "Bob Blank"], ["", "Cat Blank"], [serial(2026, 12, 9), "Dan Blank"], ["", "Eve Blank"]];
+for (const [i, [date, name]] of blanks.entries()) await fake("/test/insert", { at: n23 + 1 + i, row: [date, name, `${i + 1} Blank St`, "Westport, MA", 100 + i, "cash", "", "", false] });
+await run();
+({ all } = await records());
+check("Rows with a blank date take the date above", jobOf(all, "Bob Blank")?.data.scheduledAt === bostonMidnight(2026, 12, 1) && jobOf(all, "Cat Blank")?.data.scheduledAt === bostonMidnight(2026, 12, 1) && jobOf(all, "Eve Blank")?.data.scheduledAt === bostonMidnight(2026, 12, 9));
+const bob23 = jobOf(all, "Bob Blank");
+await push([{ type: "job", id: bob23.id, updatedAt: Date.now(), deleted: false, data: { ...bob23.data, scheduledAt: bostonMidnight(2026, 12, 5) } }]);
+await run(); await run();
+({ all } = await records());
+rows = await fake("/test/rows");
+check("Moving a blank-date job in Ace leaves the next row on its day", jobOf(all, "Cat Blank")?.data.scheduledAt === bostonMidnight(2026, 12, 1) && rows.find((r) => r.name === "Bob Blank")?.date === serial(2026, 12, 5) && rows.find((r) => r.name === "Cat Blank")?.date === serial(2026, 12, 1), JSON.stringify(rows.filter((r) => /Blank/.test(r.name)).map((r) => [r.name, r.date])));
+await push([{ type: "job", id: jobOf(all, "Dan Blank").id, updatedAt: Date.now(), deleted: true, data: {} }]);
+await run(); await run();
+({ all } = await records());
+rows = await fake("/test/rows");
+check("Deleting a dated row in Ace leaves the blank-date row under it on its day", !rows.some((r) => r.name === "Dan Blank") && jobOf(all, "Eve Blank")?.data.scheduledAt === bostonMidnight(2026, 12, 9) && rows.find((r) => r.name === "Eve Blank")?.date === serial(2026, 12, 9));
+
+// ---- 24. A row typed while Ace is writing: nothing lands on the wrong row (Oct 24, 54).
+({ all } = await records());
+const ana24 = jobOf(all, "Ana Costa", 800);
+await push([{ type: "job", id: ana24.id, updatedAt: Date.now(), deleted: false, data: { ...ana24.data, price: 820 } }]);
+rows = await fake("/test/rows");
+await fake("/test/insert-after-read", { at: rows.findIndex((r) => r.name === "Ana Costa" && r.price === 800) + 1, row: [serial(2026, 10, 15), "Late Typing", "6 Late St", "Westport, MA", 55, "cash", "", "", false] });
+await run();
+rows = await fake("/test/rows");
+check("A row added between Ace's read and write: nothing is written", rows.find((r) => r.name === "Late Typing")?.price === 55 && rows.some((r) => r.name === "Ana Costa" && r.price === 800), JSON.stringify(rows.filter((r) => r.price === 820 || r.name === "Late Typing")));
+await run();
+({ all } = await records());
+rows = await fake("/test/rows");
+check("…and the next check writes to the right row", rows.some((r) => r.name === "Ana Costa" && r.price === 820) && rows.find((r) => r.name === "Late Typing")?.price === 55 && jobOf(all, "Late Typing")?.data.price === 55);
+
+// ---- 25. A tag number something else in the file uses (Oct 24, 55).
+const { ids: reserved } = await fake("/test/reserve-next-ids", { count: 3 });
+const n25 = (await fake("/test/rows")).length;
+await fake("/test/insert", { at: n25 + 1, row: [serial(2026, 12, 20), "Clash Test", "7 Clash St", "Westport, MA", 75, "cash", "", "", false] });
+await run();
+const st25 = await post("/v1/google/status");
+check("A tag number already used elsewhere: that check fails", st25.lastError.includes("already in use"), JSON.stringify(st25));
+await run();
+({ all } = await records());
+const clash = (await fake("/test/rows")).filter((r) => r.name === "Clash Test");
+check("…and the next one uses other numbers", !(await post("/v1/google/status")).lastError && clash.length === 1 && clash[0].tag > Math.max(...reserved) && live(all, "job").filter((j) => j.data.price === 75).length === 1, JSON.stringify([reserved, clash]));
+
+// ---- 26. Totals lines labelled other ways are not jobs (Oct 24, 17).
+const n26 = (await fake("/test/rows")).length;
+const jobs26 = live((await records()).all, "job").length;
+await fake("/test/insert", { at: n26 + 1, row: ["TOTAL", "", "", "", 244250, "", "", "", false] });
+await fake("/test/insert", { at: n26 + 2, row: ["", "October Total", "", "", 9000, "", "", "", false] });
+await run();
+({ all } = await records());
+check("\"TOTAL\" in the Date column and \"October Total\" do not become jobs", live(all, "job").length === jobs26 && !(await post("/v1/google/status")).lastError);
+
+// ---- 27. Reading rules on their own (src/sheet.js).
+const { isRed, readSheet } = await import("../src/sheet.js");
+const fill = (hex) => ({ effectiveFormat: { backgroundColorStyle: { rgbColor: { red: parseInt(hex.slice(0, 2), 16) / 255, green: parseInt(hex.slice(2, 4), 16) / 255, blue: parseInt(hex.slice(4, 6), 16) / 255 } } } });
+check("Reds read as not paid: ff0000 cc0000 e06666 ea9999 f4cccc 990000 660000", ["ff0000", "cc0000", "e06666", "ea9999", "f4cccc", "990000", "660000"].every((h) => isRed(fill(h))));
+check("Not red: orange, yellow, green, light magenta, grey, white", ["ff9900", "e69138", "fce5cd", "ffff00", "b6d7a8", "ead1dc", "cccccc", "ffffff", "000000"].every((h) => !isRed(fill(h))));
+check("A theme colour that is red reads as red", isRed({ effectiveFormat: { backgroundColorStyle: { themeColor: "ACCENT2" } } }, { ACCENT2: { red: 0.92, green: 0.26, blue: 0.21 } }) && !isRed({ effectiveFormat: { backgroundColorStyle: { themeColor: "ACCENT3" } } }, { ACCENT3: { red: 0.98, green: 0.74, blue: 0.02 } }));
+const textRow = (cells) => ({ values: cells.map((v) => (v === "" ? {} : typeof v === "number" ? { effectiveValue: { numberValue: v } } : { effectiveValue: { stringValue: v }, formattedValue: v })) });
+const tab = (sheetId, title, rowsIn) => ({ properties: { sheetId, title }, data: [{ rowData: rowsIn.map(textRow) }] });
+const book = {
+  properties: { title: "2027 ACE Books" },
+  sheets: [
+    tab(0, "Client Job List", [["Date", "Customer Name", "# and Street Name", "City State & Zip", "Price"], [serial(2027, 1, 4), "Ann", "1 A St", "Westport", 100]]),
+    tab(1, "Contracted Labor", [["Name", "Date", "Hours", "Amount"], ...Array.from({ length: 8 }, (_, i) => [`Crew ${i}`, serial(2027, 1, 4), 8, 160])]),
+  ],
+};
+check("A new year's sheet picks the Client Job List tab, not a longer crew tab", readSheet(book)?.tabName === "Client Job List");
+check("…and the tab already in use is kept", readSheet(book, 1)?.tabName === "Contracted Labor");
 
 console.log(failures ? `\n${failures} failed` : "\nAll passed");
 process.exit(failures ? 1 : 0);

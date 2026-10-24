@@ -101,7 +101,17 @@ struct JobFormData: Equatable {
         if paymentType == base.paymentType { merged.paymentType = fresh.paymentType }
         if isPaid == base.isPaid { merged.isPaid = fresh.isPaid }
         if isDone == base.isDone { merged.isDone = fresh.isDone }
-        if notes == base.notes { merged.notes = fresh.notes }
+        if notes == base.notes {
+            merged.notes = fresh.notes
+        } else {
+            // Typed notes are kept, but a check number written meanwhile by
+            // Mark paid › Check goes into them, or it would be lost when
+            // they are saved (audit Oct 24, 23).
+            let check = JobActions.checkNumber(in: fresh.notes)
+            if check != JobActions.checkNumber(in: base.notes) {
+                merged.notes = JobActions.notes(notes, check: check)
+            }
+        }
         return merged
     }
 
